@@ -78,7 +78,7 @@ namespace Nnrp.Core
                         out _,
                         out var typedPayloadCoverageError))
                 {
-                        throw new ArgumentException($"Typed payload coverage summary is invalid: {typedPayloadCoverageError}.", nameof(typedPayloadDescriptors));
+                    throw new ArgumentException($"Typed payload coverage summary is invalid: {typedPayloadCoverageError}.", nameof(typedPayloadDescriptors));
                 }
 
                 if (typedPayloadCoverages.IsEmpty)

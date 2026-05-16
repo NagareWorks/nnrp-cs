@@ -876,7 +876,7 @@ namespace Nnrp.NativeBridge
             }
 
             NegotiatedSessionId = metadata.SessionId;
-                if (metadata.SelectedWireFormat != NnrpHeader.CurrentWireFormat)
+            if (metadata.SelectedWireFormat != NnrpHeader.CurrentWireFormat)
             {
                 throw new InvalidOperationException(
                     $"SERVER_HELLO_ACK selected unsupported wire format {metadata.SelectedWireFormat}.");

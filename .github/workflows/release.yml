@@ -3,12 +3,8 @@ name: Release
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
-
-permissions:
-  contents: write
-  packages: write
 
 jobs:
   native-bridge:
@@ -59,6 +55,11 @@ jobs:
     runs-on: windows-latest
     needs:
       - native-bridge
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -147,7 +148,7 @@ jobs:
           retention-days: 14
 
       - name: Create git tag
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           git fetch --tags
@@ -159,7 +160,7 @@ jobs:
           }
 
       - name: Publish GitHub release
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.value }}
@@ -169,7 +170,7 @@ jobs:
             artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.zip
 
       - name: Publish NuGet packages to GitHub Packages
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -179,11 +180,18 @@ jobs:
             dotnet nuget push $_.FullName --source github --api-key $env:GITHUB_TOKEN --skip-duplicate
           }
 
-      - name: Publish NuGet packages to nuget.org
-        if: github.ref == 'refs/heads/master' && env.NUGET_API_KEY != ''
+      - name: NuGet login (OIDC to temporary API key)
+        if: github.ref == 'refs/heads/main' && vars.NUGET_USER != ''
+        id: nuget_login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish NuGet packages to nuget.org via Trusted Publishing
+        if: github.ref == 'refs/heads/main' && vars.NUGET_USER != ''
         shell: pwsh
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
         run: |
           Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
             dotnet nuget push $_.FullName --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --skip-duplicate
