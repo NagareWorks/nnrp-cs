@@ -16,31 +16,58 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
+            build_kind: native
             binary_path: native/nnrp_quic_bridge/target/release/nnrp_quic_bridge.dll
           - os: ubuntu-latest
             rid: linux-x64
+            build_kind: native
             binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.so
-          - os: macos-13
+          - os: ubuntu-latest
             rid: osx-x64
-            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.dylib
-          - os: macos-14
+            build_kind: zig
+            target: x86_64-apple-darwin
+            binary_path: native/nnrp_quic_bridge/target/x86_64-apple-darwin/release/libnnrp_quic_bridge.dylib
+          - os: ubuntu-latest
             rid: osx-arm64
-            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.dylib
+            build_kind: zig
+            target: aarch64-apple-darwin
+            binary_path: native/nnrp_quic_bridge/target/aarch64-apple-darwin/release/libnnrp_quic_bridge.dylib
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Rust
+        if: matrix.build_kind == 'native'
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Rust target
+        if: matrix.build_kind == 'zig'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
       - name: Build native bridge
+        if: matrix.build_kind == 'native'
         shell: pwsh
         run: |
           cargo build --manifest-path native/nnrp_quic_bridge/Cargo.toml --release
           $destination = Join-Path 'artifacts/native' '${{ matrix.rid }}'
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item '${{ matrix.binary_path }}' $destination
+
+      - name: Build native bridge with zig cross toolchain
+        if: matrix.build_kind == 'zig'
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/io" \
+            -w /io \
+            ghcr.io/rust-cross/cargo-zigbuild:latest \
+            bash -lc "rustup target add ${{ matrix.target }} && cargo zigbuild --manifest-path native/nnrp_quic_bridge/Cargo.toml --release --target ${{ matrix.target }}"
+
+          mkdir -p "artifacts/native/${{ matrix.rid }}"
+          cp "${{ matrix.binary_path }}" "artifacts/native/${{ matrix.rid }}/"
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4

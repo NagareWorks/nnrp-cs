@@ -1,0 +1,38 @@
+name: Darwin Validation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  darwin-native-bridge:
+    name: Darwin native bridge validation (${{ matrix.target }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Build native bridge for validation
+        run: cargo build --manifest-path native/nnrp_quic_bridge/Cargo.toml --release --target ${{ matrix.target }}
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-validation-${{ matrix.target }}
+          path: native/nnrp_quic_bridge/target/${{ matrix.target }}/release/libnnrp_quic_bridge.dylib
+          if-no-files-found: error
+          retention-days: 7
