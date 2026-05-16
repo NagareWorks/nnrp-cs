@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.0.0-preview.2</Version>
+    <Authors>NNRP Contributors</Authors>
+    <Company>NNRP</Company>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>nnrp;neural-rendering;protocol;unity</PackageTags>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <PackageId>Nnrp.Core</PackageId>
+    <Description>Core binary wire primitives for the current NNRP/1 contract.</Description>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Test with coverage
+        shell: pwsh
+        run: |
+          dotnet test tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Core.Tests.trx" --results-directory artifacts/test-results/Nnrp.Core.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Core.Tests/coverage/ /p:Include="[Nnrp.Core]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
+          dotnet test tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Client.Tests.trx" --results-directory artifacts/test-results/Nnrp.Client.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Client.Tests/coverage/ /p:Include="[Nnrp.Client]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
+          dotnet test tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Server.Tests.trx" --results-directory artifacts/test-results/Nnrp.Server.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Server.Tests/coverage/ /p:Include="[Nnrp.Server]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
+          dotnet test tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Transport.Tcp.Tests.trx" --results-directory artifacts/test-results/Nnrp.Transport.Tcp.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Transport.Tcp.Tests/coverage/ /p:Include="[Nnrp.Transport.Tcp]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
+
+      - name: Upload test result artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results/
+          if-no-files-found: error
+
+      - name: Format check
+        run: dotnet format Nnrp.sln --verify-no-changes --verbosity minimal
+

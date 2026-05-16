@@ -1,0 +1,15 @@
+[package]
+name = "nnrp_quic_bridge"
+version = "1.0.0-preview.2"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hex = "0.4"
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pki-types = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "io-util"] }

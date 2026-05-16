@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <PackageId>Nnrp.Client</PackageId>
+    <Description>Client-side helpers for the current NNRP/1 session contract.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+[build]
+jobs = 1
+rustflags = ["-C", "debuginfo=0"]
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+debug = 0
+incremental = false

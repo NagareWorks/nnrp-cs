@@ -1,0 +1,190 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  native-bridge:
+    name: Native bridge (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            binary_path: native/nnrp_quic_bridge/target/release/nnrp_quic_bridge.dll
+          - os: ubuntu-latest
+            rid: linux-x64
+            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.so
+          - os: macos-13
+            rid: osx-x64
+            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.dylib
+          - os: macos-14
+            rid: osx-arm64
+            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.dylib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native bridge
+        shell: pwsh
+        run: |
+          cargo build --manifest-path native/nnrp_quic_bridge/Cargo.toml --release
+          $destination = Join-Path 'artifacts/native' '${{ matrix.rid }}'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          Copy-Item '${{ matrix.binary_path }}' $destination
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/native/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    name: Package managed SDK and UPM bundle
+    runs-on: windows-latest
+    needs:
+      - native-bridge
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content 'Directory.Build.props'
+          $version = $props.Project.PropertyGroup.Version.Trim()
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: artifacts/native-download
+
+      - name: Normalize native artifact layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native | Out-Null
+          Get-ChildItem artifacts/native-download -Directory | ForEach-Object {
+            $rid = $_.Name -replace '^native-', ''
+            $destination = Join-Path 'artifacts/native' $rid
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Get-ChildItem $_.FullName -File | Copy-Item -Destination $destination -Force
+          }
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Nnrp.sln --configuration Release --no-build
+
+      - name: Pack NuGet packages
+        run: dotnet pack Nnrp.sln --configuration Release --no-build --output artifacts/packages
+
+      - name: Build UPM package
+        run: >-
+          python scripts/build_upm_package.py
+          --repo-root .
+          --configuration Release
+          --native-root artifacts/native
+          --output artifacts/upm/com.nnrp.client
+          --repository-url https://github.com/${{ github.repository }}
+
+      - name: Bundle release artifacts
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.value }}'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $upmZip = Join-Path (Resolve-Path 'artifacts').Path ("com.nnrp.client-{0}.zip" -f $version)
+          if (Test-Path $upmZip) {
+            Remove-Item $upmZip -Force
+          }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path 'artifacts/upm/com.nnrp.client'), $upmZip)
+          $nugetZip = Join-Path (Resolve-Path 'artifacts').Path ("nnrp-cs-nuget-{0}.zip" -f $version)
+          if (Test-Path $nugetZip) {
+            Remove-Item $nugetZip -Force
+          }
+          Compress-Archive -Path artifacts/packages/*.nupkg -DestinationPath $nugetZip -Force
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nnrp-cs-release-${{ steps.version.outputs.value }}
+          path: |
+            artifacts/nnrp-cs-nuget-${{ steps.version.outputs.value }}.zip
+            artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create git tag
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        run: |
+          git fetch --tags
+          $tag = 'v${{ steps.version.outputs.value }}'
+          $existing = git tag --list $tag
+          if (-not $existing) {
+            git tag $tag
+            git push origin $tag
+          }
+
+      - name: Publish GitHub release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          name: nnrp-cs v${{ steps.version.outputs.value }}
+          files: |
+            artifacts/nnrp-cs-nuget-${{ steps.version.outputs.value }}.zip
+            artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.zip
+
+      - name: Publish NuGet packages to GitHub Packages
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --name github --username ${{ github.actor }} --password $env:GITHUB_TOKEN --store-password-in-clear-text
+          Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
+            dotnet nuget push $_.FullName --source github --api-key $env:GITHUB_TOKEN --skip-duplicate
+          }
+
+      - name: Publish NuGet packages to nuget.org
+        if: github.ref == 'refs/heads/master' && env.NUGET_API_KEY != ''
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
+            dotnet nuget push $_.FullName --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --skip-duplicate
+          }
