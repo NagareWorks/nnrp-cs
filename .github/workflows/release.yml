@@ -41,12 +41,6 @@ jobs:
         if: matrix.build_kind == 'native'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup Rust target
-        if: matrix.build_kind == 'zig'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
       - name: Build native bridge
         if: matrix.build_kind == 'native'
         shell: pwsh
@@ -64,7 +58,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/io" \
             -w /io \
             ghcr.io/rust-cross/cargo-zigbuild:latest \
-            bash -lc "rustup target add ${{ matrix.target }} && cargo zigbuild --manifest-path native/nnrp_quic_bridge/Cargo.toml --release --target ${{ matrix.target }}"
+            cargo zigbuild --manifest-path native/nnrp_quic_bridge/Cargo.toml --release --target ${{ matrix.target }}
 
           mkdir -p "artifacts/native/${{ matrix.rid }}"
           cp "${{ matrix.binary_path }}" "artifacts/native/${{ matrix.rid }}/"
