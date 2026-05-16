@@ -5,9 +5,11 @@
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Transport.Tcp</PackageId>
     <Description>TCP transport adapter for NNRP framed messages.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
   </ItemGroup>
 

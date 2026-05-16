@@ -7,7 +7,59 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify change set
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only "$base" "$head")
+
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          docs_only=true
+          for path in "${changed_files[@]}"; do
+            if [[ "$path" == *.md ]] || [[ "$path" =~ ^(doc/|docs/|\.github/PULL_REQUEST_TEMPLATE/) ]] || [[ "$path" =~ ^\.github/[^/]+\.md$ ]]; then
+              continue
+            fi
+
+            docs_only=false
+            break
+          done
+
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   darwin-native-bridge:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Darwin native bridge validation (${{ matrix.target }})
     runs-on: macos-14
     strategy:
@@ -36,3 +88,13 @@ jobs:
           path: native/nnrp_quic_bridge/target/${{ matrix.target }}/release/libnnrp_quic_bridge.dylib
           if-no-files-found: error
           retention-days: 7
+
+  docs-only:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Skip Darwin validation for docs-only change set
+        run: echo "Docs-only change detected. Skipping Darwin native validation."

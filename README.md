@@ -4,6 +4,22 @@ C# SDK scaffold for NNRP.
 
 This repository keeps a neutral protocol-level name because the shared wire contract is useful on both client and server sides. The immediate target is Unity 2022, so the library target is `netstandard2.1`.
 
+## Unity Package Download
+
+If you want the Unity-style package, open the latest GitHub Release for this repository and download `com.nnrp.client-<version>.zip` from the release assets.
+
+That zip is the CI-produced Unity package bundle for the current version.
+
+## Contributors
+
+<a href="https://github.com/NagareWorks/nnrp-cs/graphs/contributors" title="Open the contributors graph for individual GitHub profiles and IDs.">
+    <img src="https://contrib.rocks/image?repo=NagareWorks/nnrp-cs" alt="Contributors" />
+</a>
+
+The avatar wall above is updated automatically from the repository contributor list.
+
+GitHub README rendering does not support per-avatar dynamic tooltips for an auto-generated contributor wall, so use the linked contributors graph if you want individual profile pages and account IDs.
+
 ## Public SDK Direction
 
 The current public session contract for this repository is the active `NNRP/1` wire format. The primary managed entry points are the current client/session helpers and the native-bridge wrappers used by Unity-facing callers.
@@ -222,19 +238,19 @@ The distribution baseline is now:
 
 - NuGet-style server dependency: published by CI and consumed as a package, not from checked-in DLL folders.
 - NuGet-style client dependency: published by CI and consumed as a package, not from checked-in DLL folders.
-- Unity-style client dependency: published by CI as a package artifact for GitHub Packages first, then later mirrored to NuGet / UPM-style registries.
+- Unity-style client dependency: published by CI as `com.nnrp.client-<version>.zip` in GitHub Release assets and workflow artifacts.
 
-Near-term package hosting is GitHub Packages. This repository keeps source, tests, native bridge code, and package metadata/CI logic, but not a staged `unity/com.nnrp.client` tree.
-
-Current packaging gap: the repository does not yet have a CI-owned Unity `.meta` generation tool, and the current GitHub Actions workflow is still Windows-only. That is not sufficient for the intended package baseline.
+NuGet packages are published to package feeds. The Unity-style package is distributed as a release asset instead of a committed Unity package tree.
 
 The required package baseline is:
 
 - Keep NuGet-style server and client packages separate from the Unity-style client package.
 - Generate the Unity-style package in CI from package definitions plus a deterministic `.meta` generation step; do not hand-maintain committed `.meta` and plugin trees.
-- Publish one Unity-style client package that already contains the current common-platform native bridge binaries for Windows, macOS, Linux, Android, and iOS in Unity-compatible plugin paths.
-- Keep the current platform support scope limited to those common desktop/mobile platforms.
+- Publish one Unity-style client package that already contains the current supported desktop native bridge binaries in Unity-compatible plugin paths.
+- Keep the current release workflow focused on the current supported desktop platforms.
 - Prefer package layouts where Unity callers pull one package and get all supported common-platform native binaries in place, rather than selecting per-platform package variants manually.
+
+For repository workflow, contribution rules, and branch strategy, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 Use the client-facing surface split as follows:
 

@@ -5,9 +5,11 @@
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Server</PackageId>
     <Description>Server-side helpers for the current NNRP/1 session contract.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
   </ItemGroup>
 

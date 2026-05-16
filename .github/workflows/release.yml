@@ -7,7 +7,59 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify change set
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.before }}"
+          head="${{ github.sha }}"
+
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only "$base" "$head")
+
+          if [ "${#changed_files[@]}" -eq 0 ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          docs_only=true
+          for path in "${changed_files[@]}"; do
+            if [[ "$path" == *.md ]] || [[ "$path" =~ ^(doc/|docs/|\.github/PULL_REQUEST_TEMPLATE/) ]] || [[ "$path" =~ ^\.github/[^/]+\.md$ ]]; then
+              continue
+            fi
+
+            docs_only=false
+            break
+          done
+
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   native-bridge:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only != 'true'
     name: Native bridge (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -75,7 +127,9 @@ jobs:
     name: Package managed SDK and UPM bundle
     runs-on: windows-latest
     needs:
+      - changes
       - native-bridge
+    if: needs.changes.outputs.docs_only != 'true'
     environment: release
     permissions:
       contents: write
@@ -217,3 +271,13 @@ jobs:
           Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
             dotnet nuget push $_.FullName --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --skip-duplicate
           }
+
+  docs-only:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Skip release workflow for docs-only change set
+        run: echo "Docs-only change detected. Skipping native build, package, and release publication."

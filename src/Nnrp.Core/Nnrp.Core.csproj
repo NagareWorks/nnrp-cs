@@ -5,6 +5,11 @@
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Core</PackageId>
     <Description>Core binary wire primitives for the current NNRP/1 contract.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
