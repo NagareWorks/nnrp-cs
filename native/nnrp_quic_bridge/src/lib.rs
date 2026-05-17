@@ -1474,7 +1474,7 @@ fn cancel_native_client(client: &mut NativeClient, cancel_packet: &[u8]) -> Resu
 }
 
 fn close_native_client(mut client: NativeClient) -> Result<(), String> {
-    let close_packet = build_close_packet(client.negotiated_session_id, "unity-native-client");
+    let close_packet = build_close_packet(client.negotiated_session_id, "native-bridge-client");
     let _ = client.runtime.block_on(async {
         write_packet(&mut client.control_send, &close_packet)
             .await

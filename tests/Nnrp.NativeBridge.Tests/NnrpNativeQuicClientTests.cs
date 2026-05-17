@@ -268,9 +268,62 @@ namespace Nnrp.NativeBridge.Tests
         public void DirectByteWrappersValidateArgumentsBeforeNativeCalls()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.Submit(0, new byte[] { 1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.BeginSubmit(0, new byte[] { 1 }));
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Submit(9, Array.Empty<byte>()));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.ReceiveResult(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.ReceiveSessionPacket(0));
             Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.Ping(0, PingMessage.Create(41, 9)));
             Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.Cancel(0, FrameCancelMessage.Create(41, 303)));
+        }
+
+        [Fact]
+        public void BeginSubmitValidatesArgumentsAndInjectedCallbacks()
+        {
+            var packet = new byte[] { 0x22 };
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.BeginSubmit(0, packet, BeginSubmitSuccess, _ => { }));
+            Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.BeginSubmit(9, Array.Empty<byte>(), BeginSubmitSuccess, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.BeginSubmit(9, packet, null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.BeginSubmit(9, packet, BeginSubmitSuccess, null!));
+        }
+
+        [Fact]
+        public void BeginSubmitAllowsSuccessfulNativeSubmission()
+        {
+            ulong observedHandle = 0;
+            byte[]? observedPacket = null;
+
+            NnrpNativeQuicClient.BeginSubmit(
+                9,
+                new byte[] { 0x22, 0x33 },
+                (ulong handle, byte[] submitPacket, int submitPacketLength, out IntPtr errorPointer) =>
+                {
+                    observedHandle = handle;
+                    observedPacket = submitPacket;
+                    Assert.Equal(submitPacket.Length, submitPacketLength);
+                    errorPointer = IntPtr.Zero;
+                    return 0;
+                },
+                _ => { });
+
+            Assert.Equal((ulong)9, observedHandle);
+            Assert.Equal(new byte[] { 0x22, 0x33 }, observedPacket);
+        }
+
+        [Fact]
+        public void BeginSubmitSurfacesNativeErrorPayloadAndFreesErrorString()
+        {
+            var freedStrings = new List<string>();
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                NnrpNativeQuicClient.BeginSubmit(
+                    9,
+                    new byte[] { 0x22 },
+                    BeginSubmitFailure,
+                    pointer => FreeAnsi(pointer, freedStrings)));
+
+            Assert.Equal("native-begin-submit-failed", error.Message);
+            Assert.Equal(new[] { "native-begin-submit-failed" }, freedStrings);
         }
 
         [Fact]
@@ -342,6 +395,55 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(IntPtr.Zero, freedBuffer);
             Assert.Equal(-1, freedLength);
             Assert.Equal(new[] { "native-submit-failed" }, freedStrings);
+        }
+
+        [Fact]
+        public void ReceiveResultValidatesArgumentsAndInjectedCallbacks()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.ReceiveResult(0, ReceiveResultSuccess, (_, _) => { }, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.ReceiveResult(9, null!, (_, _) => { }, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.ReceiveResult(9, ReceiveResultSuccess, null!, _ => { }));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.ReceiveResult(9, ReceiveResultSuccess, (_, _) => { }, null!));
+        }
+
+        [Fact]
+        public void ReceiveResultCopiesNativeBufferAndFreesResources()
+        {
+            IntPtr freedBuffer = IntPtr.Zero;
+            int freedLength = -1;
+            var freedStrings = new List<string>();
+
+            var result = NnrpNativeQuicClient.ReceiveResult(
+                9,
+                ReceiveResultSuccess,
+                (pointer, length) =>
+                {
+                    freedBuffer = pointer;
+                    freedLength = length;
+                    Marshal.FreeHGlobal(pointer);
+                },
+                pointer => FreeAnsi(pointer, freedStrings));
+
+            Assert.Equal(new byte[] { 0x70, 0x80, 0x90 }, result);
+            Assert.NotEqual(IntPtr.Zero, freedBuffer);
+            Assert.Equal(3, freedLength);
+            Assert.Empty(freedStrings);
+        }
+
+        [Fact]
+        public void ReceiveResultSurfacesNativeErrorPayloadAndFreesErrorString()
+        {
+            var freedStrings = new List<string>();
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                NnrpNativeQuicClient.ReceiveResult(
+                    9,
+                    ReceiveResultFailure,
+                    (_, _) => { },
+                    pointer => FreeAnsi(pointer, freedStrings)));
+
+            Assert.Equal("native-receive-result-failed", error.Message);
+            Assert.Equal(new[] { "native-receive-result-failed" }, freedStrings);
         }
 
         [Fact]
@@ -882,6 +984,52 @@ namespace Nnrp.NativeBridge.Tests
             out IntPtr errorPointer)
         {
             errorPointer = AllocAnsi("native-cancel-failed");
+            return 1;
+        }
+
+        private static int BeginSubmitSuccess(
+            ulong handle,
+            byte[] submitPacket,
+            int submitPacketLength,
+            out IntPtr errorPointer)
+        {
+            errorPointer = IntPtr.Zero;
+            return 0;
+        }
+
+        private static int BeginSubmitFailure(
+            ulong handle,
+            byte[] submitPacket,
+            int submitPacketLength,
+            out IntPtr errorPointer)
+        {
+            errorPointer = AllocAnsi("native-begin-submit-failed");
+            return 1;
+        }
+
+        private static int ReceiveResultSuccess(
+            ulong handle,
+            out IntPtr resultPacketPointer,
+            out int resultPacketLength,
+            out IntPtr errorPointer)
+        {
+            var buffer = new byte[] { 0x70, 0x80, 0x90 };
+            resultPacketPointer = Marshal.AllocHGlobal(buffer.Length);
+            Marshal.Copy(buffer, 0, resultPacketPointer, buffer.Length);
+            resultPacketLength = buffer.Length;
+            errorPointer = IntPtr.Zero;
+            return 0;
+        }
+
+        private static int ReceiveResultFailure(
+            ulong handle,
+            out IntPtr resultPacketPointer,
+            out int resultPacketLength,
+            out IntPtr errorPointer)
+        {
+            resultPacketPointer = IntPtr.Zero;
+            resultPacketLength = 0;
+            errorPointer = AllocAnsi("native-receive-result-failed");
             return 1;
         }
 

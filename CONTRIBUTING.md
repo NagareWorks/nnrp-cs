@@ -28,6 +28,7 @@ Rules:
 - Keep topic branches focused on one slice of work.
 - Rebase or merge from `main` regularly if the branch stays open.
 - Merge back to `main` through a pull request.
+- Do not push directly to `main`; enforce this with a GitHub ruleset or branch protection rule.
 - Do not publish packages directly from topic branches.
 
 `release/<version>` branches are optional and should be used only when a version needs stabilization passes, packaging rehearsals, or manual workflow runs without publishing from `main`.
@@ -50,7 +51,8 @@ Rules:
 - Keep the subject line imperative.
 - Keep the first line concise.
 - Use a scope only when it adds clarity, for example `fix(core): reject invalid tile counts`.
-- Split unrelated changes into separate commits when practical.
+- You can use multiple local commits while iterating, but normal PRs from `feature/*`, `fix/*`, `docs/*`, or `chore/*` branches must be squashed to exactly one commit before review.
+- Only version-maintenance PRs that target or originate from `release/<version>` branches may keep multiple commits when that history is actually needed.
 
 ## Pull Request Expectations
 
@@ -62,6 +64,10 @@ Every PR should:
 - summarize the main code paths changed
 - list the validation performed
 - mention release impact when package content changes
+- contain exactly one commit before review unless it is a necessary `release/<version>` branch PR
+- pass the `required-checks` GitHub Actions job before merge
+
+PRs that violate the normal one-commit rule are not reviewed until they are squashed.
 
 If a change affects package output, call that out explicitly:
 
@@ -101,5 +107,7 @@ Review for:
 - missing tests for changed behavior
 - CI workflow correctness
 - documentation drift when user-facing behavior changes
+
+Do not start normal feature, fix, docs, or maintenance review while the PR still carries multiple commits.
 
 If a PR is not ready for merge, leave concrete follow-up items rather than broad requests for cleanup.

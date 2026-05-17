@@ -60,6 +60,30 @@ jobs:
 
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
+  commit-policy:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce single-commit PR policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          head_ref="${{ github.head_ref }}"
+          base_ref="${{ github.base_ref }}"
+
+          if [[ "$head_ref" =~ ^release/ ]] || [[ "$base_ref" =~ ^release/ ]]; then
+            echo "Release/version branch PR detected; multi-commit history is allowed when needed."
+            exit 0
+          fi
+
+          commit_count='${{ github.event.pull_request.commits }}'
+          if [ "$commit_count" -ne 1 ]; then
+            echo "Normal PRs from feature/fix/docs/chore branches must contain exactly one commit before review. Current PR has $commit_count commits. Squash the history before requesting review."
+            exit 1
+          fi
+
   build-test:
     needs:
       - changes
@@ -69,6 +93,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -84,10 +110,68 @@ jobs:
       - name: Test with coverage
         shell: pwsh
         run: |
-          dotnet test tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Core.Tests.trx" --results-directory artifacts/test-results/Nnrp.Core.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Core.Tests/coverage/ /p:Include="[Nnrp.Core]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
-          dotnet test tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Client.Tests.trx" --results-directory artifacts/test-results/Nnrp.Client.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Client.Tests/coverage/ /p:Include="[Nnrp.Client]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
-          dotnet test tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Server.Tests.trx" --results-directory artifacts/test-results/Nnrp.Server.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Server.Tests/coverage/ /p:Include="[Nnrp.Server]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
-          dotnet test tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=Nnrp.Transport.Tcp.Tests.trx" --results-directory artifacts/test-results/Nnrp.Transport.Tcp.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput=artifacts/test-results/Nnrp.Transport.Tcp.Tests/coverage/ /p:Include="[Nnrp.Transport.Tcp]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
+          $coverageRoot = Join-Path $PWD "artifacts/test-results"
+
+          function Invoke-CoveredTest {
+            param(
+              [string]$ProjectPath,
+              [string]$ArtifactName,
+              [string]$IncludeFilter,
+              [int]$Threshold = 0
+            )
+
+            $resultsDirectory = Join-Path $coverageRoot $ArtifactName
+            $coverageDirectory = Join-Path $resultsDirectory "coverage"
+
+            $arguments = @(
+              "test",
+              $ProjectPath,
+              "--configuration", "Release",
+              "--no-build",
+              "--logger", "trx;LogFileName=$ArtifactName.trx",
+              "--results-directory", $resultsDirectory,
+              "/p:CollectCoverage=true",
+              "/p:CoverletOutputFormat=cobertura",
+              "/p:CoverletOutput=$coverageDirectory/",
+              "/p:Include=$IncludeFilter"
+            )
+
+            if ($Threshold -gt 0) {
+              $arguments += @(
+                "/p:Threshold=$Threshold",
+                "/p:ThresholdType=line",
+                "/p:ThresholdStat=total"
+              )
+            }
+
+            & dotnet @arguments
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
+
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj" -ArtifactName "Nnrp.Client.Tests" -IncludeFilter "[Nnrp.Client]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj" -ArtifactName "Nnrp.NativeBridge.Tests" -IncludeFilter "[Nnrp.NativeBridge]*" -Threshold 90
+
+      - name: Incremental line coverage gate
+        shell: pwsh
+        run: |
+          $baseSha = ""
+          $headSha = ""
+
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $baseSha = "${{ github.event.pull_request.base.sha }}"
+            $headSha = "${{ github.event.pull_request.head.sha }}"
+          }
+          elseif ("${{ github.event_name }}" -eq "push") {
+            $baseSha = "${{ github.event.before }}"
+            $headSha = "${{ github.sha }}"
+          }
+
+          ./scripts/check_incremental_coverage.ps1 -BaseSha $baseSha -HeadSha $headSha -Threshold 90 -CoverageRoot (Join-Path $PWD "artifacts/test-results")
 
       - name: Upload test result artifacts
         if: always()
@@ -109,4 +193,35 @@ jobs:
     steps:
       - name: Skip heavy CI for docs-only change set
         run: echo "Docs-only change detected. Skipping restore, build, test, and format validation."
+
+  required-checks:
+    needs:
+      - changes
+      - commit-policy
+      - build-test
+      - docs-only
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce required CI path
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.commit-policy.result }}" != "success" ]; then
+            echo "PR commit policy validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.changes.outputs.docs_only }}" = "true" ]; then
+            if [ "${{ needs.docs-only.result }}" != "success" ]; then
+              echo "Docs-only validation did not succeed."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "${{ needs.build-test.result }}" != "success" ]; then
+            echo "Build, test, format, or incremental coverage validation failed."
+            exit 1
+          fi
 

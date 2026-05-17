@@ -41,6 +41,7 @@ namespace Nnrp.Core
         {
             message = default;
             if (!SessionPatchMessage.ValidateFramedMessage(framed, MessageType.TransportProbeAck, TransportProbeAckMetadata.MetadataLength, out error)
+                || framed.Body.Length != 0
                 || !TransportProbeAckMetadata.TryParse(framed.Metadata.Span, out var metadata, out error))
             {
                 if (error == NnrpParseError.None)

@@ -13,6 +13,20 @@ namespace Nnrp.NativeBridge.Tests
     public sealed class NnrpAutoTransportClientTests
     {
         [Fact]
+        public void OptionsAndDefaultRuntimeCoverCurrentWireFormatAndWrapperValidation()
+        {
+            var options = new NnrpAutoTransportClientOptions("127.0.0.1", 50072, "localhost", "engine-sr");
+            var runtime = NnrpAutoTransportRuntime.Instance;
+
+            Assert.Equal(NnrpHeader.CurrentWireFormat, options.RequestedWireFormat);
+
+            var client = runtime.CreateQuicClient(new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"));
+            Assert.Equal("127.0.0.1", client.Options.Host);
+
+            Assert.Throws<ArgumentException>(() => runtime.ProbeQuic("", 50072, "localhost", new byte[] { 0x01 }));
+        }
+
+        [Fact]
         public async Task ConnectAsyncRunsForcedQuicOpenOffCallerThread()
         {
             var callingThread = Thread.CurrentThread.ManagedThreadId;
@@ -28,20 +42,22 @@ namespace Nnrp.NativeBridge.Tests
                     "localhost",
                     "engine-sr",
                     tcpPort: 50051),
-                _ => new NnrpQuicClient(
-                    new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
-                    (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                    {
-                        openThread = Thread.CurrentThread.ManagedThreadId;
-                        observedPort = port;
-                        signal.Set();
-                        return new NnrpNativeQuicClient.OpenResult(9, 77, "engine-sr");
-                    },
-                    (_, message) => throw new NotSupportedException(),
-                    (_, packet) => throw new NotSupportedException(),
-                    (_, ping) => throw new NotSupportedException(),
-                    (_, cancel) => { },
-                    _ => { }));
+                new TestAutoTransportRuntime(
+                    quicClientFactory: _ => new NnrpQuicClient(
+                        new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
+                        new TestQuicRuntime(
+                            openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                            {
+                                openThread = Thread.CurrentThread.ManagedThreadId;
+                                observedPort = port;
+                                signal.Set();
+                                return new NnrpNativeQuicClient.OpenResult(9, 77, "engine-sr");
+                            },
+                            submitFrame: (_, message) => throw new NotSupportedException(),
+                            submitPacket: (_, packet) => throw new NotSupportedException(),
+                            pingRoundTrip: (_, ping) => throw new NotSupportedException(),
+                            cancelFrame: (_, cancel) => { },
+                            closeConnection: _ => { }))));
 
             var connectTask = client.ConnectAsync(
                 new NnrpTransportProbeOptions(),
@@ -190,18 +206,20 @@ namespace Nnrp.NativeBridge.Tests
                     "localhost",
                     "engine-sr",
                     tcpPort: 50051),
-                _ => new NnrpQuicClient(
-                    new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
-                    (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                        new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                    (_, __) => throw new NotSupportedException(),
-                    (_, packet) => throw new NotSupportedException(),
-                    (_, __) => throw new NotSupportedException(),
-                    _ => throw new NotSupportedException(),
-                    _ => throw new NotSupportedException(),
-                    (_, __) => throw new NotSupportedException(),
-                    (_, __) => { },
-                    _ => { }));
+                new TestAutoTransportRuntime(
+                    quicClientFactory: _ => new NnrpQuicClient(
+                        new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
+                        new TestQuicRuntime(
+                            openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                            submitFrame: (_, __) => throw new NotSupportedException(),
+                            submitPacket: (_, packet) => throw new NotSupportedException(),
+                            beginSubmitPacket: (_, __) => throw new NotSupportedException(),
+                            receiveResultPacket: _ => throw new NotSupportedException(),
+                            receiveSessionPacket: _ => throw new NotSupportedException(),
+                            pingRoundTrip: (_, __) => throw new NotSupportedException(),
+                            cancelFrame: (_, __) => { },
+                            closeConnection: _ => { }))));
 
             await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: CancellationToken.None);
 
@@ -225,24 +243,26 @@ namespace Nnrp.NativeBridge.Tests
                     "localhost",
                     "engine-sr",
                     tcpPort: 50051),
-                _ => new NnrpQuicClient(
-                    new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
-                    (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                        new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                    (_, __) => throw new NotSupportedException(),
-                    (ulong _, byte[] packet) =>
-                    {
-                        submittedPackets.Add(packet);
-                        Assert.True(NnrpFramedMessage.TryParse(packet, NnrpHeaderParseOptions.Strict, out var framed, out var parseError));
-                        Assert.Equal(NnrpParseError.None, parseError);
-                        return CreateResultPush(sessionId: 41, frameId: framed.Header.FrameId, wireFormat: NnrpHeader.CurrentWireFormat).ToArray();
-                    },
-                    (_, packet) => throw new NotSupportedException($"Unexpected background submit path: {packet.Length}"),
-                    _ => throw new NotSupportedException(),
-                    _ => throw new NotSupportedException(),
-                    (_, __) => throw new NotSupportedException(),
-                    (_, __) => { },
-                    _ => { }));
+                new TestAutoTransportRuntime(
+                    quicClientFactory: _ => new NnrpQuicClient(
+                        new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
+                        new TestQuicRuntime(
+                            openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                            submitFrame: (_, __) => throw new NotSupportedException(),
+                            submitPacket: (ulong _, byte[] packet) =>
+                            {
+                                submittedPackets.Add(packet);
+                                Assert.True(NnrpFramedMessage.TryParse(packet, NnrpHeaderParseOptions.Strict, out var framed, out var parseError));
+                                Assert.Equal(NnrpParseError.None, parseError);
+                                return CreateResultPush(sessionId: 41, frameId: framed.Header.FrameId, wireFormat: NnrpHeader.CurrentWireFormat).ToArray();
+                            },
+                            beginSubmitPacket: (_, packet) => throw new NotSupportedException($"Unexpected background submit path: {packet.Length}"),
+                            receiveResultPacket: _ => throw new NotSupportedException(),
+                            receiveSessionPacket: _ => throw new NotSupportedException(),
+                            pingRoundTrip: (_, __) => throw new NotSupportedException(),
+                            cancelFrame: (_, __) => { },
+                            closeConnection: _ => { }))));
 
             await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: CancellationToken.None);
 
@@ -252,6 +272,99 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(2, submittedPackets.Count);
             Assert.Equal(303u, result0.FrameId);
             Assert.Equal(304u, result1.FrameId);
+        }
+
+        [Fact]
+        public async Task ForcedQuicClientSupportsRawSubmitAndCancelPackets()
+        {
+            byte[]? observedSubmitPacket = null;
+            FrameCancelMessage observedCancel = default;
+
+            await using var client = new NnrpAutoTransportClient(
+                new ClientProfile { TransportPolicy = TransportPolicy.ForceQuic },
+                new NnrpAutoTransportClientOptions(
+                    "127.0.0.1",
+                    50072,
+                    "localhost",
+                    "engine-sr",
+                    tcpPort: 50051),
+                new TestAutoTransportRuntime(
+                    quicClientFactory: _ => new NnrpQuicClient(
+                        new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
+                        new TestQuicRuntime(
+                            openConnection: (_, _, _, _, _) => new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                            submitFrame: (_, __) => throw new NotSupportedException(),
+                            submitPacket: (_, packet) =>
+                            {
+                                observedSubmitPacket = packet;
+                                Assert.True(NnrpFramedMessage.TryParse(packet, NnrpHeaderParseOptions.Strict, out var framed, out var parseError));
+                                Assert.Equal(NnrpParseError.None, parseError);
+                                return CreateResultPush(sessionId: 41, frameId: framed.Header.FrameId, wireFormat: NnrpHeader.CurrentWireFormat).ToArray();
+                            },
+                            cancelFrame: (_, cancel) => observedCancel = cancel,
+                            closeConnection: _ => { }))));
+
+            await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: CancellationToken.None);
+
+            var submitPacket = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 41, frameId: 303).ToArray();
+            var resultPacket = await client.SubmitAsync(submitPacket, CancellationToken.None);
+            await client.CancelAsync(FrameCancelMessage.Create(41, 303, traceId: 7).ToArray(), CancellationToken.None);
+
+            var submitError = await Assert.ThrowsAsync<ArgumentException>(async () => await client.SubmitAsync(Array.Empty<byte>(), CancellationToken.None));
+            var cancelError = await Assert.ThrowsAsync<ArgumentException>(async () => await client.CancelAsync(Array.Empty<byte>(), CancellationToken.None));
+
+            Assert.Equal(submitPacket, observedSubmitPacket);
+            Assert.True(ResultPushMessage.TryParse(resultPacket, out var result, out var parseError));
+            Assert.Equal(NnrpParseError.None, parseError);
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.Equal(303u, observedCancel.Header.FrameId);
+            Assert.Equal(7ul, observedCancel.Header.TraceId);
+            Assert.Contains("Submit packet must not be empty", submitError.Message, StringComparison.Ordinal);
+            Assert.Contains("Cancel packet must not be empty", cancelError.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ForcedTcpClientSupportsRawSubmitAndCancelPackets()
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+
+            try
+            {
+                var endpoint = (IPEndPoint)listener.LocalEndpoint;
+                var serverTask = RunForcedTcpRawPacketServerAsync(listener, timeout.Token);
+
+                await using var client = new NnrpAutoTransportClient(
+                    new ClientProfile { TransportPolicy = TransportPolicy.ForceTcp },
+                    new NnrpAutoTransportClientOptions(
+                        IPAddress.Loopback.ToString(),
+                        port: 65000,
+                        tlsServerName: "localhost",
+                        requestedModel: "engine-sr",
+                        requestedSessionId: 41,
+                        tcpPort: (ushort)endpoint.Port));
+
+                await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: timeout.Token);
+
+                var submitPacket = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 41, frameId: 303).ToArray();
+                var resultPacket = await client.SubmitAsync(submitPacket, timeout.Token);
+                await client.CancelAsync(FrameCancelMessage.Create(41, 303, traceId: 7).ToArray(), timeout.Token);
+                await client.CloseAsync("forced-tcp-raw-packets done", cancellationToken: timeout.Token);
+
+                var observation = await serverTask;
+
+                Assert.True(ResultPushMessage.TryParse(resultPacket, out var result, out var parseError));
+                Assert.Equal(NnrpParseError.None, parseError);
+                Assert.Equal(303u, result.Header.FrameId);
+                Assert.Equal(303u, observation.SubmittedFrameId);
+                Assert.Equal(303u, observation.CanceledFrameId);
+                Assert.Equal("forced-tcp-raw-packets done", observation.CloseReason);
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
 
         [Fact]
@@ -278,19 +391,21 @@ namespace Nnrp.NativeBridge.Tests
                         requestedModel: "engine-sr",
                         requestedSessionId: 41,
                         tcpPort: (ushort)endpoint.Port),
-                    _ => new NnrpQuicClient(
-                        new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
-                        (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                            new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                        (_, __) => throw new NotSupportedException(),
-                        (_, packet) => throw new InvalidOperationException($"Unexpected QUIC submit packet after migration: {packet.Length}"),
-                        (_, ping) =>
-                        {
-                            quicPingCount++;
-                            return PongMessage.Create(41, ping.Header.TraceId);
-                        },
-                        (_, __) => { },
-                        _ => quicCloseCount++));
+                    new TestAutoTransportRuntime(
+                        quicClientFactory: _ => new NnrpQuicClient(
+                            new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
+                            new TestQuicRuntime(
+                                openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                    new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                                submitFrame: (_, __) => throw new NotSupportedException(),
+                                submitPacket: (_, packet) => throw new InvalidOperationException($"Unexpected QUIC submit packet after migration: {packet.Length}"),
+                                pingRoundTrip: (_, ping) =>
+                                {
+                                    quicPingCount++;
+                                    return PongMessage.Create(41, ping.Header.TraceId);
+                                },
+                                cancelFrame: (_, __) => { },
+                                closeConnection: _ => quicCloseCount++))));
 
                 await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: timeout.Token);
                 var ack = await client.MigrateAsync(
@@ -348,23 +463,25 @@ namespace Nnrp.NativeBridge.Tests
                         requestedModel: "engine-sr",
                         requestedSessionId: 41,
                         tcpPort: (ushort)endpoint.Port),
-                    _ => new NnrpQuicClient(
-                        new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
-                        (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                            new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                        (_, __) => throw new NotSupportedException(),
-                        (_, packet) =>
-                        {
-                            quicMigrateSubmitCount++;
-                            Assert.True(SessionMigrateMessage.TryParse(packet, out var migrate, out var parseError));
-                            Assert.Equal(NnrpParseError.None, parseError);
-                            Assert.Equal(TransportId.Quic, migrate.Metadata.OldTransportId);
-                            Assert.Equal(TransportId.Tcp, migrate.Metadata.NewTransportId);
-                            return CreateSessionMigrateAck(sessionId: 41, traceId: migrate.Header.TraceId, resumeFromFrameId: 304).ToArray();
-                        },
-                        (_, __) => throw new InvalidOperationException("Ping should route over migrated TCP transport."),
-                        (_, __) => { },
-                        _ => quicCloseCount++));
+                    new TestAutoTransportRuntime(
+                        quicClientFactory: _ => new NnrpQuicClient(
+                            new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
+                            new TestQuicRuntime(
+                                openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                    new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                                submitFrame: (_, __) => throw new NotSupportedException(),
+                                submitPacket: (_, packet) =>
+                                {
+                                    quicMigrateSubmitCount++;
+                                    Assert.True(SessionMigrateMessage.TryParse(packet, out var migrate, out var parseError));
+                                    Assert.Equal(NnrpParseError.None, parseError);
+                                    Assert.Equal(TransportId.Quic, migrate.Metadata.OldTransportId);
+                                    Assert.Equal(TransportId.Tcp, migrate.Metadata.NewTransportId);
+                                    return CreateSessionMigrateAck(sessionId: 41, traceId: migrate.Header.TraceId, resumeFromFrameId: 304).ToArray();
+                                },
+                                pingRoundTrip: (_, __) => throw new InvalidOperationException("Ping should route over migrated TCP transport."),
+                                cancelFrame: (_, __) => { },
+                                closeConnection: _ => quicCloseCount++))));
 
                 await client.ConnectAsync(new NnrpTransportProbeOptions(), cancellationToken: timeout.Token);
                 var ack = await client.MigrateAsync(
@@ -421,49 +538,51 @@ namespace Nnrp.NativeBridge.Tests
                         requestedModel: "engine-sr",
                         requestedSessionId: 41,
                         tcpPort: (ushort)endpoint.Port),
-                    _ => new NnrpQuicClient(
-                        new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
-                        (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                            new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                        (_, __) => throw new NotSupportedException(),
-                        (_, packet) =>
+                    new TestAutoTransportRuntime(
+                        quicClientFactory: _ => new NnrpQuicClient(
+                            new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
+                            new TestQuicRuntime(
+                                openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                    new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                                submitFrame: (_, __) => throw new NotSupportedException(),
+                                submitPacket: (_, packet) =>
+                                {
+                                    quicMigrateSubmitCount++;
+                                    Assert.True(SessionMigrateMessage.TryParse(packet, out var migrate, out var parseError));
+                                    Assert.Equal(NnrpParseError.None, parseError);
+                                    Assert.Equal(TransportId.Quic, migrate.Metadata.OldTransportId);
+                                    Assert.Equal(TransportId.Tcp, migrate.Metadata.NewTransportId);
+                                    return CreateSessionMigrateAck(sessionId: 41, traceId: migrate.Header.TraceId, resumeFromFrameId: 304).ToArray();
+                                },
+                                pingRoundTrip: (_, __) => throw new InvalidOperationException("Ping should route over migrated TCP transport."),
+                                cancelFrame: (_, __) => { },
+                                closeConnection: _ => quicCloseCount++)),
+                        quicProbe: (host, port, tlsServerName, probePacket) =>
                         {
-                            quicMigrateSubmitCount++;
-                            Assert.True(SessionMigrateMessage.TryParse(packet, out var migrate, out var parseError));
+                            quicProbeCount++;
+                            Assert.Equal(IPAddress.Loopback.ToString(), host);
+                            Assert.Equal((ushort)65000, port);
+                            Assert.Equal("localhost", tlsServerName);
+                            Assert.True(TransportProbeMessage.TryParse(probePacket, out var probe, out var parseError));
                             Assert.Equal(NnrpParseError.None, parseError);
-                            Assert.Equal(TransportId.Quic, migrate.Metadata.OldTransportId);
-                            Assert.Equal(TransportId.Tcp, migrate.Metadata.NewTransportId);
-                            return CreateSessionMigrateAck(sessionId: 41, traceId: migrate.Header.TraceId, resumeFromFrameId: 304).ToArray();
-                        },
-                        (_, __) => throw new InvalidOperationException("Ping should route over migrated TCP transport."),
-                        (_, __) => { },
-                        _ => quicCloseCount++),
-                    (host, port, tlsServerName, probePacket) =>
-                    {
-                        quicProbeCount++;
-                        Assert.Equal(IPAddress.Loopback.ToString(), host);
-                        Assert.Equal((ushort)65000, port);
-                        Assert.Equal("localhost", tlsServerName);
-                        Assert.True(TransportProbeMessage.TryParse(probePacket, out var probe, out var parseError));
-                        Assert.Equal(NnrpParseError.None, parseError);
-                        return new TransportProbeAckMessage(
-                            new NnrpHeader(
-                                NnrpHeader.CurrentVersionMajor,
-                                NnrpHeader.CurrentWireFormat,
-                                MessageType.TransportProbeAck,
-                                HeaderFlags.None,
-                                TransportProbeAckMetadata.MetadataLength,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                probe.Header.TraceId),
-                            new TransportProbeAckMetadata(
-                                probe.Metadata.ProbeId,
-                                0,
-                                probe.Metadata.ClientSendTimestampMicroseconds + 100)).ToArray();
-                    });
+                            return new TransportProbeAckMessage(
+                                new NnrpHeader(
+                                    NnrpHeader.CurrentVersionMajor,
+                                    NnrpHeader.CurrentWireFormat,
+                                    MessageType.TransportProbeAck,
+                                    HeaderFlags.None,
+                                    TransportProbeAckMetadata.MetadataLength,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    probe.Header.TraceId),
+                                new TransportProbeAckMetadata(
+                                    probe.Metadata.ProbeId,
+                                    0,
+                                    probe.Metadata.ClientSendTimestampMicroseconds + 100)).ToArray();
+                        }));
 
                 var connectResult = await client.ConnectAsync(
                     new NnrpTransportProbeOptions
@@ -536,46 +655,48 @@ namespace Nnrp.NativeBridge.Tests
                         requestedModel: "engine-sr",
                         requestedSessionId: 41,
                         tcpPort: (ushort)endpoint.Port),
-                    _ => new NnrpQuicClient(
-                        new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
-                        (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                            new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
-                        (_, __) => throw new NotSupportedException(),
-                        (_, packet) => throw new InvalidOperationException($"Unexpected QUIC submit packet after migration: {packet.Length}"),
-                        (_, ping) =>
+                    new TestAutoTransportRuntime(
+                        quicClientFactory: _ => new NnrpQuicClient(
+                            new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
+                            new TestQuicRuntime(
+                                openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                    new NnrpNativeQuicClient.OpenResult(9, 41, "engine-sr"),
+                                submitFrame: (_, __) => throw new NotSupportedException(),
+                                submitPacket: (_, packet) => throw new InvalidOperationException($"Unexpected QUIC submit packet after migration: {packet.Length}"),
+                                pingRoundTrip: (_, ping) =>
+                                {
+                                    quicPingCount++;
+                                    return PongMessage.Create(41, ping.Header.TraceId);
+                                },
+                                cancelFrame: (_, __) => { },
+                                closeConnection: _ => quicCloseCount++)),
+                        quicProbe: (host, port, tlsServerName, probePacket) =>
                         {
-                            quicPingCount++;
-                            return PongMessage.Create(41, ping.Header.TraceId);
-                        },
-                        (_, __) => { },
-                        _ => quicCloseCount++),
-                    (host, port, tlsServerName, probePacket) =>
-                    {
-                        quicProbeCount++;
-                        Assert.Equal(IPAddress.Loopback.ToString(), host);
-                        Assert.Equal((ushort)65000, port);
-                        Assert.Equal("localhost", tlsServerName);
-                        Assert.True(TransportProbeMessage.TryParse(probePacket, out var probe, out var parseError));
-                        Assert.Equal(NnrpParseError.None, parseError);
-                        Thread.Sleep(TimeSpan.FromMilliseconds(75));
-                        return new TransportProbeAckMessage(
-                            new NnrpHeader(
-                                NnrpHeader.CurrentVersionMajor,
-                                NnrpHeader.CurrentWireFormat,
-                                MessageType.TransportProbeAck,
-                                HeaderFlags.None,
-                                TransportProbeAckMetadata.MetadataLength,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                probe.Header.TraceId),
-                            new TransportProbeAckMetadata(
-                                probe.Metadata.ProbeId,
-                                0,
-                                probe.Metadata.ClientSendTimestampMicroseconds + 100)).ToArray();
-                    });
+                            quicProbeCount++;
+                            Assert.Equal(IPAddress.Loopback.ToString(), host);
+                            Assert.Equal((ushort)65000, port);
+                            Assert.Equal("localhost", tlsServerName);
+                            Assert.True(TransportProbeMessage.TryParse(probePacket, out var probe, out var parseError));
+                            Assert.Equal(NnrpParseError.None, parseError);
+                            Thread.Sleep(TimeSpan.FromMilliseconds(75));
+                            return new TransportProbeAckMessage(
+                                new NnrpHeader(
+                                    NnrpHeader.CurrentVersionMajor,
+                                    NnrpHeader.CurrentWireFormat,
+                                    MessageType.TransportProbeAck,
+                                    HeaderFlags.None,
+                                    TransportProbeAckMetadata.MetadataLength,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    probe.Header.TraceId),
+                                new TransportProbeAckMetadata(
+                                    probe.Metadata.ProbeId,
+                                    0,
+                                    probe.Metadata.ClientSendTimestampMicroseconds + 100)).ToArray();
+                        }));
 
                 var connectResult = await client.ConnectAsync(
                     new NnrpTransportProbeOptions
@@ -698,6 +819,33 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(NnrpParseError.None, parseError);
 
             return new ForcedTcpSessionPumpObservation(new uint[] { submit0.Header.FrameId, submit1.Header.FrameId }, close.Reason);
+        }
+
+        private static async Task<ForcedTcpRawPacketObservation> RunForcedTcpRawPacketServerAsync(TcpListener listener, CancellationToken cancellationToken)
+        {
+            using var tcpClient = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+            await using var transport = new NnrpTcpMessageTransport(tcpClient);
+
+            var helloFrame = await transport.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            Assert.True(ClientHelloMessage.TryParse(helloFrame, out var hello, out var parseError));
+            Assert.Equal(NnrpParseError.None, parseError);
+
+            var ack = CreateServerHelloAck(sessionId: 41, traceId: hello.Header.TraceId);
+            await transport.SendAsync(ack.ToFramedMessage(), cancellationToken).ConfigureAwait(false);
+
+            var submitFrame = await transport.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            Assert.Equal(MessageType.FrameSubmit, submitFrame.Header.MessageType);
+            await transport.SendAsync(CreateResultPush(sessionId: 41, frameId: submitFrame.Header.FrameId, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(), cancellationToken).ConfigureAwait(false);
+
+            var cancelFrame = await transport.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            Assert.True(FrameCancelMessage.TryParse(cancelFrame.ToArray(), out var cancel, out parseError));
+            Assert.Equal(NnrpParseError.None, parseError);
+
+            var closeFrame = await transport.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            Assert.True(CloseMessage.TryParse(closeFrame.ToArray(), out var close, out parseError));
+            Assert.Equal(NnrpParseError.None, parseError);
+
+            return new ForcedTcpRawPacketObservation(submitFrame.Header.FrameId, cancel.Header.FrameId, close.Reason);
         }
 
         private static async Task<MigrationServerObservation> RunTcpToQuicMigrationServerAsync(TcpListener listener, CancellationToken cancellationToken)
@@ -1109,6 +1257,22 @@ namespace Nnrp.NativeBridge.Tests
             }
 
             public uint[] SubmittedFrameIds { get; }
+
+            public string CloseReason { get; }
+        }
+
+        private readonly struct ForcedTcpRawPacketObservation
+        {
+            public ForcedTcpRawPacketObservation(uint submittedFrameId, uint canceledFrameId, string closeReason)
+            {
+                SubmittedFrameId = submittedFrameId;
+                CanceledFrameId = canceledFrameId;
+                CloseReason = closeReason;
+            }
+
+            public uint SubmittedFrameId { get; }
+
+            public uint CanceledFrameId { get; }
 
             public string CloseReason { get; }
         }

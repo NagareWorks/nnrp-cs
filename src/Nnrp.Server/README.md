@@ -9,7 +9,7 @@ This package depends on Nnrp.Core.
 Install:
 
 ```powershell
-dotnet add package Nnrp.Server --version 1.0.0-preview.2
+dotnet add package Nnrp.Server --version <published-version>
 ```
 
 Repository and full SDK documentation:

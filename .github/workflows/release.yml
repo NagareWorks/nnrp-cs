@@ -154,8 +154,8 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          [xml]$props = Get-Content 'Directory.Build.props'
-          $version = $props.Project.PropertyGroup.Version.Trim()
+          $version = dotnet msbuild src/Nnrp.Core/Nnrp.Core.csproj -nologo -getProperty:Version
+          $version = $version.Trim()
           "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Download native artifacts

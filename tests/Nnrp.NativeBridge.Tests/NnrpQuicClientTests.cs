@@ -26,18 +26,27 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void InternalConstructorRejectsNullDelegates()
+        public void NativeRuntimeWrapperUsesValidatedManagedEntryPoints()
+        {
+            var runtime = NnrpNativeQuicRuntime.Instance;
+
+            Assert.Throws<ArgumentException>(() => runtime.Open("", 50072, "localhost", "engine-sr", 41));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.SubmitPacket(0, new byte[] { 0x01 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.BeginSubmitPacket(0, new byte[] { 0x01 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.ReceiveResultPacket(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.ReceiveSessionPacket(0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.Ping(0, PingMessage.Create(41, 9)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => runtime.Cancel(0, FrameCancelMessage.Create(41, 303)));
+
+            runtime.Close(0);
+        }
+
+        [Fact]
+        public void InternalConstructorRejectsNullRuntime()
         {
             var options = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41);
 
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, (Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult>)null!, SubmitFrame, SubmitOutcomeBytes, PingRoundTrip, CancelFrame, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, null!, SubmitOutcomeBytes, PingRoundTrip, CancelFrame, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, null!, PingRoundTrip, CancelFrame, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, null!, CancelFrame, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, PingRoundTrip, null!, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, PingRoundTrip, CancelFrame, null!));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, null!, ReceiveResultPacket, PingRoundTrip, CancelFrame, CloseConnection));
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, BeginSubmitPacket, null!, PingRoundTrip, CancelFrame, CloseConnection));
+            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, (INnrpQuicRuntime)null!));
         }
 
         [Fact]
@@ -45,12 +54,25 @@ namespace Nnrp.NativeBridge.Tests
         {
             var options = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41);
 
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(null!, options, OpenConnection, SubmitFrame, SubmitOutcomeBytes, PingRoundTrip, CancelFrame, CloseConnection));
+            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(null!, options, new TestQuicRuntime(
+                openConnection: OpenConnection,
+                submitFrame: SubmitFrame,
+                submitPacket: SubmitOutcomeBytes,
+                pingRoundTrip: PingRoundTrip,
+                cancelFrame: CancelFrame,
+                closeConnection: CloseConnection)));
 
             var error = Assert.Throws<InvalidOperationException>(() =>
                 new NnrpQuicClient(
                     new ClientProfile { TransportProfile = NnrpTransportProfile.ControlEvidence },
-                    options));
+                    options,
+                    new TestQuicRuntime(
+                        openConnection: OpenConnection,
+                        submitFrame: SubmitFrame,
+                        submitPacket: SubmitOutcomeBytes,
+                        pingRoundTrip: PingRoundTrip,
+                        cancelFrame: CancelFrame,
+                        closeConnection: CloseConnection)));
             Assert.Contains("TransportProfile must be Quic", error.Message, StringComparison.Ordinal);
         }
 
@@ -511,14 +533,14 @@ namespace Nnrp.NativeBridge.Tests
         {
             var client = CreateClient(
                 new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41),
-                submitFrame,
-                submitOutcomeBytes,
-                beginSubmitPacket,
-                receiveResultPacket,
-                pingRoundTrip,
-                cancelFrame,
-                closeConnection,
-                openConnection);
+                submitFrame: submitFrame,
+                submitOutcomeBytes: submitOutcomeBytes,
+                beginSubmitPacket: beginSubmitPacket,
+                receiveResultPacket: receiveResultPacket,
+                pingRoundTrip: pingRoundTrip,
+                cancelFrame: cancelFrame,
+                closeConnection: closeConnection,
+                openConnection: openConnection);
             client.Connect();
             return client;
         }
@@ -529,6 +551,7 @@ namespace Nnrp.NativeBridge.Tests
             Func<ulong, byte[], byte[]>? submitOutcomeBytes = null,
             Action<ulong, byte[]>? beginSubmitPacket = null,
             Func<ulong, byte[]>? receiveResultPacket = null,
+            Func<ulong, byte[]>? receiveSessionPacket = null,
             Func<ulong, PingMessage, PongMessage>? pingRoundTrip = null,
             Action<ulong, FrameCancelMessage>? cancelFrame = null,
             Action<ulong>? closeConnection = null,
@@ -536,14 +559,16 @@ namespace Nnrp.NativeBridge.Tests
         {
             return new NnrpQuicClient(
                 options,
-                openConnection ?? OpenConnection,
-                submitFrame ?? SubmitFrame,
-                submitOutcomeBytes ?? SubmitOutcomeBytes,
-                beginSubmitPacket ?? BeginSubmitPacket,
-                receiveResultPacket ?? ReceiveResultPacket,
-                pingRoundTrip ?? PingRoundTrip,
-                cancelFrame ?? CancelFrame,
-                closeConnection ?? CloseConnection);
+                new TestQuicRuntime(
+                    openConnection: openConnection ?? OpenConnection,
+                    submitFrame: submitFrame ?? SubmitFrame,
+                    submitPacket: submitOutcomeBytes ?? SubmitOutcomeBytes,
+                    beginSubmitPacket: beginSubmitPacket ?? BeginSubmitPacket,
+                    receiveResultPacket: receiveResultPacket ?? ReceiveResultPacket,
+                    receiveSessionPacket: receiveSessionPacket,
+                    pingRoundTrip: pingRoundTrip ?? PingRoundTrip,
+                    cancelFrame: cancelFrame ?? CancelFrame,
+                    closeConnection: closeConnection ?? CloseConnection));
         }
 
         private static NnrpNativeQuicClient.OpenResult OpenConnection(

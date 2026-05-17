@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Core</PackageId>
-    <Description>Core binary wire primitives for the current NNRP/1 contract.</Description>
+    <Description>Core wire primitives and metadata codecs for the NNRP runtime protocol.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

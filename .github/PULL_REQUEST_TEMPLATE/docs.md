@@ -24,4 +24,5 @@ Notes:
 
 - [ ] Branch name matches repository conventions
 - [ ] Commit messages follow Conventional Commits
+- [ ] PR is squashed to one commit unless this is necessary `release/<version>` branch work
 - [ ] No hidden product or workflow behavior changes were introduced

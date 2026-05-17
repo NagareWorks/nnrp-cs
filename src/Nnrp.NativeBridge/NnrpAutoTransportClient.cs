@@ -9,6 +9,32 @@ using Nnrp.Transport.Tcp;
 
 namespace Nnrp.NativeBridge
 {
+    internal interface INnrpAutoTransportRuntime
+    {
+        NnrpQuicClient CreateQuicClient(NnrpQuicClientOptions options);
+
+        byte[] ProbeQuic(string host, ushort port, string tlsServerName, byte[] probePacket);
+    }
+
+    internal sealed class NnrpAutoTransportRuntime : INnrpAutoTransportRuntime
+    {
+        public static NnrpAutoTransportRuntime Instance { get; } = new NnrpAutoTransportRuntime();
+
+        private NnrpAutoTransportRuntime()
+        {
+        }
+
+        public NnrpQuicClient CreateQuicClient(NnrpQuicClientOptions options)
+        {
+            return new NnrpQuicClient(options);
+        }
+
+        public byte[] ProbeQuic(string host, ushort port, string tlsServerName, byte[] probePacket)
+        {
+            return NnrpNativeQuicClient.Probe(host, port, tlsServerName, probePacket);
+        }
+    }
+
     public readonly struct NnrpAutoTransportClientOptions
     {
         public NnrpAutoTransportClientOptions(
@@ -94,38 +120,26 @@ namespace Nnrp.NativeBridge
     {
         private readonly ClientProfile profile;
         private readonly NnrpAutoTransportClientOptions options;
-        private readonly Func<NnrpQuicClientOptions, NnrpQuicClient> quicClientFactory;
-        private readonly Func<string, ushort, string, byte[], byte[]> quicProbeFunc;
+        private readonly INnrpAutoTransportRuntime runtime;
         private NnrpQuicClient? quicClient;
         private NnrpTcpMessageTransport? tcpTransport;
         private bool disposed;
 
         public NnrpAutoTransportClient(ClientProfile profile, NnrpAutoTransportClientOptions options)
-            : this(profile, options, static quicOptions => new NnrpQuicClient(quicOptions))
+            : this(profile, options, NnrpAutoTransportRuntime.Instance)
         {
         }
 
         internal NnrpAutoTransportClient(
             ClientProfile profile,
             NnrpAutoTransportClientOptions options,
-            Func<NnrpQuicClientOptions, NnrpQuicClient> quicClientFactory,
-            Func<string, ushort, string, byte[], byte[]>? quicProbeFunc = null)
+            INnrpAutoTransportRuntime runtime)
         {
             this.profile = CloneProfile(profile ?? throw new ArgumentNullException(nameof(profile)));
             this.options = options;
-            this.quicClientFactory = quicClientFactory ?? throw new ArgumentNullException(nameof(quicClientFactory));
-            this.quicProbeFunc = quicProbeFunc ?? DefaultQuicProbe;
+            this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             ActiveModelName = string.Empty;
             SelectedBindingName = string.Empty;
-        }
-
-        private static byte[] DefaultQuicProbe(
-            string host,
-            ushort port,
-            string tlsServerName,
-            byte[] probePacket)
-        {
-            return NnrpNativeQuicClient.Probe(host, port, tlsServerName, probePacket);
         }
 
         public bool IsConnected => SelectedTransportId != TransportId.Unspecified;
@@ -179,7 +193,7 @@ namespace Nnrp.NativeBridge
                     options.TlsServerName,
                     options.RequestedModel,
                     options.RequestedSessionId);
-                quicClient = quicClientFactory(quicOptions);
+                quicClient = runtime.CreateQuicClient(quicOptions);
                 NnrpNativeQuicClient.OpenResult openResult;
                 try
                 {
@@ -453,7 +467,7 @@ namespace Nnrp.NativeBridge
             }
         }
 
-        public async ValueTask CloseAsync(string reason = "unity-auto-transport", ulong traceId = 0, CancellationToken cancellationToken = default)
+        public async ValueTask CloseAsync(string reason = "auto-transport-client", ulong traceId = 0, CancellationToken cancellationToken = default)
         {
             if (!IsConnected)
             {
@@ -584,7 +598,7 @@ namespace Nnrp.NativeBridge
 
             var stopwatch = Stopwatch.StartNew();
             var response = await RunBlockingNativeCallAsync(
-                () => quicProbeFunc(
+                    () => runtime.ProbeQuic(
                     options.Host,
                     options.Port,
                     options.TlsServerName,
@@ -804,7 +818,7 @@ namespace Nnrp.NativeBridge
                 options.TlsServerName,
                 string.IsNullOrWhiteSpace(ActiveModelName) ? options.RequestedModel : ActiveModelName,
                 requestedSessionId: NegotiatedSessionId);
-            var preparedClient = quicClientFactory(quicOptions);
+            var preparedClient = runtime.CreateQuicClient(quicOptions);
             try
             {
                 var openResult = await RunBlockingNativeCallAsync(

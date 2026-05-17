@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "nnrp_quic_bridge"
-version = "1.0.0-preview.2"
+version = "1.0.0-preview.2.dev"
 dependencies = [
  "hex",
  "quinn",

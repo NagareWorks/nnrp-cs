@@ -13,7 +13,7 @@ Typical consumers:
 Install:
 
 ```powershell
-dotnet add package Nnrp.Core --version 1.0.0-preview.2
+dotnet add package Nnrp.Core --version <published-version>
 ```
 
 Repository and full SDK documentation:

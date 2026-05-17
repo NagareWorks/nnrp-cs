@@ -4,6 +4,81 @@ using Nnrp.Core;
 
 namespace Nnrp.NativeBridge
 {
+    internal interface INnrpQuicRuntime
+    {
+        NnrpNativeQuicClient.OpenResult Open(string host, ushort port, string tlsServerName, string requestedModel, uint requestedSessionId);
+
+        ResultPushMessage Submit(ulong handle, FrameSubmitMessage submitMessage);
+
+        byte[] SubmitPacket(ulong handle, byte[] packet);
+
+        void BeginSubmitPacket(ulong handle, byte[] packet);
+
+        byte[] ReceiveResultPacket(ulong handle);
+
+        byte[] ReceiveSessionPacket(ulong handle);
+
+        PongMessage Ping(ulong handle, PingMessage ping);
+
+        void Cancel(ulong handle, FrameCancelMessage cancelMessage);
+
+        void Close(ulong handle);
+    }
+
+    internal sealed class NnrpNativeQuicRuntime : INnrpQuicRuntime
+    {
+        public static NnrpNativeQuicRuntime Instance { get; } = new NnrpNativeQuicRuntime();
+
+        private NnrpNativeQuicRuntime()
+        {
+        }
+
+        public NnrpNativeQuicClient.OpenResult Open(string host, ushort port, string tlsServerName, string requestedModel, uint requestedSessionId)
+        {
+            return NnrpNativeQuicClient.Open(host, port, tlsServerName, requestedModel, requestedSessionId);
+        }
+
+        public ResultPushMessage Submit(ulong handle, FrameSubmitMessage submitMessage)
+        {
+            return NnrpNativeQuicClient.Submit(handle, submitMessage);
+        }
+
+        public byte[] SubmitPacket(ulong handle, byte[] packet)
+        {
+            return NnrpNativeQuicClient.Submit(handle, packet);
+        }
+
+        public void BeginSubmitPacket(ulong handle, byte[] packet)
+        {
+            NnrpNativeQuicClient.BeginSubmit(handle, packet);
+        }
+
+        public byte[] ReceiveResultPacket(ulong handle)
+        {
+            return NnrpNativeQuicClient.ReceiveResult(handle);
+        }
+
+        public byte[] ReceiveSessionPacket(ulong handle)
+        {
+            return NnrpNativeQuicClient.ReceiveSessionPacket(handle);
+        }
+
+        public PongMessage Ping(ulong handle, PingMessage ping)
+        {
+            return NnrpNativeQuicClient.Ping(handle, ping);
+        }
+
+        public void Cancel(ulong handle, FrameCancelMessage cancelMessage)
+        {
+            NnrpNativeQuicClient.Cancel(handle, cancelMessage);
+        }
+
+        public void Close(ulong handle)
+        {
+            NnrpNativeQuicClient.Close(handle);
+        }
+    }
+
     public readonly struct NnrpQuicClientOptions
     {
         public NnrpQuicClientOptions(
@@ -50,156 +125,33 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpQuicClient : IDisposable
     {
-        private readonly Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection;
-        private readonly Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame;
-        private readonly Func<ulong, byte[], byte[]> submitOutcomeBytes;
-        private readonly Action<ulong, byte[]> beginSubmitPacket;
-        private readonly Func<ulong, byte[]> receiveResultPacket;
-        private readonly Func<ulong, byte[]> receiveSessionPacket;
-        private readonly Func<ulong, PingMessage, PongMessage> pingRoundTrip;
-        private readonly Action<ulong, FrameCancelMessage> cancelFrame;
-        private readonly Action<ulong> closeConnection;
+        private readonly INnrpQuicRuntime runtime;
         private bool disposed;
 
         public NnrpQuicClient(NnrpQuicClientOptions options)
-            : this(
-                options,
-                NnrpNativeQuicClient.Open,
-                NnrpNativeQuicClient.Submit,
-                NnrpNativeQuicClient.Submit,
-                NnrpNativeQuicClient.BeginSubmit,
-                NnrpNativeQuicClient.ReceiveResult,
-                NnrpNativeQuicClient.ReceiveSessionPacket,
-                NnrpNativeQuicClient.Ping,
-                NnrpNativeQuicClient.Cancel,
-                NnrpNativeQuicClient.Close)
+            : this(options, NnrpNativeQuicRuntime.Instance)
         {
         }
 
         public NnrpQuicClient(ClientProfile profile, NnrpQuicClientOptions options)
-            : this(
-            profile,
-            options,
-            NnrpNativeQuicClient.Open,
-            NnrpNativeQuicClient.Submit,
-            NnrpNativeQuicClient.Submit,
-            NnrpNativeQuicClient.BeginSubmit,
-            NnrpNativeQuicClient.ReceiveResult,
-            NnrpNativeQuicClient.ReceiveSessionPacket,
-            NnrpNativeQuicClient.Ping,
-            NnrpNativeQuicClient.Cancel,
-            NnrpNativeQuicClient.Close)
+            : this(profile, options, NnrpNativeQuicRuntime.Instance)
         {
         }
 
         internal NnrpQuicClient(
             NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
-            : this(
-                options,
-                openConnection,
-                submitFrame,
-                submitOutcomeBytes,
-                (_, __) => throw new NotSupportedException("Background submit/result receive is not configured for this QUIC client."),
-                _ => throw new NotSupportedException("Background result receive is not configured for this QUIC client."),
-                _ => throw new NotSupportedException("Background session receive is not configured for this QUIC client."),
-                pingRoundTrip,
-                cancelFrame,
-                closeConnection)
-        {
-        }
-
-        internal NnrpQuicClient(
-            NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Action<ulong, byte[]> beginSubmitPacket,
-            Func<ulong, byte[]> receiveResultPacket,
-            Func<ulong, byte[]> receiveSessionPacket,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
+            INnrpQuicRuntime runtime)
         {
             Options = options;
-            this.openConnection = openConnection ?? throw new ArgumentNullException(nameof(openConnection));
-            this.submitFrame = submitFrame ?? throw new ArgumentNullException(nameof(submitFrame));
-            this.submitOutcomeBytes = submitOutcomeBytes ?? throw new ArgumentNullException(nameof(submitOutcomeBytes));
-            this.beginSubmitPacket = beginSubmitPacket ?? throw new ArgumentNullException(nameof(beginSubmitPacket));
-            this.receiveResultPacket = receiveResultPacket ?? throw new ArgumentNullException(nameof(receiveResultPacket));
-            this.receiveSessionPacket = receiveSessionPacket ?? throw new ArgumentNullException(nameof(receiveSessionPacket));
-            this.pingRoundTrip = pingRoundTrip ?? throw new ArgumentNullException(nameof(pingRoundTrip));
-            this.cancelFrame = cancelFrame ?? throw new ArgumentNullException(nameof(cancelFrame));
-            this.closeConnection = closeConnection ?? throw new ArgumentNullException(nameof(closeConnection));
+            this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             ActiveModelName = string.Empty;
         }
 
         internal NnrpQuicClient(
-            NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Action<ulong, byte[]> beginSubmitPacket,
-            Func<ulong, byte[]> receiveResultPacket,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
-            : this(
-                options,
-                openConnection,
-                submitFrame,
-                submitOutcomeBytes,
-                beginSubmitPacket,
-                receiveResultPacket,
-                receiveResultPacket,
-                pingRoundTrip,
-                cancelFrame,
-                closeConnection)
-        {
-        }
-
-        internal NnrpQuicClient(
             ClientProfile profile,
             NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
-            : this(
-                profile,
-                options,
-                openConnection,
-                submitFrame,
-                submitOutcomeBytes,
-                (_, __) => throw new NotSupportedException("Background submit/result receive is not configured for this QUIC client."),
-                _ => throw new NotSupportedException("Background result receive is not configured for this QUIC client."),
-                _ => throw new NotSupportedException("Background session receive is not configured for this QUIC client."),
-                pingRoundTrip,
-                cancelFrame,
-                closeConnection)
-        {
-        }
-
-        internal NnrpQuicClient(
-            ClientProfile profile,
-            NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Action<ulong, byte[]> beginSubmitPacket,
-            Func<ulong, byte[]> receiveResultPacket,
-            Func<ulong, byte[]> receiveSessionPacket,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
-            : this(options, openConnection, submitFrame, submitOutcomeBytes, beginSubmitPacket, receiveResultPacket, receiveSessionPacket, pingRoundTrip, cancelFrame, closeConnection)
+            INnrpQuicRuntime runtime)
+            : this(options, runtime)
         {
             if (profile == null)
             {
@@ -213,32 +165,6 @@ namespace Nnrp.NativeBridge
             }
 
             Profile = profile;
-        }
-
-        internal NnrpQuicClient(
-            ClientProfile profile,
-            NnrpQuicClientOptions options,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult> openConnection,
-            Func<ulong, FrameSubmitMessage, ResultPushMessage> submitFrame,
-            Func<ulong, byte[], byte[]> submitOutcomeBytes,
-            Action<ulong, byte[]> beginSubmitPacket,
-            Func<ulong, byte[]> receiveResultPacket,
-            Func<ulong, PingMessage, PongMessage> pingRoundTrip,
-            Action<ulong, FrameCancelMessage> cancelFrame,
-            Action<ulong> closeConnection)
-            : this(
-                profile,
-                options,
-                openConnection,
-                submitFrame,
-                submitOutcomeBytes,
-                beginSubmitPacket,
-                receiveResultPacket,
-                receiveResultPacket,
-                pingRoundTrip,
-                cancelFrame,
-                closeConnection)
-        {
         }
 
         public NnrpQuicClientOptions Options { get; }
@@ -263,7 +189,7 @@ namespace Nnrp.NativeBridge
                 throw new InvalidOperationException("QUIC client is already connected.");
             }
 
-            var result = openConnection(
+            var result = runtime.Open(
                 Options.Host,
                 Options.Port,
                 Options.TlsServerName,
@@ -291,7 +217,7 @@ namespace Nnrp.NativeBridge
                     $"FRAME_SUBMIT session_id {submitMessage.Header.SessionId} does not match negotiated session_id {NegotiatedSessionId}.");
             }
 
-            var result = submitFrame(Handle, submitMessage);
+            var result = runtime.Submit(Handle, submitMessage);
             if (TryGetResultPushCorrelationFailure(submitMessage.Header, result.Header, out var correlationFailure))
             {
                 throw new InvalidOperationException(correlationFailure);
@@ -310,7 +236,7 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentException("Packet must not be empty.", nameof(packet));
             }
 
-            return submitOutcomeBytes(Handle, packet);
+            return runtime.SubmitPacket(Handle, packet);
         }
 
         public void SendSubmitPacket(byte[] packet)
@@ -323,21 +249,21 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentException("Packet must not be empty.", nameof(packet));
             }
 
-            beginSubmitPacket(Handle, packet);
+            runtime.BeginSubmitPacket(Handle, packet);
         }
 
         public byte[] ReceiveResultPacket()
         {
             ThrowIfDisposed();
             EnsureConnected();
-            return receiveResultPacket(Handle);
+            return runtime.ReceiveResultPacket(Handle);
         }
 
         public byte[] ReceiveSessionPacket()
         {
             ThrowIfDisposed();
             EnsureConnected();
-            return receiveSessionPacket(Handle);
+            return runtime.ReceiveSessionPacket(Handle);
         }
 
         /// <summary>
@@ -358,7 +284,7 @@ namespace Nnrp.NativeBridge
                     $"FRAME_SUBMIT session_id {submitMessage.Header.SessionId} does not match negotiated session_id {NegotiatedSessionId}.");
             }
 
-            var rawBytes = submitOutcomeBytes(Handle, submitMessage.ToArray());
+            var rawBytes = runtime.SubmitPacket(Handle, submitMessage.ToArray());
             if (!SubmitOutcome.TryParse(rawBytes, out var outcome, out var error))
             {
                 throw new InvalidOperationException($"Failed to parse result outcome packet: {error}.");
@@ -421,7 +347,7 @@ namespace Nnrp.NativeBridge
             EnsureConnected();
 
             var ping = PingMessage.Create(NegotiatedSessionId, traceId);
-            var pong = pingRoundTrip(Handle, ping);
+            var pong = runtime.Ping(Handle, ping);
             if (pong.Header.SessionId != ping.Header.SessionId || pong.Header.TraceId != ping.Header.TraceId)
             {
                 throw new InvalidOperationException(
@@ -446,7 +372,7 @@ namespace Nnrp.NativeBridge
                 throw new InvalidOperationException($"Failed to parse PING packet ({parseError}).");
             }
 
-            return pingRoundTrip(Handle, ping).ToArray();
+            return runtime.Ping(Handle, ping).ToArray();
         }
 
         public void Cancel(uint frameId, ushort viewId = 0, ulong traceId = 0)
@@ -454,7 +380,7 @@ namespace Nnrp.NativeBridge
             ThrowIfDisposed();
             EnsureConnected();
 
-            cancelFrame(Handle, FrameCancelMessage.Create(NegotiatedSessionId, frameId, viewId, traceId));
+            runtime.Cancel(Handle, FrameCancelMessage.Create(NegotiatedSessionId, frameId, viewId, traceId));
         }
 
         public void CancelPacket(byte[] cancelPacket)
@@ -472,7 +398,7 @@ namespace Nnrp.NativeBridge
                 throw new InvalidOperationException($"Failed to parse FRAME_CANCEL packet ({parseError}).");
             }
 
-            cancelFrame(Handle, cancelMessage);
+            runtime.Cancel(Handle, cancelMessage);
         }
 
         public void Close()
@@ -482,7 +408,7 @@ namespace Nnrp.NativeBridge
                 return;
             }
 
-            closeConnection(Handle);
+            runtime.Close(Handle);
             Handle = 0;
             NegotiatedSessionId = 0;
             ActiveModelName = string.Empty;

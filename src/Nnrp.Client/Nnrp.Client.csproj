@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Client</PackageId>
-    <Description>Client-side helpers for the current NNRP/1 session contract.</Description>
+    <Description>Managed client session helpers for the NNRP runtime protocol.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

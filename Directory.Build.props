@@ -1,10 +1,15 @@
 <Project>
   <PropertyGroup>
-    <Version>1.0.0-preview.2</Version>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionTrain>preview.2</VersionTrain>
+    <VersionDate Condition="'$(VersionDate)' == ''">$([System.DateTime]::UtcNow.ToString('yyyyMMdd'))</VersionDate>
+    <VersionRevision Condition="'$(VersionRevision)' == '' and '$(GITHUB_RUN_NUMBER)' != ''">$(GITHUB_RUN_NUMBER)</VersionRevision>
+    <VersionRevision Condition="'$(VersionRevision)' == ''">1</VersionRevision>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">$(VersionTrain).$(VersionDate).$(VersionRevision)</VersionSuffix>
     <Authors>NNRP Contributors</Authors>
     <Company>NNRP</Company>
     <RepositoryType>git</RepositoryType>
-    <PackageTags>nnrp;neural-rendering;protocol;unity</PackageTags>
+    <PackageTags>nnrp;protocol;runtime;transport;inference</PackageTags>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
