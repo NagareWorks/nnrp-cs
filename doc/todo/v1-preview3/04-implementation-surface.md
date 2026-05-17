@@ -1,25 +1,20 @@
 # C# Preview3 Implementation Surface
 
-## Native Bridge
+## Scope
 
-- [ ] Consume the frozen Rust-to-C# bridge contract for preview3.
-- [ ] Wrap stable native handles for connection, session, operation, schema, and buffer views.
-- [ ] Map stable Rust error codes into managed exception and result surfaces.
-- [ ] Adapt polling, callback, or event-queue delivery primitives for Unity and plain .NET hosts.
+1. `04` owns how the C# SDK consumes the Rust bridge and packages the resulting host surface.
+2. `04` does not own preview3 session semantics, operation-state meaning, or scheduler policy; those are defined in `nnrp-rs/02` and reflected in C# by `02a/02b/02c`.
+3. `04` should not block `02` with packaging or Unity-host details unless the bridge contract itself changes.
 
-## Managed SDK Surface
+## Sub-Shards
 
-- [ ] Replace managed preview3 wire/session entry points with Rust-backed native bridge entry points.
-- [ ] Keep any remaining managed codec logic limited to migration-time diagnostics while the preview3 Rust-backed path replaces the prior managed preview surface.
-- [ ] Add host-facing submit/result/control helpers that compose native preview3 handles rather than rebuilding packet logic in C#.
-- [ ] Preserve distinctions among `partial`, `degraded`, `stale_reuse`, `cancelled`, `failed`, and `completed` on host-facing APIs.
+1. `04a-native-bridge-adoption.md`: Rust bridge contract consumption, handle wrappers, and error surfaces.
+2. `04b-managed-host-surface.md`: Rust-backed managed entry points and host-facing submit/result/control helpers.
+3. `04c-package-and-host-integration.md`: Unity/.NET dispatch rules, native artifact layout, and package/distribution work.
 
-## Package And Host Distribution
+## Dependency Gates
 
-- [ ] Define CI-owned package layouts for NuGet-style server, NuGet-style client, and Unity-style client distribution.
-- [ ] Implement a deterministic package-generation step that emits Unity `.meta` files for folders, managed assemblies, and native plugin entries.
-- [ ] Build native bridge artifacts in a multi-platform CI matrix for Windows, macOS, Linux, Android, and iOS.
-- [ ] Assemble one Unity-style client package artifact that places all supported common-platform native binaries into the correct Unity plugin directories.
-- [ ] Decide which preview3 handles stay internal and which become public Unity/.NET abstractions.
-- [ ] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
-- [ ] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
+1. `04a` depends directly on `nnrp-rs/04`; it should not wait on Unity host-policy work.
+2. `04b` depends on `04a` plus the semantic decisions frozen in `02a/02b/02c`; it should not redesign callback threading or package layout.
+3. `04c` depends on `04a/04b` artifacts and focuses on host integration and distribution only.
+4. If a PR changes both `02` and `04`, the change must state explicitly whether it moves a semantic boundary or only adapts bridge wiring.

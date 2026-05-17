@@ -1,27 +1,20 @@
 # C# Preview3 Connection, Session, And Flow Control
 
-## Connection And Session Surface
+## Scope
 
-- [ ] Add connection bootstrap helpers distinct from session-open helpers.
-- [ ] Add explicit `SessionOpen` / `SessionOpenAck` managed surface once upstream fixed metadata is frozen.
-- [ ] Add multi-session routing support so one connection can host multiple live sessions without Unity hosts building private registries.
-- [ ] Add explicit session-close helpers separate from connection shutdown.
-- [ ] Replace preview2 single-session helpers with the preview3 connection/session model in place.
+1. `02` owns the managed semantics and host-visible shape of preview3 connection/session flow control.
+2. `02` does not own the Rust ABI, handle layouts, callback/polling primitives, or package layout; those belong to `04` and `nnrp-rs`.
+3. `02` depends on `nnrp-rs` shard `02` for frozen state-machine and enum semantics, and on `nnrp-rs` shard `04` only for already-frozen bridge primitives.
 
-## Scheduling And Credits
+## Sub-Shards
 
-- [ ] Add managed wrappers for session priority class and operation-scoped scheduling hints.
-- [ ] Add managed models for operation lifecycle state and cancel scope using upstream frozen enums.
-- [ ] Surface connection/session/operation credit updates without redefining scheduler semantics in C#.
-- [ ] Surface downgrade and retry reasons as managed diagnostics instead of ad hoc string parsing.
+1. `02a-connection-session-lifecycle.md`: bootstrap, session-open/close, and multi-session host shape.
+2. `02b-scheduling-credits-and-diagnostics.md`: priority, lifecycle state, credit surfaces, and downgrade diagnostics.
+3. `02c-control-events-and-recovery.md`: event/result pumps, `FLOW_UPDATE`/`RESULT_HINT`, and recovery helpers.
 
-## Control Events
+## Dependency Gates
 
-- [ ] Expose `FLOW_UPDATE`, `RESULT_HINT`, and result/event pump behavior through one consistent preview3 event model.
-- [ ] Keep background result/event pumps aligned with native Rust semantics rather than inventing a second managed session pump contract.
-- [ ] Add observability hooks for session routing, priority downgrade, and backpressure transitions.
-
-## Recovery
-
-- [ ] Add resume/recovery helpers only after the recovery object boundary is frozen upstream.
-- [ ] Keep recovery tokens and resume windows as opaque native-core-owned data on the managed surface.
+1. `02a` may start once `nnrp-rs/02` has frozen connection/session metadata and state-machine concepts; it must not wait on Unity packaging or callback-threading details.
+2. `02b` may start once `nnrp-rs/02` has frozen priority/lifecycle/credit enums; it must not redesign scheduling semantics in C#.
+3. `02c` may start once `nnrp-rs/02` has frozen control-event semantics and `nnrp-rs/04` has exposed stable event-delivery primitives; it does not own Unity/.NET dispatch plumbing.
+4. `04b` consumes `02a/02b/02c`; `02` should define host semantics first, while `04` is responsible for wiring them onto the Rust-backed implementation surface.

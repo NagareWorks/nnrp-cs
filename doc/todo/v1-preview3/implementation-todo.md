@@ -9,16 +9,23 @@
 ## 1. Shard Map
 
 1. `01-foundation-and-contract.md`: consume the frozen preview3 contract, public-surface policy, handle/error surfaces, and package strategy.
-2. `02-connection-session-flow-control.md`: connection/session model, multi-session routing, scheduling, and control-path host APIs.
-3. `03-cache-schema-profile-registry.md`: cache lease, schema/profile registry, token/tensor public-surface implications.
-4. `04-implementation-surface.md`: native bridge, managed wrappers, Unity-facing APIs, and host runtime surface.
-5. `05-validation-and-docs.md`: conformance, smoke coverage, migration docs, packaging, and release gates.
+2. `02-connection-session-flow-control.md`: ownership and dependency map for the `02a/02b/02c` connection/session shards.
+3. `02a-connection-session-lifecycle.md`: connection bootstrap, session-open/close, and multi-session host shape.
+4. `02b-scheduling-credits-and-diagnostics.md`: priority, lifecycle state, credit updates, downgrade, and diagnostics surfaces.
+5. `02c-control-events-and-recovery.md`: `FLOW_UPDATE`/`RESULT_HINT`, result-event pumps, and recovery helpers.
+6. `03-cache-schema-profile-registry.md`: cache lease, schema/profile registry, token/tensor public-surface implications.
+7. `04-implementation-surface.md`: ownership and dependency map for the `04a/04b/04c` implementation-surface shards.
+8. `04a-native-bridge-adoption.md`: Rust bridge contract consumption, handle wrappers, and error-code mapping.
+9. `04b-managed-host-surface.md`: managed preview3 host APIs built on top of Rust-backed handles.
+10. `04c-package-and-host-integration.md`: Unity/.NET host integration, threading, and package/distribution work.
+11. `05-validation-and-docs.md`: conformance, smoke coverage, migration docs, packaging, and release gates.
 
 ## 2. PR Rules
 
 1. One shard per PR by default; do not mix foundation, bridge work, and package/distribution changes in the same PR unless the diff is inseparable.
 2. `main` should accept reviewed PRs only; no direct push workflow after GitHub publication.
 3. If a task needs to change preview3 protocol semantics, update `nnrp-doc` first instead of locally inventing SDK-only behavior.
+4. Treat `02a/02b/02c` as semantic-host-surface work and `04a/04b/04c` as bridge/implementation work; do not mix them in one PR unless the boundary truly changes.
 
 ## 3. Protocol Coverage Check
 
