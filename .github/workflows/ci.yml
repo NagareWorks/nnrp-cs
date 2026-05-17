@@ -50,6 +50,11 @@ jobs:
 
           docs_only=true
           for path in "${changed_files[@]}"; do
+            if [[ "$path" == "Packages/com.nnrp.client/README.md" ]]; then
+              docs_only=false
+              break
+            fi
+
             if [[ "$path" == *.md ]] || [[ "$path" =~ ^(doc/|docs/|\.github/PULL_REQUEST_TEMPLATE/) ]] || [[ "$path" =~ ^\.github/[^/]+\.md$ ]]; then
               continue
             fi
@@ -100,6 +105,20 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate tracked UPM metadata
+        shell: pwsh
+        run: >-
+          python scripts/build_upm_package.py
+          --repo-root .
+          --tracked-output Packages/com.nnrp.client
+          --validate-tracked-metadata
+          --repository-url https://github.com/${{ github.repository }}
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -190,7 +209,7 @@ jobs:
           ./scripts/check_incremental_coverage.ps1 -BaseSha $baseSha -HeadSha $headSha -Threshold 90 -CoverageRoot (Join-Path $PWD "artifacts/test-results")
 
       - name: Upload test result artifacts
-        if: always()
+        if: always() && hashFiles('artifacts/test-results/**') != ''
         uses: actions/upload-artifact@v4
         with:
           name: test-results

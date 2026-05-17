@@ -31,29 +31,64 @@ NATIVE_PLUGIN_SETTINGS = {
     "osx-arm64": ("OSX", "ARM64"),
 }
 
+PACKAGE_NAME = "com.nnrp.client"
+PACKAGE_DISPLAY_NAME = "NNRP Client SDK"
+PACKAGE_DESCRIPTION = "UPM distribution of the NNRP managed client SDK and packaged native bridge assets."
+PACKAGE_DOCUMENTATION_URL = "https://nagareworks.github.io/nnrp-doc/"
+PACKAGE_AUTHOR_NAME = "NNRP Contributors"
+PACKAGE_KEYWORDS = ["nnrp", "runtime", "transport", "networking"]
+
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build a deterministic UPM package with .meta files.")
+    parser = argparse.ArgumentParser(description="Build release UPM artifacts and sync tracked package metadata.")
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--configuration", default="Release")
-    parser.add_argument("--native-root", required=True)
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--native-root")
+    parser.add_argument("--output")
+    parser.add_argument("--tracked-output")
+    parser.add_argument("--validate-tracked-metadata", action="store_true")
     parser.add_argument("--repository-url", default="")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    has_release_build_args = bool(args.native_root and args.output)
+    has_partial_release_build_args = bool(args.native_root or args.output)
+
+    if has_partial_release_build_args and not has_release_build_args:
+        parser.error("--native-root and --output must be provided together.")
+
+    if args.validate_tracked_metadata and not args.tracked_output:
+        parser.error("--validate-tracked-metadata requires --tracked-output.")
+
+    if not has_release_build_args and not args.tracked_output:
+        parser.error("Provide --tracked-output, or provide both --native-root and --output.")
+
+    return args
 
 
-def read_version(repo_root: Path) -> str:
+def read_msbuild_property(repo_root: Path, property_name: str, *, allow_empty: bool = False) -> str:
     project_path = repo_root / "src" / "Nnrp.Core" / "Nnrp.Core.csproj"
     result = subprocess.run(
-        ["dotnet", "msbuild", str(project_path), "-nologo", "-getProperty:Version"],
+        ["dotnet", "msbuild", str(project_path), "-nologo", f"-getProperty:{property_name}"],
         check=True,
         capture_output=True,
         text=True,
     )
-    version = result.stdout.strip()
-    if not version:
-        raise ValueError(f"Version was not resolved from {project_path}")
-    return version
+    property_value = result.stdout.strip()
+    if not property_value and not allow_empty:
+        raise ValueError(f"Property {property_name} was not resolved from {project_path}")
+    return property_value
+
+
+def read_release_version(repo_root: Path) -> str:
+    return read_msbuild_property(repo_root, "Version")
+
+
+def read_tracked_metadata_version(repo_root: Path) -> str:
+    version_prefix = read_msbuild_property(repo_root, "VersionPrefix")
+    version_train = read_msbuild_property(repo_root, "VersionTrain", allow_empty=True)
+    if not version_train:
+        return version_prefix
+    return f"{version_prefix}-{version_train}"
 
 
 def stable_guid(relative_path: str) -> str:
@@ -184,31 +219,31 @@ def copy_native_artifacts(native_root: Path, output_root: Path) -> None:
         shutil.copy2(source_path, target_path)
 
 
-def write_package_manifest(output_root: Path, version: str, repository_url: str) -> None:
+def build_package_manifest(version: str, repository_url: str) -> dict[str, object]:
     package_json = {
-        "name": "com.nnrp.client",
-        "displayName": "NNRP Client SDK",
+        "name": PACKAGE_NAME,
+        "displayName": PACKAGE_DISPLAY_NAME,
         "version": version,
         "unity": "2022.3",
-        "description": "UPM distribution of the NNRP managed client SDK and packaged native bridge assets.",
-        "documentationUrl": "https://nagareworks.github.io/nnrp-doc/",
+        "description": PACKAGE_DESCRIPTION,
+        "documentationUrl": PACKAGE_DOCUMENTATION_URL,
         "author": {
-            "name": "NNRP Contributors",
+            "name": PACKAGE_AUTHOR_NAME,
         },
-        "keywords": ["nnrp", "runtime", "transport", "networking"],
+        "keywords": PACKAGE_KEYWORDS,
     }
     if repository_url:
         package_json["repository"] = {
             "type": "git",
             "url": repository_url,
         }
-    (output_root / "package.json").write_text(json.dumps(package_json, indent=2) + "\n", encoding="utf-8")
+    return package_json
 
 
-def write_package_readme(output_root: Path, version: str) -> None:
-    readme = textwrap.dedent(
+def build_release_readme(version: str) -> str:
+    return textwrap.dedent(
         f"""\
-        # com.nnrp.client
+        # {PACKAGE_NAME}
 
         Version: {version}
 
@@ -223,10 +258,62 @@ def write_package_readme(output_root: Path, version: str) -> None:
 
         Included native plugins are placed under Runtime/Plugins for the supported desktop platforms built by CI.
 
-        Full protocol and SDK documentation: https://nagareworks.github.io/nnrp-doc/
+        Full protocol and SDK documentation: {PACKAGE_DOCUMENTATION_URL}
         """
     )
-    (output_root / "README.md").write_text(readme, encoding="utf-8")
+
+
+def build_tracked_readme(version: str) -> str:
+    return textwrap.dedent(
+        f"""\
+        # {PACKAGE_NAME}
+
+        Version: {version}
+
+        This tracked package definition exists so OpenUPM can discover the package metadata directly from the repository.
+
+        Installable UPM tarballs are produced by CI and published as GitHub Release assets for each tagged version.
+
+        Full protocol and SDK documentation: {PACKAGE_DOCUMENTATION_URL}
+        """
+    )
+
+
+def write_text_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def validate_text_file(path: Path, expected_content: str) -> None:
+    if not path.exists():
+        raise ValueError(f"Expected tracked metadata file was not found: {path}")
+
+    actual_content = path.read_text(encoding="utf-8")
+    if actual_content != expected_content:
+        raise ValueError(
+            f"Tracked metadata file is out of date: {path}. Regenerate it with scripts/build_upm_package.py --repo-root . --tracked-output {path.parent.as_posix()} --repository-url <repo-url>"
+        )
+
+
+def write_package_manifest(output_root: Path, version: str, repository_url: str) -> None:
+    write_text_file(output_root / "package.json", json.dumps(build_package_manifest(version, repository_url), indent=2) + "\n")
+
+
+def write_package_readme(output_root: Path, version: str) -> None:
+    write_text_file(output_root / "README.md", build_release_readme(version))
+
+
+def sync_tracked_metadata(output_root: Path, version: str, repository_url: str, validate_only: bool) -> None:
+    manifest_content = json.dumps(build_package_manifest(version, repository_url), indent=2) + "\n"
+    readme_content = build_tracked_readme(version)
+
+    if validate_only:
+        validate_text_file(output_root / "package.json", manifest_content)
+        validate_text_file(output_root / "README.md", readme_content)
+        return
+
+    write_text_file(output_root / "package.json", manifest_content)
+    write_text_file(output_root / "README.md", readme_content)
 
 
 def write_license(repo_root: Path, output_root: Path) -> None:
@@ -268,22 +355,32 @@ def emit_meta_files(output_root: Path) -> None:
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
-    native_root = Path(args.native_root).resolve()
-    output_root = Path(args.output).resolve()
 
-    if output_root.exists():
-        shutil.rmtree(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
+    release_version = read_release_version(repo_root)
 
-    version = read_version(repo_root)
-    copy_managed_artifacts(repo_root, args.configuration, output_root)
-    copy_native_artifacts(native_root, output_root)
-    write_package_manifest(output_root, version, args.repository_url)
-    write_package_readme(output_root, version)
-    write_license(repo_root, output_root)
-    emit_meta_files(output_root)
+    if args.tracked_output:
+        tracked_output = Path(args.tracked_output).resolve()
+        tracked_version = read_tracked_metadata_version(repo_root)
+        sync_tracked_metadata(tracked_output, tracked_version, args.repository_url, args.validate_tracked_metadata)
+        print(tracked_output)
 
-    print(output_root)
+    if args.output and args.native_root:
+        native_root = Path(args.native_root).resolve()
+        output_root = Path(args.output).resolve()
+
+        if output_root.exists():
+            shutil.rmtree(output_root)
+        output_root.mkdir(parents=True, exist_ok=True)
+
+        copy_managed_artifacts(repo_root, args.configuration, output_root)
+        copy_native_artifacts(native_root, output_root)
+        write_package_manifest(output_root, release_version, args.repository_url)
+        write_package_readme(output_root, release_version)
+        write_license(repo_root, output_root)
+        emit_meta_files(output_root)
+
+        print(output_root)
+
     return 0
 
 
