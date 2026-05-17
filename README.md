@@ -4,11 +4,36 @@ C# SDK scaffold for NNRP.
 
 This repository keeps a neutral protocol-level name because the shared wire contract is useful on both client and server sides. The immediate target is Unity 2022, so the library target is `netstandard2.1`.
 
-## Unity Package Download
+## Unity Package Install
 
-If you want the Unity-style package, open the latest GitHub Release for this repository and download `com.nnrp.client-<version>.zip` for manual import or `com.nnrp.client-<version>.tgz` for OpenUPM-style registry ingestion.
+The recommended Unity installation path is now OpenUPM:
 
-That zip is the CI-produced Unity package bundle for the current version.
+```bash
+openupm add com.nnrp.client
+```
+
+Package page: https://openupm.com/packages/com.nnrp.client/
+
+If you prefer to edit `Packages/manifest.json` directly, add the OpenUPM scoped registry and the package dependency:
+
+```json
+{
+    "scopedRegistries": [
+        {
+            "name": "package.openupm.com",
+            "url": "https://package.openupm.com",
+            "scopes": [
+                "com.nnrp.client"
+            ]
+        }
+    ],
+    "dependencies": {
+        "com.nnrp.client": "<version>"
+    }
+}
+```
+
+GitHub Release assets are still published by CI, but the `.zip` and `.tgz` bundles are now fallback distribution artifacts rather than the recommended Unity install path.
 
 Full protocol and SDK documentation: https://nagareworks.github.io/nnrp-doc/
 
@@ -240,9 +265,9 @@ The distribution baseline is now:
 
 - NuGet-style server dependency: published by CI and consumed as a package, not from checked-in DLL folders.
 - NuGet-style client dependency: published by CI and consumed as a package, not from checked-in DLL folders.
-- Unity-style client dependency: published by CI as `com.nnrp.client-<version>.zip` for manual import and `com.nnrp.client-<version>.tgz` for OpenUPM/GitHub Release ingestion.
+- Unity-style client dependency: install from OpenUPM with `openupm add com.nnrp.client`, or add `com.nnrp.client` plus the `package.openupm.com` scoped registry directly in `Packages/manifest.json`. CI still publishes `com.nnrp.client-<version>.zip` and `com.nnrp.client-<version>.tgz` as fallback release artifacts.
 
-NuGet packages are published to package feeds. The Unity-style package is distributed as a release asset instead of a committed Unity package tree.
+NuGet packages are published to package feeds. The Unity-style package is distributed through OpenUPM and CI-produced release assets instead of a committed Unity package tree.
 
 The required package baseline is:
 
@@ -369,7 +394,7 @@ dotnet format Nnrp.sln
 
 Unity 2022 can start with `ClientProfile`, `NnrpClientSession`, and a fake or in-memory `INnrpMessageTransport` to validate SDK wiring before the current `ClientHello` and hot-path body codecs are finalized. The current session facade supports local profile validation, capability negotiation, ACTIVE/DRAINING/CLOSED state transitions, frame-submit gating, and cancellation-aware async calls without referencing Unity engine assemblies.
 
-When the QUIC path needs a real bring-up on Unity-compatible targets, use `Nnrp.NativeBridge.NnrpQuicClient` from the CI-produced Unity-style package or equivalent local package layout. It is intentionally narrower than the transport-neutral `NnrpClient`: the native-bridge facade owns the connection handle and exposes synchronous `Connect()`, `Ping()`, `Submit(...)`, `Cancel(...)`, and `Close()` calls over the packaged Rust bridge.
+When the QUIC path needs a real bring-up on Unity-compatible targets, use `Nnrp.NativeBridge.NnrpQuicClient` from the OpenUPM-installed Unity package or an equivalent local package layout. It is intentionally narrower than the transport-neutral `NnrpClient`: the native-bridge facade owns the connection handle and exposes synchronous `Connect()`, `Ping()`, `Submit(...)`, `Cancel(...)`, and `Close()` calls over the packaged Rust bridge.
 
 `ClientProfile.TransportProfile` is now the explicit switch between the default `ControlEvidence` path and `Quic`. Keep the default when wiring the transport-neutral session facade for local validation or evidence-only flows. Set it to `Quic` before constructing `NnrpQuicClient` so Unity-side configuration can choose the native QUIC path without relying on ad-hoc booleans.
 
