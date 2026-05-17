@@ -7,8 +7,7 @@ namespace Nnrp.Core.Tests
     public sealed class CrossLanguageGoldenVectorTests
     {
         private const string HeaderGoldenHex = "4e4e525001001028210000003000000000100000070000000b0000000200000015cd5b0700000000";
-
-        private const string FrameSubmitPacketGoldenHex = "4e4e525001001028010000002000000084000000070000002a0000000300630000000000000000000200010000000000320070170000000023000000500000000600000000000000800268012000200002000200000000000500000003000000000000000000000063616d00000000000100000500000000000000000000000008000000020000000000000000000000020000000000000061610000000000000500000500000000000000000000000008000000040000000000000000000000030000000100000078797a71";
+        private const string FrameSubmitPacketGoldenHex = "4e4e525001001028010000004800000064000000070000002a000000030063000000000000000000800268012000200002000200000200003200701700000000050000000300000000000000000000000000000000000000000000000000ff000000000000000000010000000000000063616d00000000000100000500000000000000000000000008000000020000000000000000000000020000000000000061610000000000000500000500000000000000000000000008000000040000000000000000000000030000000100000078797a71";
 
         private const string ResultPushPacketGoldenHex = "4e4e5250010012280000000020000000720000002c0000005b000000070054007b000000000000000000050000000100110002001300000014000000520000000500000000000000020002000100000000000000040000000500060000000000640001050000010000000000020000000800000003000000000000000000000001000100000002000000414243000000650000050000000000000000000000000800000002000000000000000000000001000000010000007a7a";
 
@@ -42,7 +41,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(NnrpParseError.None, headerError);
             Assert.Equal(MessageType.FrameSubmit, header.MessageType);
             Assert.Equal(FrameSubmitMessage.MetadataLength, (int)header.MetaLength);
-            Assert.Equal(132u, header.BodyLength);
+            Assert.Equal(100u, header.BodyLength);
             Assert.Equal(packet[..NnrpHeader.HeaderLength], header.ToArray());
 
             Assert.True(FrameSubmitMessage.TryParse(packet, out var message, out var metadataError));
@@ -50,31 +49,19 @@ namespace Nnrp.Core.Tests
             Assert.Equal(InputProfile.DenseLumaFrame, message.Metadata.InputProfile);
             Assert.Equal(PayloadKind.Tensor, message.Metadata.PayloadKindBitmap);
             Assert.Equal(FrameClass.Keyframe, message.Metadata.FrameClass);
+            Assert.Equal(640, message.Metadata.SourceWidth);
+            Assert.Equal(360, message.Metadata.SourceHeight);
+            Assert.Equal(32, message.Metadata.TileWidth);
+            Assert.Equal(32, message.Metadata.TileHeight);
+            Assert.Equal((ushort)2, message.Metadata.TileCount);
+            Assert.Equal((ushort)2, message.Metadata.SectionCount);
             Assert.Equal(50, message.Metadata.LatencyBudgetMilliseconds);
             Assert.Equal(6000, message.Metadata.TargetFpsTimes100);
             Assert.Equal(0u, message.Metadata.DependencyFrameId);
 
-            var submitBlockOffset = NnrpHeader.HeaderLength + FrameSubmitMessage.MetadataLength;
-            Assert.True(
-                TensorSubmitBlock.TryParse(
-                    packet.AsSpan(submitBlockOffset, TensorSubmitBlock.BlockLength),
-                    out var submitBlock,
-                    out var submitBlockError));
-            Assert.Equal(NnrpParseError.None, submitBlockError);
-            Assert.Equal(640, submitBlock.SourceWidth);
-            Assert.Equal(360, submitBlock.SourceHeight);
-            Assert.Equal(32, submitBlock.TileWidth);
-            Assert.Equal(32, submitBlock.TileHeight);
-            Assert.Equal(2, submitBlock.TileCount);
-            Assert.Equal(2, submitBlock.SectionCount);
-            Assert.Equal(TileIndexMode.DenseRange, submitBlock.TileIndexMode);
-            Assert.Equal(5u, submitBlock.TileBaseId);
-            Assert.Equal(3u, submitBlock.CameraBytes);
-            Assert.Equal(0u, submitBlock.TileIndexBytes);
-
             var firstSectionBodyOffset = BinaryAlignment.AlignUp(
-                BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + (int)submitBlock.CameraBytes, 8)
-                + (int)submitBlock.TileIndexBytes,
+                BinaryAlignment.AlignUp((int)message.Metadata.CameraBytes, 8)
+                + (int)message.Metadata.TileIndexBytes,
                 8);
             var firstDescriptorOffset = NnrpHeader.HeaderLength + FrameSubmitMessage.MetadataLength + firstSectionBodyOffset;
             var firstDescriptor = ParseDescriptor(packet, firstDescriptorOffset);

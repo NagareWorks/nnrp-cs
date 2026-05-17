@@ -95,7 +95,7 @@ namespace Nnrp.Core.Tests
                 messageType: MessageType.FrameSubmit,
                 flags: HeaderFlags.None,
                 metaLength: FrameSubmitMessage.MetadataLength,
-                bodyLength: (uint)(BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + 2, 8) + 4 + (BinaryAlignment.AlignUp(BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + 2, 8) + 4, 8) - (BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + 2, 8) + 4)) + section.TotalLength),
+                bodyLength: FrameSubmitMessage.ComputeBodyLength(2, 4, new[] { section }),
                 sessionId: 9,
                 frameId: 15,
                 viewId: 1,

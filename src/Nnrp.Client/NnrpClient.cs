@@ -924,7 +924,7 @@ namespace Nnrp.Client
                 messageType: MessageType.FrameSubmit,
                 flags: HeaderFlags.None,
                 metaLength: FrameSubmitMetadata.MetadataLength,
-                bodyLength: ComputeFrameSubmitBodyLength(
+                bodyLength: FrameSubmitMessage.ComputeBodyLength(
                     submitRequest.CameraBlock.Length,
                     tileIndexBytes,
                     submitRequest.Sections.Span),
@@ -974,20 +974,6 @@ namespace Nnrp.Client
             }
 
             return body;
-        }
-
-        private static uint ComputeFrameSubmitBodyLength(int cameraBytes, int tileIndexBytes, ReadOnlySpan<TensorSectionBlock> sections)
-        {
-            var bodyLength = BinaryAlignment.AlignUp(cameraBytes, 8);
-            bodyLength = checked(bodyLength + tileIndexBytes);
-
-            for (var index = 0; index < sections.Length; index++)
-            {
-                bodyLength = BinaryAlignment.AlignUp(bodyLength, 8);
-                bodyLength = checked(bodyLength + sections[index].TotalLength);
-            }
-
-            return checked((uint)bodyLength);
         }
 
         private static NnrpServerCapabilities ToServerCapabilities(ServerHelloAckMessage ack)

@@ -361,7 +361,7 @@ namespace Nnrp.Core.Tests
             var cameraBlock = new byte[] { 0x10, 0x20, 0x30 };
             var tileIds = new ushort[] { 3, 5 };
             var tileIndexBytes = TileIndexBlockCodec.GetEncodedLength(tileIds, TileIndexMode.RawUInt16);
-            var bodyLength = BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + cameraBlock.Length, 8);
+            var bodyLength = BinaryAlignment.AlignUp(cameraBlock.Length, 8);
             bodyLength += tileIndexBytes;
             bodyLength = BinaryAlignment.AlignUp(bodyLength, 8) + sections[0].TotalLength;
             bodyLength = BinaryAlignment.AlignUp(bodyLength, 8) + sections[1].TotalLength;
@@ -394,7 +394,7 @@ namespace Nnrp.Core.Tests
                 0,
                 0,
                 3);
-            packetPaddingIndex = NnrpHeader.HeaderLength + FrameSubmitMessage.MetadataLength + TensorSubmitBlock.BlockLength + cameraBlock.Length;
+            packetPaddingIndex = NnrpHeader.HeaderLength + FrameSubmitMessage.MetadataLength + cameraBlock.Length;
             return new FrameSubmitMessage(header, metadata, cameraBlock, tileIds, sections);
         }
 
