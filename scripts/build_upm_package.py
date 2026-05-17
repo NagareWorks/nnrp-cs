@@ -149,7 +149,7 @@ def managed_plugin_meta(relative_path: str) -> str:
           - first:
               Editor: Editor
             second:
-              enabled: 0
+              enabled: 1
               settings:
                 DefaultValueInitialized: true
           userData: 
@@ -181,6 +181,12 @@ def native_plugin_meta(relative_path: str, rid: str) -> str:
             second:
               enabled: 0
               settings: {{}}
+          - first:
+              Editor: Editor
+            second:
+              enabled: 1
+              settings:
+                CPU: {cpu}
           - first:
               {platform}: {platform}
             second:
