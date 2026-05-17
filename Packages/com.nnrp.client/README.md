@@ -1,9 +1,9 @@
 # com.nnrp.client
 
-This directory exists so OpenUPM and other repository scanners can discover the
-package metadata directly from the repository.
+Version: 1.0.0-preview.2
 
-Release builds publish the installable UPM tarball from GitHub Releases. The
-packaged managed assemblies and native bridge plugins are produced by CI.
+This tracked package definition exists so OpenUPM can discover the package metadata directly from the repository.
+
+Installable UPM tarballs are produced by CI and published as GitHub Release assets for each tagged version.
 
 Full protocol and SDK documentation: https://nagareworks.github.io/nnrp-doc/
