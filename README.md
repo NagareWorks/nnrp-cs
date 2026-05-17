@@ -6,9 +6,11 @@ This repository keeps a neutral protocol-level name because the shared wire cont
 
 ## Unity Package Download
 
-If you want the Unity-style package, open the latest GitHub Release for this repository and download `com.nnrp.client-<version>.zip` from the release assets.
+If you want the Unity-style package, open the latest GitHub Release for this repository and download `com.nnrp.client-<version>.zip` for manual import or `com.nnrp.client-<version>.tgz` for OpenUPM-style registry ingestion.
 
 That zip is the CI-produced Unity package bundle for the current version.
+
+Full protocol and SDK documentation: https://nagareworks.github.io/nnrp-doc/
 
 ## Contributors
 
@@ -238,7 +240,7 @@ The distribution baseline is now:
 
 - NuGet-style server dependency: published by CI and consumed as a package, not from checked-in DLL folders.
 - NuGet-style client dependency: published by CI and consumed as a package, not from checked-in DLL folders.
-- Unity-style client dependency: published by CI as `com.nnrp.client-<version>.zip` in GitHub Release assets and workflow artifacts.
+- Unity-style client dependency: published by CI as `com.nnrp.client-<version>.zip` for manual import and `com.nnrp.client-<version>.tgz` for OpenUPM/GitHub Release ingestion.
 
 NuGet packages are published to package feeds. The Unity-style package is distributed as a release asset instead of a committed Unity package tree.
 

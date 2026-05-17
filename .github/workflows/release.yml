@@ -150,6 +150,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Resolve version
         id: version
         shell: pwsh
@@ -206,6 +211,21 @@ jobs:
             Remove-Item $upmZip -Force
           }
           [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path 'artifacts/upm/com.nnrp.client'), $upmZip)
+
+          Push-Location (Resolve-Path 'artifacts/upm/com.nnrp.client')
+          try {
+            $packName = (npm pack --silent).Trim()
+          }
+          finally {
+            Pop-Location
+          }
+
+          $upmTgz = Join-Path (Resolve-Path 'artifacts').Path ("com.nnrp.client-{0}.tgz" -f $version)
+          if (Test-Path $upmTgz) {
+            Remove-Item $upmTgz -Force
+          }
+          Move-Item (Join-Path (Resolve-Path 'artifacts/upm/com.nnrp.client').Path $packName) $upmTgz
+
           $nugetZip = Join-Path (Resolve-Path 'artifacts').Path ("nnrp-cs-nuget-{0}.zip" -f $version)
           if (Test-Path $nugetZip) {
             Remove-Item $nugetZip -Force
@@ -219,6 +239,7 @@ jobs:
           path: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.value }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.zip
+            artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.tgz
           if-no-files-found: error
           retention-days: 14
 
@@ -243,6 +264,7 @@ jobs:
           files: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.value }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.zip
+            artifacts/com.nnrp.client-${{ steps.version.outputs.value }}.tgz
 
       - name: Publish NuGet packages to GitHub Packages
         if: github.ref == 'refs/heads/main'

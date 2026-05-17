@@ -162,6 +162,8 @@ jobs:
           $baseSha = ""
           $headSha = ""
 
+          git fetch origin main --no-tags --depth=1
+
           if ("${{ github.event_name }}" -eq "pull_request") {
             $baseSha = "${{ github.event.pull_request.base.sha }}"
             $headSha = "${{ github.event.pull_request.head.sha }}"
@@ -169,6 +171,20 @@ jobs:
           elseif ("${{ github.event_name }}" -eq "push") {
             $baseSha = "${{ github.event.before }}"
             $headSha = "${{ github.sha }}"
+          }
+
+          $hasValidBaseSha = $false
+          if (-not [string]::IsNullOrWhiteSpace($baseSha) -and $baseSha -ne "0000000000000000000000000000000000000000") {
+            git cat-file -e "${baseSha}^{commit}" 2>$null
+            $hasValidBaseSha = ($LASTEXITCODE -eq 0)
+          }
+
+          if (-not $hasValidBaseSha) {
+            $baseSha = (git merge-base HEAD origin/main).Trim()
+          }
+
+          if ([string]::IsNullOrWhiteSpace($headSha)) {
+            $headSha = (git rev-parse HEAD).Trim()
           }
 
           ./scripts/check_incremental_coverage.ps1 -BaseSha $baseSha -HeadSha $headSha -Threshold 90 -CoverageRoot (Join-Path $PWD "artifacts/test-results")
