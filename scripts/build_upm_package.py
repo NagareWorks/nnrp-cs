@@ -191,6 +191,7 @@ def write_package_manifest(output_root: Path, version: str, repository_url: str)
         "version": version,
         "unity": "2022.3",
         "description": "UPM distribution of the NNRP managed client SDK and packaged native bridge assets.",
+        "documentationUrl": "https://nagareworks.github.io/nnrp-doc/",
         "author": {
             "name": "NNRP Contributors",
         },
@@ -201,7 +202,6 @@ def write_package_manifest(output_root: Path, version: str, repository_url: str)
             "type": "git",
             "url": repository_url,
         }
-        package_json["documentationUrl"] = repository_url
     (output_root / "package.json").write_text(json.dumps(package_json, indent=2) + "\n", encoding="utf-8")
 
 
@@ -222,6 +222,8 @@ def write_package_readme(output_root: Path, version: str) -> None:
         - Nnrp.NativeBridge
 
         Included native plugins are placed under Runtime/Plugins for the supported desktop platforms built by CI.
+
+        Full protocol and SDK documentation: https://nagareworks.github.io/nnrp-doc/
         """
     )
     (output_root / "README.md").write_text(readme, encoding="utf-8")

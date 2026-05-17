@@ -15,3 +15,4 @@ dotnet add package Nnrp.Client --version <published-version>
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
+- https://nagareworks.github.io/nnrp-doc/
