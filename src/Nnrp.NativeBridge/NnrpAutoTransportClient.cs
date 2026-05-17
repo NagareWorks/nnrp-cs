@@ -717,7 +717,7 @@ namespace Nnrp.NativeBridge
                 messageType: MessageType.FrameSubmit,
                 flags: HeaderFlags.None,
                 metaLength: FrameSubmitMetadata.MetadataLength,
-                bodyLength: ComputeFrameSubmitBodyLength(
+                bodyLength: FrameSubmitMessage.ComputeBodyLength(
                     submitRequest.CameraBlock.Length,
                     tileIndexBytes,
                     submitRequest.Sections.Span),
@@ -767,22 +767,6 @@ namespace Nnrp.NativeBridge
             }
 
             return body;
-        }
-
-        private static uint ComputeFrameSubmitBodyLength(
-            int cameraBytes,
-            int tileIndexBytes,
-            ReadOnlySpan<TensorSectionBlock> sections)
-        {
-            var runningTotal = BinaryAlignment.AlignUp(TensorSubmitBlock.BlockLength + cameraBytes, BinaryAlignment.DefaultAlignment);
-            runningTotal = BinaryAlignment.AlignUp(runningTotal + tileIndexBytes, BinaryAlignment.DefaultAlignment);
-            foreach (var section in sections)
-            {
-                runningTotal = BinaryAlignment.AlignUp(runningTotal, BinaryAlignment.DefaultAlignment);
-                runningTotal += section.TotalLength;
-            }
-
-            return checked((uint)runningTotal);
         }
 
         private SessionMigrateMessage CreateSessionMigrateMessage(

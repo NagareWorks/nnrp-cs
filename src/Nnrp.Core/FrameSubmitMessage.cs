@@ -4,10 +4,12 @@ namespace Nnrp.Core
 {
     public readonly struct FrameSubmitMessage
     {
-        public const int MetadataLength = 32;
+        public const int MetadataLength = FrameSubmitMetadata.MetadataLength;
 
-        private const byte DefaultLossTolerancePolicy = 0xFF;
-
+        /// <summary>
+        /// Creates a frame submit message and canonicalizes reserved metadata fields to zero
+        /// so the serialized metadata remains valid under strict round-trip parsing.
+        /// </summary>
         public FrameSubmitMessage(
             NnrpHeader header,
             FrameSubmitMetadata metadata,
@@ -26,42 +28,7 @@ namespace Nnrp.Core
             }
 
             var tileIndexLength = TileIndexBlockCodec.GetEncodedLength(tileIds.Span, metadata.TileIndexMode);
-            var tensorSubmitBlock = new TensorSubmitBlock(
-                metadata.SourceWidth,
-                metadata.SourceHeight,
-                metadata.TileWidth,
-                metadata.TileHeight,
-                checked((ushort)tileIds.Length),
-                checked((ushort)sections.Length),
-                metadata.TileIndexMode,
-                tensorFlags: 0,
-                reserved0: 0,
-                metadata.TileBaseId,
-                checked((uint)cameraBlock.Length),
-                checked((uint)tileIndexLength));
-
-            if (tensorSubmitBlock.CameraBytes != (uint)cameraBlock.Length)
-            {
-                throw new ArgumentException("Camera block length must match metadata.CameraBytes.", nameof(cameraBlock));
-            }
-
-            if (tensorSubmitBlock.TileCount != tileIds.Length)
-            {
-                throw new ArgumentException("Tile id count must match metadata.TileCount.", nameof(tileIds));
-            }
-
-            if (tensorSubmitBlock.SectionCount != sections.Length)
-            {
-                throw new ArgumentException("Section count must match metadata.SectionCount.", nameof(sections));
-            }
-
-            if (tensorSubmitBlock.TileIndexBytes != (uint)tileIndexLength)
-            {
-                throw new ArgumentException("Tile index block length must match metadata.TileIndexBytes.", nameof(tileIds));
-            }
-
             if (!TryGetAlignedBodyLength(
-                    TensorSubmitBlock.BlockLength,
                     cameraBlock.Length,
                     tileIndexLength,
                     sections.Span,
@@ -71,9 +38,20 @@ namespace Nnrp.Core
                 throw new ArgumentException("Header body length must match the computed FrameSubmit body length.", nameof(header));
             }
 
+            if (!TryValidateMetadataContract(
+                    metadata,
+                    cameraBlock.Length,
+                    tileIds.Length,
+                    sections.Length,
+                    tileIndexLength,
+                    out var validationError))
+            {
+                throw new ArgumentException(validationError, nameof(metadata));
+            }
+
             Header = header;
-            Metadata = NormalizeMetadata(metadata, tensorSubmitBlock);
-            TensorSubmitBlock = tensorSubmitBlock;
+            Metadata = NormalizeMetadata(metadata, cameraBlock.Length, tileIds.Length, sections.Length, tileIndexLength);
+            TensorSubmitBlock = CreateTensorSubmitBlock(Metadata);
             CameraBlock = cameraBlock;
             TileIds = tileIds;
             Sections = sections;
@@ -93,15 +71,11 @@ namespace Nnrp.Core
 
         public NnrpFramedMessage ToFramedMessage()
         {
-            var metadataBytes = SerializeMetadata(Metadata, TensorSubmitBlock, Sections.Span);
-            var tileIndexBlock = TileIndexBlockCodec.Encode(TileIds.Span, TensorSubmitBlock.TileIndexMode, TensorSubmitBlock.TileBaseId);
+            var metadataBytes = Metadata.ToArray();
+            var tileIndexBlock = TileIndexBlockCodec.Encode(TileIds.Span, Metadata.TileIndexMode, Metadata.TileBaseId);
             var body = new byte[checked((int)Header.BodyLength)];
 
             var offset = 0;
-            var submitBlockBytes = TensorSubmitBlock.ToArray();
-            submitBlockBytes.CopyTo(body.AsSpan(offset, submitBlockBytes.Length));
-            offset += submitBlockBytes.Length;
-
             CameraBlock.Span.CopyTo(body.AsSpan(offset, CameraBlock.Length));
             offset += CameraBlock.Length;
             offset = BinaryAlignment.AlignUp(offset, 8);
@@ -128,6 +102,43 @@ namespace Nnrp.Core
             return ToFramedMessage().ToArray();
         }
 
+        public static uint ComputeBodyLength(int cameraBytes, int tileIndexBytes, ReadOnlySpan<TensorSectionBlock> sections)
+        {
+            if (cameraBytes < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(cameraBytes), cameraBytes, "cameraBytes must be non-negative.");
+            }
+
+            if (tileIndexBytes < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(tileIndexBytes), tileIndexBytes, "tileIndexBytes must be non-negative.");
+            }
+
+            if (!TryComputeBodyLength(cameraBytes, tileIndexBytes, sections, out var bodyLength))
+            {
+                throw new OverflowException("FrameSubmitMessage body length exceeds Int32.MaxValue.");
+            }
+
+            return bodyLength;
+        }
+
+        public static bool TryComputeBodyLength(int cameraBytes, int tileIndexBytes, ReadOnlySpan<TensorSectionBlock> sections, out uint bodyLength)
+        {
+            bodyLength = 0;
+            if (cameraBytes < 0 || tileIndexBytes < 0)
+            {
+                return false;
+            }
+
+            if (!TryGetAlignedBodyLength(cameraBytes, tileIndexBytes, sections, out var alignedBodyLength))
+            {
+                return false;
+            }
+
+            bodyLength = (uint)alignedBodyLength;
+            return true;
+        }
+
         public static bool TryParseMetadata(ReadOnlySpan<byte> source, out FrameSubmitMetadata metadata)
         {
             return TryParseMetadata(source, strict: false, out metadata, out _);
@@ -135,14 +146,7 @@ namespace Nnrp.Core
 
         public static bool TryParseMetadata(ReadOnlySpan<byte> source, bool strict, out FrameSubmitMetadata metadata, out NnrpParseError error)
         {
-            metadata = default;
-            if (!LegacyWireMetadata.TryParse(source, strict, out var legacyMetadata, out error))
-            {
-                return false;
-            }
-
-            metadata = BuildMetadata(legacyMetadata);
-            return true;
+            return FrameSubmitMetadata.TryParse(source, strict, out metadata, out error);
         }
 
         public static bool TryParse(ReadOnlyMemory<byte> source, out FrameSubmitMessage message, out NnrpParseError error)
@@ -168,70 +172,62 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if (!LegacyWireMetadata.TryParse(framed.Metadata.Span, strict: true, out var legacyMetadata, out error))
+            if (!FrameSubmitMetadata.TryParse(framed.Metadata.Span, strict: true, out var metadata, out error))
             {
                 return false;
             }
 
-            if (framed.Body.Length < TensorSubmitBlock.BlockLength)
-            {
-                error = NnrpParseError.SourceTooShort;
-                return false;
-            }
-
-            if (!TensorSubmitBlock.TryParse(framed.Body.Span.Slice(0, TensorSubmitBlock.BlockLength), out var submitBlock, out error))
-            {
-                return false;
-            }
-
-            if (submitBlock.CameraBytes > int.MaxValue || submitBlock.TileIndexBytes > int.MaxValue)
-            {
-                error = NnrpParseError.MessageTooLarge;
-                return false;
-            }
-
-            var expectedProfileBlockBytes = checked((uint)(TensorSubmitBlock.BlockLength + submitBlock.CameraBytes + submitBlock.TileIndexBytes));
-            if (legacyMetadata.ProfileBlockBytes != expectedProfileBlockBytes)
+            if (!TryValidateMetadataContract(
+                    metadata,
+                    expectedCameraBytes: null,
+                    expectedTileCount: null,
+                    expectedSectionCount: null,
+                    expectedTileIndexBytes: null,
+                    out _))
             {
                 error = NnrpParseError.InvalidMessageLayout;
                 return false;
             }
 
-            var cameraBytes = (int)submitBlock.CameraBytes;
-            var tileIndexBytes = (int)submitBlock.TileIndexBytes;
-            var bodyWithoutSubmitBlock = framed.Body.Slice(TensorSubmitBlock.BlockLength);
+            if (metadata.CameraBytes > int.MaxValue || metadata.TileIndexBytes > int.MaxValue)
+            {
+                error = NnrpParseError.MessageTooLarge;
+                return false;
+            }
 
-            if (bodyWithoutSubmitBlock.Length < cameraBytes)
+            var cameraBytes = (int)metadata.CameraBytes;
+            var tileIndexBytes = (int)metadata.TileIndexBytes;
+
+            if (framed.Body.Length < cameraBytes)
             {
                 error = NnrpParseError.SourceTooShort;
                 return false;
             }
 
-            var cameraBlock = bodyWithoutSubmitBlock.Slice(0, cameraBytes);
+            var cameraBlock = framed.Body.Slice(0, cameraBytes);
             var cursor = cameraBytes;
 
-            if ((tileIndexBytes > 0 || submitBlock.SectionCount > 0)
-                && !TryValidateZeroPadding(bodyWithoutSubmitBlock, cameraBytes, out cursor, out error))
+            if (!TryValidateZeroPadding(framed.Body, cameraBytes, out cursor, out error))
             {
                 return false;
             }
 
-            if (bodyWithoutSubmitBlock.Length < cursor || bodyWithoutSubmitBlock.Length - cursor < tileIndexBytes)
+            if (framed.Body.Length < cursor || framed.Body.Length - cursor < tileIndexBytes)
             {
                 error = NnrpParseError.SourceTooShort;
                 return false;
             }
 
-            var tileIndexBlock = bodyWithoutSubmitBlock.Slice(cursor, tileIndexBytes);
-            var tileIds = submitBlock.TileCount == 0 ? Array.Empty<ushort>() : new ushort[submitBlock.TileCount];
+            var tileIndexBlock = framed.Body.Slice(cursor, tileIndexBytes);
+            var tileIds = metadata.TileCount == 0 ? Array.Empty<ushort>() : new ushort[metadata.TileCount];
             if (!TileIndexBlockCodec.TryDecode(
                     tileIndexBlock.Span,
-                    submitBlock.TileIndexMode,
-                    submitBlock.TileCount,
+                    metadata.TileIndexMode,
+                    metadata.TileCount,
                     tileIds,
                     out var tileIdsWritten,
                     out error,
-                    submitBlock.TileBaseId))
+                    metadata.TileBaseId))
             {
                 return false;
             }
@@ -249,23 +245,23 @@ namespace Nnrp.Core
             }
 
             cursor = nextOffset;
-            if (submitBlock.SectionCount > 0
-                && !TryValidateZeroPadding(bodyWithoutSubmitBlock, nextOffset, out cursor, out error))
+            if (metadata.SectionCount > 0
+                && !TryValidateZeroPadding(framed.Body, nextOffset, out cursor, out error))
             {
                 return false;
             }
 
-            var sections = submitBlock.SectionCount == 0 ? Array.Empty<TensorSectionBlock>() : new TensorSectionBlock[submitBlock.SectionCount];
+            var sections = metadata.SectionCount == 0 ? Array.Empty<TensorSectionBlock>() : new TensorSectionBlock[metadata.SectionCount];
             TensorRole? previousRole = null;
             for (var index = 0; index < sections.Length; index++)
             {
-                if (bodyWithoutSubmitBlock.Length < cursor)
+                if (framed.Body.Length < cursor)
                 {
                     error = NnrpParseError.SourceTooShort;
                     return false;
                 }
 
-                if (!TensorSectionBlock.TryParse(bodyWithoutSubmitBlock.Slice(cursor), submitBlock.TileCount, out var section, out var sectionBytes, out error))
+                if (!TensorSectionBlock.TryParse(framed.Body.Slice(cursor), metadata.TileCount, out var section, out var sectionBytes, out error))
                 {
                     return false;
                 }
@@ -287,7 +283,7 @@ namespace Nnrp.Core
 
                 if (index + 1 < sections.Length)
                 {
-                    if (!TryValidateZeroPadding(bodyWithoutSubmitBlock, nextOffset, out cursor, out error))
+                    if (!TryValidateZeroPadding(framed.Body, nextOffset, out cursor, out error))
                     {
                         return false;
                     }
@@ -298,14 +294,14 @@ namespace Nnrp.Core
                 }
             }
 
-            if (cursor != bodyWithoutSubmitBlock.Length)
+            if (cursor != framed.Body.Length)
             {
                 error = NnrpParseError.InvalidMessageLayout;
                 return false;
             }
 
-            SummarizeSections(sections, out var payloadDescriptorBytes, out var payloadDataBytes);
-            if (legacyMetadata.PayloadDescriptorBytes != payloadDescriptorBytes || legacyMetadata.PayloadDataBytes != payloadDataBytes)
+            if (!TryGetAlignedBodyLength(cameraBytes, tileIndexBytes, sections, out var expectedBodyLength)
+                || framed.Header.BodyLength != (uint)expectedBodyLength)
             {
                 error = NnrpParseError.InvalidMessageLayout;
                 return false;
@@ -313,7 +309,7 @@ namespace Nnrp.Core
 
             message = new FrameSubmitMessage(
                 framed.Header,
-                BuildMetadata(legacyMetadata, submitBlock),
+                metadata,
                 cameraBlock,
                 tileIds,
                 sections);
@@ -321,324 +317,138 @@ namespace Nnrp.Core
             return true;
         }
 
-        private static FrameSubmitMetadata NormalizeMetadata(FrameSubmitMetadata metadata, TensorSubmitBlock submitBlock)
+        private static FrameSubmitMetadata NormalizeMetadata(
+            FrameSubmitMetadata metadata,
+            int cameraBytes,
+            int tileCount,
+            int sectionCount,
+            int tileIndexBytes)
         {
-            var legacyDependencyFrameId = GetLegacyDependencyFrameId(metadata);
+            // Canonicalize reserved fields so constructor output survives strict parser round-trips.
             return new FrameSubmitMetadata(
-                sourceWidth: submitBlock.SourceWidth,
-                sourceHeight: submitBlock.SourceHeight,
-                tileWidth: submitBlock.TileWidth,
-                tileHeight: submitBlock.TileHeight,
-                tileCount: submitBlock.TileCount,
-                sectionCount: submitBlock.SectionCount,
+                sourceWidth: metadata.SourceWidth,
+                sourceHeight: metadata.SourceHeight,
+                tileWidth: metadata.TileWidth,
+                tileHeight: metadata.TileHeight,
+                tileCount: checked((ushort)tileCount),
+                sectionCount: checked((ushort)sectionCount),
                 frameClass: metadata.FrameClass,
                 inputProfile: metadata.InputProfile,
-                tileIndexMode: submitBlock.TileIndexMode,
+                tileIndexMode: metadata.TileIndexMode,
                 reserved0: 0,
                 latencyBudgetMilliseconds: metadata.LatencyBudgetMilliseconds,
                 targetFpsTimes100: metadata.TargetFpsTimes100,
-                retryOfFrame: legacyDependencyFrameId,
-                tileBaseId: submitBlock.TileBaseId,
-                cameraBytes: submitBlock.CameraBytes,
-                tileIndexBytes: submitBlock.TileIndexBytes,
+                retryOfFrame: metadata.RetryOfFrame,
+                tileBaseId: metadata.TileBaseId,
+                cameraBytes: checked((uint)cameraBytes),
+                tileIndexBytes: checked((uint)tileIndexBytes),
                 reserved1: 0,
                 reserved2: 0,
-                submitMode: SubmitMode.Inline,
-                budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: DefaultLossTolerancePolicy,
+                submitMode: metadata.SubmitMode,
+                budgetPolicy: metadata.BudgetPolicy,
+                lossTolerancePolicy: metadata.LossTolerancePolicy,
                 reserved3: 0,
-                objectRefMask: 0,
-                dependencyFrameId: legacyDependencyFrameId,
-                payloadKindBitmap: GetLegacyPayloadKind(metadata),
-                payloadFrameCount: 0,
+                objectRefMask: metadata.ObjectRefMask,
+                dependencyFrameId: metadata.DependencyFrameId,
+                payloadKindBitmap: metadata.PayloadKindBitmap,
+                payloadFrameCount: metadata.PayloadFrameCount,
                 reserved4: 0);
         }
 
-        private static FrameSubmitMetadata BuildMetadata(LegacyWireMetadata legacyMetadata)
+        private static TensorSubmitBlock CreateTensorSubmitBlock(FrameSubmitMetadata metadata)
         {
-            return new FrameSubmitMetadata(
-                sourceWidth: 0,
-                sourceHeight: 0,
-                tileWidth: 0,
-                tileHeight: 0,
-                tileCount: 0,
-                sectionCount: 0,
-                frameClass: legacyMetadata.FrameClass,
-                inputProfile: (InputProfile)legacyMetadata.ProfileId,
-                tileIndexMode: TileIndexMode.DenseRange,
+            return new TensorSubmitBlock(
+                metadata.SourceWidth,
+                metadata.SourceHeight,
+                metadata.TileWidth,
+                metadata.TileHeight,
+                metadata.TileCount,
+                metadata.SectionCount,
+                metadata.TileIndexMode,
+                tensorFlags: 0,
                 reserved0: 0,
-                latencyBudgetMilliseconds: legacyMetadata.LatencyBudgetMilliseconds,
-                targetFpsTimes100: legacyMetadata.CadenceHintX100,
-                retryOfFrame: legacyMetadata.DependencyFrameId,
-                tileBaseId: 0,
-                cameraBytes: 0,
-                tileIndexBytes: 0,
-                reserved1: 0,
-                reserved2: 0,
-                submitMode: SubmitMode.Inline,
-                budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: DefaultLossTolerancePolicy,
-                reserved3: 0,
-                objectRefMask: 0,
-                dependencyFrameId: legacyMetadata.DependencyFrameId,
-                payloadKindBitmap: legacyMetadata.PayloadKind,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                metadata.TileBaseId,
+                metadata.CameraBytes,
+                metadata.TileIndexBytes);
         }
 
-        private static FrameSubmitMetadata BuildMetadata(LegacyWireMetadata legacyMetadata, TensorSubmitBlock submitBlock)
+        private static bool TryValidateMetadataContract(
+            FrameSubmitMetadata metadata,
+            int? expectedCameraBytes,
+            int? expectedTileCount,
+            int? expectedSectionCount,
+            int? expectedTileIndexBytes,
+            out string validationError)
         {
-            return new FrameSubmitMetadata(
-                sourceWidth: submitBlock.SourceWidth,
-                sourceHeight: submitBlock.SourceHeight,
-                tileWidth: submitBlock.TileWidth,
-                tileHeight: submitBlock.TileHeight,
-                tileCount: submitBlock.TileCount,
-                sectionCount: submitBlock.SectionCount,
-                frameClass: legacyMetadata.FrameClass,
-                inputProfile: (InputProfile)legacyMetadata.ProfileId,
-                tileIndexMode: submitBlock.TileIndexMode,
-                reserved0: 0,
-                latencyBudgetMilliseconds: legacyMetadata.LatencyBudgetMilliseconds,
-                targetFpsTimes100: legacyMetadata.CadenceHintX100,
-                retryOfFrame: legacyMetadata.DependencyFrameId,
-                tileBaseId: submitBlock.TileBaseId,
-                cameraBytes: submitBlock.CameraBytes,
-                tileIndexBytes: submitBlock.TileIndexBytes,
-                reserved1: 0,
-                reserved2: 0,
-                submitMode: SubmitMode.Inline,
-                budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: DefaultLossTolerancePolicy,
-                reserved3: 0,
-                objectRefMask: 0,
-                dependencyFrameId: legacyMetadata.DependencyFrameId,
-                payloadKindBitmap: legacyMetadata.PayloadKind,
-                payloadFrameCount: 0,
-                reserved4: 0);
-        }
+            validationError = string.Empty;
 
-        private static byte[] SerializeMetadata(FrameSubmitMetadata metadata, TensorSubmitBlock submitBlock, ReadOnlySpan<TensorSectionBlock> sections)
-        {
-            SummarizeSections(sections, out var payloadDescriptorBytes, out var payloadDataBytes);
-            var legacyMetadata = new LegacyWireMetadata(
-                profileId: (ushort)metadata.InputProfile,
-                payloadKind: GetLegacyPayloadKind(metadata),
-                frameClass: metadata.FrameClass,
-                submitFlags: 0,
-                profileFlags: 0,
-                latencyBudgetMilliseconds: metadata.LatencyBudgetMilliseconds,
-                cadenceHintX100: metadata.TargetFpsTimes100,
-                dependencyFrameId: GetLegacyDependencyFrameId(metadata),
-                profileBlockBytes: checked((uint)(TensorSubmitBlock.BlockLength + submitBlock.CameraBytes + submitBlock.TileIndexBytes)),
-                payloadDescriptorBytes: payloadDescriptorBytes,
-                payloadDataBytes: payloadDataBytes,
-                reserved0: 0);
-
-            var buffer = new byte[MetadataLength];
-            legacyMetadata.Write(buffer);
-            return buffer;
-        }
-
-        private static uint GetLegacyDependencyFrameId(FrameSubmitMetadata metadata)
-        {
-            return metadata.DependencyFrameId != 0 ? metadata.DependencyFrameId : metadata.RetryOfFrame;
-        }
-
-        private static PayloadKind GetLegacyPayloadKind(FrameSubmitMetadata metadata)
-        {
-            var payloadKind = metadata.PayloadKindBitmap == 0 ? PayloadKind.Tensor : metadata.PayloadKindBitmap;
-            var rawPayloadKind = (uint)payloadKind;
-            if ((rawPayloadKind & (rawPayloadKind - 1)) != 0)
+            if (metadata.SubmitMode != SubmitMode.Inline)
             {
-                if ((payloadKind & PayloadKind.Tensor) != 0)
-                {
-                    return PayloadKind.Tensor;
-                }
-
-                throw new InvalidOperationException("FrameSubmitMessage only supports a single legacy payload kind bit.");
+                validationError = "FrameSubmitMessage only supports inline submit mode.";
+                return false;
             }
 
-            return payloadKind;
-        }
-
-        private readonly struct LegacyWireMetadata
-        {
-            public LegacyWireMetadata(
-                ushort profileId,
-                PayloadKind payloadKind,
-                FrameClass frameClass,
-                ushort submitFlags,
-                ushort profileFlags,
-                ushort latencyBudgetMilliseconds,
-                ushort cadenceHintX100,
-                uint dependencyFrameId,
-                uint profileBlockBytes,
-                uint payloadDescriptorBytes,
-                uint payloadDataBytes,
-                uint reserved0)
+            if (!SubmitObjectReferenceMask.TryValidateForSubmitMode(metadata.SubmitMode, metadata.ObjectRefMask, out _))
             {
-                ProfileId = profileId;
-                PayloadKind = payloadKind;
-                FrameClass = frameClass;
-                SubmitFlags = submitFlags;
-                ProfileFlags = profileFlags;
-                LatencyBudgetMilliseconds = latencyBudgetMilliseconds;
-                CadenceHintX100 = cadenceHintX100;
-                DependencyFrameId = dependencyFrameId;
-                ProfileBlockBytes = profileBlockBytes;
-                PayloadDescriptorBytes = payloadDescriptorBytes;
-                PayloadDataBytes = payloadDataBytes;
-                Reserved0 = reserved0;
+                validationError = "FrameSubmitMessage does not support submit object references.";
+                return false;
             }
 
-            public ushort ProfileId { get; }
-
-            public PayloadKind PayloadKind { get; }
-
-            public FrameClass FrameClass { get; }
-
-            public ushort SubmitFlags { get; }
-
-            public ushort ProfileFlags { get; }
-
-            public ushort LatencyBudgetMilliseconds { get; }
-
-            public ushort CadenceHintX100 { get; }
-
-            public uint DependencyFrameId { get; }
-
-            public uint ProfileBlockBytes { get; }
-
-            public uint PayloadDescriptorBytes { get; }
-
-            public uint PayloadDataBytes { get; }
-
-            public uint Reserved0 { get; }
-
-            public void Write(Span<byte> destination)
+            if (metadata.PayloadKindBitmap != PayloadKind.Tensor || metadata.PayloadFrameCount != 0)
             {
-                var writer = new FixedBinaryWriter(destination);
-                if (!writer.TryWriteUInt16(ProfileId)
-                    || !writer.TryWriteByte(checked((byte)PayloadKind))
-                    || !writer.TryWriteByte((byte)FrameClass)
-                    || !writer.TryWriteUInt16(SubmitFlags)
-                    || !writer.TryWriteUInt16(ProfileFlags)
-                    || !writer.TryWriteUInt16(LatencyBudgetMilliseconds)
-                    || !writer.TryWriteUInt16(CadenceHintX100)
-                    || !writer.TryWriteUInt32(DependencyFrameId)
-                    || !writer.TryWriteUInt32(ProfileBlockBytes)
-                    || !writer.TryWriteUInt32(PayloadDescriptorBytes)
-                    || !writer.TryWriteUInt32(PayloadDataBytes)
-                    || !writer.TryWriteUInt32(Reserved0))
-                {
-                    throw new InvalidOperationException("Failed to serialize FrameSubmitMessage metadata.");
-                }
+                validationError = "FrameSubmitMessage only supports inline tensor payloads.";
+                return false;
             }
 
-            public static bool TryParse(ReadOnlySpan<byte> source, bool strict, out LegacyWireMetadata metadata, out NnrpParseError error)
+            if (expectedCameraBytes.HasValue && metadata.CameraBytes != (uint)expectedCameraBytes.Value)
             {
-                metadata = default;
-                error = NnrpParseError.None;
-                if (source.Length < MetadataLength)
-                {
-                    error = NnrpParseError.SourceTooShort;
-                    return false;
-                }
-
-                var reader = new FixedBinaryReader(source);
-                if (!reader.TryReadUInt16(out var profileId)
-                    || !reader.TryReadByte(out var payloadKind)
-                    || !reader.TryReadByte(out var frameClass)
-                    || !reader.TryReadUInt16(out var submitFlags)
-                    || !reader.TryReadUInt16(out var profileFlags)
-                    || !reader.TryReadUInt16(out var latencyBudgetMilliseconds)
-                    || !reader.TryReadUInt16(out var cadenceHintX100)
-                    || !reader.TryReadUInt32(out var dependencyFrameId)
-                    || !reader.TryReadUInt32(out var profileBlockBytes)
-                    || !reader.TryReadUInt32(out var payloadDescriptorBytes)
-                    || !reader.TryReadUInt32(out var payloadDataBytes)
-                    || !reader.TryReadUInt32(out var reserved0))
-                {
-                    error = NnrpParseError.SourceTooShort;
-                    return false;
-                }
-
-                if (strict && reserved0 != 0)
-                {
-                    error = NnrpParseError.NonZeroReservedField;
-                    return false;
-                }
-
-                metadata = new LegacyWireMetadata(
-                    profileId,
-                    (PayloadKind)payloadKind,
-                    (FrameClass)frameClass,
-                    submitFlags,
-                    profileFlags,
-                    latencyBudgetMilliseconds,
-                    cadenceHintX100,
-                    dependencyFrameId,
-                    profileBlockBytes,
-                    payloadDescriptorBytes,
-                    payloadDataBytes,
-                    reserved0);
-                return true;
+                validationError = "Camera block length must match metadata.CameraBytes.";
+                return false;
             }
+
+            if (expectedTileCount.HasValue && metadata.TileCount != expectedTileCount.Value)
+            {
+                validationError = "Tile id count must match metadata.TileCount.";
+                return false;
+            }
+
+            if (expectedSectionCount.HasValue && metadata.SectionCount != expectedSectionCount.Value)
+            {
+                validationError = "Section count must match metadata.SectionCount.";
+                return false;
+            }
+
+            if (expectedTileIndexBytes.HasValue && metadata.TileIndexBytes != (uint)expectedTileIndexBytes.Value)
+            {
+                validationError = "Tile index block length must match metadata.TileIndexBytes.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool TryGetAlignedBodyLength(
-            int submitBlockBytes,
             int cameraBytes,
             int tileIndexBytes,
             ReadOnlySpan<TensorSectionBlock> sections,
             out int bodyLength)
         {
-            bodyLength = 0;
-            if (!CheckedArithmetic.TryAdd(submitBlockBytes, cameraBytes, out var runningTotal))
-            {
-                return false;
-            }
-
-            runningTotal = BinaryAlignment.AlignUp(runningTotal, 8);
-            if (!CheckedArithmetic.TryAdd(runningTotal, tileIndexBytes, out runningTotal))
+            bodyLength = BinaryAlignment.AlignUp(cameraBytes, 8);
+            if (!CheckedArithmetic.TryAdd(bodyLength, tileIndexBytes, out bodyLength))
             {
                 return false;
             }
 
             foreach (var section in sections)
             {
-                runningTotal = BinaryAlignment.AlignUp(runningTotal, 8);
-                if (!CheckedArithmetic.TryAdd(runningTotal, section.TotalLength, out runningTotal))
+                bodyLength = BinaryAlignment.AlignUp(bodyLength, 8);
+                if (!CheckedArithmetic.TryAdd(bodyLength, section.TotalLength, out bodyLength))
                 {
                     return false;
                 }
             }
 
-            bodyLength = runningTotal;
             return true;
-        }
-
-        private static void SummarizeSections(ReadOnlySpan<TensorSectionBlock> sections, out uint payloadDescriptorBytes, out uint payloadDataBytes)
-        {
-            ulong descriptorBytes = 0;
-            ulong dataBytes = 0;
-
-            foreach (var section in sections)
-            {
-                descriptorBytes += (ulong)TensorSectionDescriptor.DescriptorLength
-                    + section.Descriptor.CodecTableBytes
-                    + section.Descriptor.LengthTableBytes;
-                dataBytes += section.Descriptor.PayloadBytes;
-            }
-
-            if (descriptorBytes > uint.MaxValue || dataBytes > uint.MaxValue)
-            {
-                throw new InvalidOperationException("Tensor section summary exceeds UInt32.MaxValue.");
-            }
-
-            payloadDescriptorBytes = (uint)descriptorBytes;
-            payloadDataBytes = (uint)dataBytes;
         }
 
         private static bool TryValidateZeroPadding(ReadOnlyMemory<byte> source, int offset, out int alignedOffset, out NnrpParseError error)

@@ -47,7 +47,7 @@ namespace Nnrp.Core
                 tileBaseId: 0,
                 cameraBytes: (uint)DefaultCameraBlock.Length,
                 tileIndexBytes: (uint)tileIndexBytes);
-            var bodyLength = ComputeAlignedBodyLength(TensorSubmitBlock.BlockLength, DefaultCameraBlock.Length, tileIndexBytes, section.TotalLength);
+            var bodyLength = FrameSubmitMessage.ComputeBodyLength(DefaultCameraBlock.Length, tileIndexBytes, new[] { section });
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 messageType: MessageType.FrameSubmit,
@@ -94,7 +94,7 @@ namespace Nnrp.Core
                 payloadKindBitmap: PayloadKind.Tensor,
                 payloadFrameCount: 0,
                 reserved4: 0);
-            var bodyLength = ComputeBodyLength(DefaultCameraBlock.Length, tileIndexBytes, section.TotalLength);
+            var bodyLength = FrameSubmitMessage.ComputeBodyLength(DefaultCameraBlock.Length, tileIndexBytes, new[] { section });
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 messageType: MessageType.FrameSubmit,
@@ -202,20 +202,5 @@ namespace Nnrp.Core
             }
         }
 
-        private static uint ComputeAlignedBodyLength(int submitBlockBytes, int cameraBytes, int tileIndexBytes, int sectionTotalLength)
-        {
-            var runningTotal = BinaryAlignment.AlignUp(submitBlockBytes + cameraBytes, BinaryAlignment.DefaultAlignment);
-            runningTotal = BinaryAlignment.AlignUp(runningTotal + tileIndexBytes, BinaryAlignment.DefaultAlignment);
-            runningTotal += sectionTotalLength;
-            return (uint)runningTotal;
-        }
-
-        private static uint ComputeBodyLength(int cameraBytes, int tileIndexBytes, int sectionTotalLength)
-        {
-            var runningTotal = BinaryAlignment.AlignUp(cameraBytes, BinaryAlignment.DefaultAlignment);
-            runningTotal = BinaryAlignment.AlignUp(runningTotal + tileIndexBytes, BinaryAlignment.DefaultAlignment);
-            runningTotal += sectionTotalLength;
-            return (uint)runningTotal;
-        }
     }
 }

@@ -230,7 +230,7 @@ namespace Nnrp.Core.Tests
                 tileWidth: 32,
                 tileHeight: 32,
                 tileCount: tileCount,
-                sectionCount: 1,
+                sectionCount: 0,
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.DenseRange,
@@ -244,7 +244,7 @@ namespace Nnrp.Core.Tests
 
         private static FrameSubmitMessage CreateFrameSubmitMessage(FrameSubmitMetadata metadata)
         {
-            var bodyLength = TensorSubmitBlock.BlockLength + (int)metadata.CameraBytes;
+            var bodyLength = BinaryAlignment.AlignUp((int)metadata.CameraBytes, BinaryAlignment.DefaultAlignment);
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 wireFormat: NnrpHeader.CurrentWireFormat,

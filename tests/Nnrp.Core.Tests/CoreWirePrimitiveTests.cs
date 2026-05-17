@@ -241,7 +241,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(original.Metadata.CameraBytes, parsed.Metadata.CameraBytes);
             Assert.Equal(original.Metadata.TileIndexBytes, parsed.Metadata.TileIndexBytes);
 
-            payload[NnrpHeader.HeaderLength + 28] = 1;
+            payload[NnrpHeader.HeaderLength + 36] = 1;
             Assert.False(FrameSubmitMessage.TryParse(payload, out _, out error));
             Assert.Equal(NnrpParseError.NonZeroReservedField, error);
         }
