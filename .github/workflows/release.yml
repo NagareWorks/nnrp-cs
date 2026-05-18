@@ -2,64 +2,36 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to release when running manually
+        required: true
+        default: main
+      publish_github_release:
+        description: Publish or update the GitHub Release
+        required: true
+        type: boolean
+        default: true
+      publish_github_packages:
+        description: Publish NuGet packages to GitHub Packages
+        required: true
+        type: boolean
+        default: false
+      publish_nuget:
+        description: Publish NuGet packages to nuget.org
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      docs_only: ${{ steps.classify.outputs.docs_only }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Classify change set
-        id: classify
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          base="${{ github.event.before }}"
-          head="${{ github.sha }}"
-
-          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          mapfile -t changed_files < <(git diff --name-only "$base" "$head")
-
-          if [ "${#changed_files[@]}" -eq 0 ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          docs_only=true
-          for path in "${changed_files[@]}"; do
-            if [[ "$path" == *.md ]] || [[ "$path" =~ ^(doc/|docs/|\.github/PULL_REQUEST_TEMPLATE/) ]] || [[ "$path" =~ ^\.github/[^/]+\.md$ ]]; then
-              continue
-            fi
-
-            docs_only=false
-            break
-          done
-
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
   native-bridge:
-    needs:
-      - changes
-    if: needs.changes.outputs.docs_only != 'true'
     name: Native bridge (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -88,6 +60,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Setup Rust
         if: matrix.build_kind == 'native'
@@ -126,19 +101,24 @@ jobs:
   package:
     name: Package managed SDK and UPM bundle
     runs-on: windows-latest
-    needs:
-      - changes
-      - native-bridge
-    if: needs.changes.outputs.docs_only != 'true'
+    needs: native-bridge
     environment: release
     permissions:
       contents: write
       packages: write
       id-token: write
+    env:
+      GITHUB_PACKAGES_PUBLISH_MODE: ${{ vars.GITHUB_PACKAGES_PUBLISH_MODE }}
+      NUGET_PUBLISH_MODE: ${{ vars.NUGET_PUBLISH_MODE }}
+      NUGET_USER: ${{ vars.NUGET_USER }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -159,13 +139,39 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $packageVersion = dotnet msbuild src/Nnrp.Core/Nnrp.Core.csproj -nologo -getProperty:Version
-          $packageVersion = $packageVersion.Trim()
           $releaseVersion = dotnet msbuild src/Nnrp.Core/Nnrp.Core.csproj -nologo -getProperty:ReleaseVersion
           $releaseVersion = $releaseVersion.Trim()
+          $packageVersion = $releaseVersion
           "package_version=$packageVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "tag_name=v$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Validate pushed tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_tag="${{ steps.version.outputs.tag_name }}"
+          actual_tag="${{ github.ref_name }}"
+
+          if [ "$actual_tag" != "$expected_tag" ]; then
+            echo "Release tag mismatch: expected $expected_tag but workflow was triggered by $actual_tag."
+            exit 1
+          fi
+      - name: Create git tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          git fetch --tags
+          $tag = '${{ steps.version.outputs.tag_name }}'
+          $existing = git tag --list $tag
+          if (-not $existing) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag $tag
+            git push origin $tag
+          }
 
       - name: Download native artifacts
         uses: actions/download-artifact@v4
@@ -188,13 +194,21 @@ jobs:
         run: dotnet restore Nnrp.sln
 
       - name: Build
-        run: dotnet build Nnrp.sln --configuration Release --no-restore
+        run: >-
+          dotnet build Nnrp.sln --configuration Release --no-restore
+          -p:Version=${{ steps.version.outputs.package_version }}
+          -p:PackageVersion=${{ steps.version.outputs.package_version }}
+          -p:VersionSuffix=
 
       - name: Test
         run: dotnet test Nnrp.sln --configuration Release --no-build
 
       - name: Pack NuGet packages
-        run: dotnet pack Nnrp.sln --configuration Release --no-build --output artifacts/packages
+        run: >-
+          dotnet pack Nnrp.sln --configuration Release --no-build --output artifacts/packages
+          -p:Version=${{ steps.version.outputs.package_version }}
+          -p:PackageVersion=${{ steps.version.outputs.package_version }}
+          -p:VersionSuffix=
 
       - name: Build UPM package
         run: >-
@@ -247,31 +261,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Create git tag
-        if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        run: |
-          git fetch --tags
-          $tag = '${{ steps.version.outputs.tag_name }}'
-          $existing = git tag --list $tag
-          if (-not $existing) {
-            git tag $tag
-            git push origin $tag
-          }
-
       - name: Publish GitHub release
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' || inputs.publish_github_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
-          name: nnrp-cs v${{ steps.version.outputs.release_version }}
+          name: nnrp-cs v${{ steps.version.outputs.package_version }}
           files: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
 
       - name: Publish NuGet packages to GitHub Packages
-        if: github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' || inputs.publish_github_packages) && env.GITHUB_PACKAGES_PUBLISH_MODE == 'enabled'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -282,14 +284,14 @@ jobs:
           }
 
       - name: NuGet login (OIDC to temporary API key)
-        if: github.ref == 'refs/heads/main' && vars.NUGET_USER != ''
+        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
         id: nuget_login
         uses: NuGet/login@v1
         with:
-          user: ${{ vars.NUGET_USER }}
+          user: ${{ env.NUGET_USER }}
 
       - name: Publish NuGet packages to nuget.org via Trusted Publishing
-        if: github.ref == 'refs/heads/main' && vars.NUGET_USER != ''
+        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
@@ -298,12 +300,10 @@ jobs:
             dotnet nuget push $_.FullName --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --skip-duplicate
           }
 
-  docs-only:
-    needs:
-      - changes
-    if: needs.changes.outputs.docs_only == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Skip release workflow for docs-only change set
-        run: echo "Docs-only change detected. Skipping native build, package, and release publication."
+      - name: Publish NuGet packages to nuget.org via API token
+        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'token' && env.NUGET_API_KEY != ''
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
+            dotnet nuget push $_.FullName --source https://api.nuget.org/v3/index.json --api-key $env:NUGET_API_KEY --skip-duplicate
+          }

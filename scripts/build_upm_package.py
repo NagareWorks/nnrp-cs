@@ -80,7 +80,7 @@ def read_msbuild_property(repo_root: Path, property_name: str, *, allow_empty: b
 
 
 def read_release_version(repo_root: Path) -> str:
-    return read_msbuild_property(repo_root, "Version")
+    return read_msbuild_property(repo_root, "ReleaseVersion")
 
 
 def read_tracked_metadata_version(repo_root: Path) -> str:

@@ -98,6 +98,15 @@ When preparing a release PR:
 - confirm release assets have the expected names
 - note any manual steps required on package registries
 
+Public release publication is gated through the `Release` workflow and should only happen from a short release tag or an explicit manual dispatch.
+
+- `Release` runs on pushed `v*` tags and on manual `workflow_dispatch`; normal branch pushes must not publish GitHub releases or package registries.
+- Use the `release` GitHub environment for any publish-capable job.
+- Set `GITHUB_PACKAGES_PUBLISH_MODE` on the `release` environment to `disabled` or `enabled`.
+- Set `NUGET_PUBLISH_MODE` on the `release` environment to `disabled`, `trusted`, or `token`.
+- If you use Trusted Publishing for nuget.org, provide `NUGET_USER` as an environment variable on `release`.
+- If you use token-based publishing for nuget.org, store `NUGET_API_KEY` as an environment secret on `release`.
+
 ## Review Guidelines
 
 Review for:
