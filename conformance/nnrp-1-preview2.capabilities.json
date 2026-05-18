@@ -1,0 +1,18 @@
+{
+  "implementation_name": "nnrp-cs",
+  "protocol_version": "nnrp-1-preview2",
+  "supports": [
+    "cache.lifecycle",
+    "control.client_hello",
+    "control.session_patch_ack",
+    "flow_update",
+    "frame_submit.mixed",
+    "object_reference.cache",
+    "payload.tensor",
+    "result_hint",
+    "result_push.partial",
+    "result_push.stale_reuse",
+    "transport.probe",
+    "transport.tcp"
+  ]
+}

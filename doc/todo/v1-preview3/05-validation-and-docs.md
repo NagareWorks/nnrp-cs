@@ -2,7 +2,7 @@
 
 ## Validation
 
-- [ ] Add conformance tests that compare C# preview3 bindings against Rust canonical golden vectors.
+- [ ] Add a preview3 conformance exporter and wire it into the suite-owned conformance action against the Rust canonical vectors.
 - [ ] Add native smoke coverage for multi-session preview3 flows on one live connection.
 - [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
 - [ ] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.

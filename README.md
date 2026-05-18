@@ -77,7 +77,7 @@ The authoritative current-wire design document lives in `nnrp-doc/docs/en/design
 | Protocol failure result model | Implemented |
 | Transport-neutral framed message abstractions | Implemented |
 | Transport-neutral client session facade | Implemented |
-| Cross-language primitive golden vector tests | Implemented |
+| Suite-owned conformance exporter integration | Implemented |
 | Per-package line coverage gate | Implemented at 90% |
 | Full `FRAME_SUBMIT` message body codec | Implemented |
 | Full `RESULT_PUSH` message body codec | Implemented |
@@ -100,7 +100,7 @@ The authoritative current-wire design document lives in `nnrp-doc/docs/en/design
 
 - `nnrp-cs` owns the Unity-compatible C# wire codec, profile validation, capability negotiation, session facade, and optional transport adapter boundaries.
 - `nnrp-py` owns the Python-side protocol/runtime SDK, QUIC listener/client implementation, replay/export helpers, and runtime-facing integration surface.
-- Cross-language wire alignment is validated by C# tests that import nnrp-py golden vectors for the common header, `CLIENT_HELLO`, `SESSION_PATCH`, `SESSION_PATCH_ACK`, `CACHE_*`, `FRAME_SUBMIT`, and `RESULT_PUSH`, then assert stable parse/re-emit behavior for the shared wire shape.
+- Cross-language wire alignment is validated through the shared `nnrp-conformance` suite: `nnrp-cs` exports its own canonical vector manifest and the suite-owned conformance action compares it against the versioned protocol baseline.
 
 ## Example
 

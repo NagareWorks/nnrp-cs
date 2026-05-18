@@ -219,6 +219,45 @@ jobs:
       - name: Format check
         run: dotnet format Nnrp.sln --verify-no-changes --verbosity minimal
 
+  conformance:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout nnrp-conformance action
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/nnrp-conformance
+          path: nnrp-conformance-action
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Run suite-owned conformance action
+        uses: ./nnrp-conformance-action/.github/actions/run-conformance
+        with:
+          protocol-version: nnrp-1-preview2
+          capabilities-path: conformance/nnrp-1-preview2.capabilities.json
+          working-directory: .
+          artifact-name: nnrp-cs-conformance-preview2
+          sdk-vector-command: >-
+            dotnet run --project tools/Nnrp.ConformanceExporter/Nnrp.ConformanceExporter.csproj --
+            --protocol-version nnrp-1-preview2
+            --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
+
   docs-only:
     needs:
       - changes
@@ -234,6 +273,7 @@ jobs:
       - changes
       - commit-policy
       - build-test
+      - conformance
       - docs-only
     if: always()
     runs-on: ubuntu-latest
@@ -257,6 +297,11 @@ jobs:
 
           if [ "${{ needs.build-test.result }}" != "success" ]; then
             echo "Build, test, format, or incremental coverage validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.conformance.result }}" != "success" ]; then
+            echo "Conformance validation failed."
             exit 1
           fi
 
