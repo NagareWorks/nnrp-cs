@@ -100,7 +100,7 @@ The authoritative current-wire design document lives in `nnrp-doc/docs/en/design
 
 - `nnrp-cs` owns the Unity-compatible C# wire codec, profile validation, capability negotiation, session facade, and optional transport adapter boundaries.
 - `nnrp-py` owns the Python-side protocol/runtime SDK, QUIC listener/client implementation, replay/export helpers, and runtime-facing integration surface.
-- Cross-language wire alignment is validated through the shared `nnrp-conformance` suite: `nnrp-cs` exports its own canonical vector manifest and the suite-owned conformance action compares it against the versioned protocol baseline.
+- Cross-language wire alignment is validated through the shared `nnrp-conformance` suite: `nnrp-cs` reads the suite-owned semantic vector recipe manifest, regenerates its own canonical vector manifest through `Nnrp.Core`, and the suite-owned conformance action compares that output against the versioned protocol baseline.
 
 ## Example
 
@@ -335,19 +335,19 @@ The immediate QUIC path is a Rust native bridge built as a loadable `cdylib`:
 
 When documenting a secure endpoint, use `nnrps://host:port` as the URI form even when the current local smoke scripts accept separate host/port parameters.
 
-To run an end-to-end local loopback smoke against the sibling runtime checkout:
+To run an end-to-end local loopback smoke against an explicitly provided external application checkout:
 
 ```powershell
-./scripts/run_runtime_loopback_smoke.ps1
+./scripts/run_external_loopback_smoke.ps1 -ExternalAppRepoRoot <path-to-external-app>
 ```
 
-That script builds the managed/native bridge outputs if needed, starts `neural-render-runtime/scripts/run_local_dev.ps1` with NNRP transport enabled, and runs the native bridge repro against local build outputs.
+That script builds the managed/native bridge outputs if needed, launches the caller-supplied external application checkout through its local dev script, and runs the native bridge repro against local build outputs. It is an opt-in external interoperability smoke, not part of the NNRP protocol or SDK scope.
 
-Without `-UseAutoTransport`, the repro covers `PING`, `FRAME_CANCEL`, and `FRAME_SUBMIT`, then verifies the runtime produced smoke output plus runtime logs.
+Without `-UseAutoTransport`, the repro covers `PING`, `FRAME_CANCEL`, and `FRAME_SUBMIT`, then verifies the external application produced smoke output plus loopback logs.
 
-With `-UseAutoTransport`, the runtime smoke is scoped to current transport probing plus `PING` and `FRAME_CANCEL`. It still verifies the negotiated open path and both QUIC/TCP probe summaries, while deferring `FRAME_SUBMIT -> RESULT_PUSH` coverage until the sibling runtime transport bridge decodes current submit metadata.
+With `-UseAutoTransport`, the external loopback smoke is scoped to current transport probing plus `PING` and `FRAME_CANCEL`. It still verifies the negotiated open path and both QUIC/TCP probe summaries, while deferring `FRAME_SUBMIT -> RESULT_PUSH` coverage until the external application's bridge path decodes current submit metadata.
 
-The repro script now prints both the requested wire format and the runtime-negotiated wire format so the loopback smoke explicitly covers the current open path rather than relying on wrapper defaults.
+The repro script now prints both the requested wire format and the negotiated wire format so the loopback smoke explicitly covers the current open path rather than relying on wrapper defaults.
 
 ## Test
 
@@ -364,12 +364,12 @@ dotnet test tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj /p:CollectCoverage=
 dotnet test tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:Include="[Nnrp.Transport.Tcp]*" /p:Threshold=90 /p:ThresholdType=line /p:ThresholdStat=total
 ```
 
-The runtime-backed QUIC loopback smoke test stays opt-in because it builds the bridge outputs, launches the sibling runtime checkout, and exercises the native bridge end to end:
+The external QUIC loopback smoke test stays opt-in because it builds the bridge outputs, launches an explicitly provided external application checkout, and exercises the native bridge end to end:
 
 ```powershell
-$env:NNRP_RUN_QUIC_RUNTIME_SMOKE = '1'
-$env:NNRP_RUNTIME_REPO_ROOT = '..\neural-render-runtime'
-dotnet test tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj -c Release --filter FullyQualifiedName~RuntimeLoopbackSmokeTests
+$env:NNRP_RUN_EXTERNAL_LOOPBACK_SMOKE = '1'
+$env:NNRP_EXTERNAL_APP_REPO_ROOT = '<path-to-external-app>'
+dotnet test tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj -c Release --filter FullyQualifiedName~ExternalLoopbackSmokeTests
 ```
 
 ## Format

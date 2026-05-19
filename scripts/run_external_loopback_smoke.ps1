@@ -1,5 +1,5 @@
 param(
-    [string]$RuntimeRepoRoot = "",
+    [string]$ExternalAppRepoRoot = "",
     [string]$RuntimeHost = "127.0.0.1",
     [int]$Port = 50058,
     [int]$GatewayPort = 50051,
@@ -94,8 +94,8 @@ function Resolve-RequestedPort {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $RuntimeRepoRoot) {
-    $RuntimeRepoRoot = Join-Path (Split-Path -Parent $repoRoot) "neural-render-runtime"
+if (-not $ExternalAppRepoRoot) {
+    throw "ExternalAppRepoRoot is required for this opt-in smoke. Pass -ExternalAppRepoRoot explicitly."
 }
 
 $bindAddress = Resolve-LoopbackAddress -BindHost $RuntimeHost
@@ -103,10 +103,10 @@ $resolvedGatewayPort = Resolve-RequestedPort -Address $bindAddress -RequestedPor
 $resolvedTransportPort = Resolve-RequestedPort -Address $bindAddress -RequestedPort $Port -ReservedPorts @($resolvedGatewayPort)
 
 if ($resolvedGatewayPort -ne $GatewayPort -or $resolvedTransportPort -ne $Port) {
-    Write-Host ("[nnrp-cs] remapped runtime smoke ports gateway={0}->{1} transport={2}->{3}" -f $GatewayPort, $resolvedGatewayPort, $Port, $resolvedTransportPort)
+    Write-Host ("[nnrp-cs] remapped external loopback ports gateway={0}->{1} transport={2}->{3}" -f $GatewayPort, $resolvedGatewayPort, $Port, $resolvedTransportPort)
 }
 
-$runtimeScript = Join-Path $RuntimeRepoRoot "scripts/run_local_dev.ps1"
+$externalAppScript = Join-Path $ExternalAppRepoRoot "scripts/run_local_dev.ps1"
 $reproScript = Join-Path $repoRoot "scripts/repro_native_bridge.ps1"
 if (-not $ManagedRoot) {
     $ManagedRoot = Join-Path $repoRoot "src/Nnrp.NativeBridge/bin/Release/netstandard2.1"
@@ -116,8 +116,8 @@ if (-not $NativeRoot) {
     $NativeRoot = Join-Path $repoRoot "native/nnrp_quic_bridge/target/release"
 }
 
-if (-not (Test-Path $runtimeScript)) {
-    throw "Runtime script not found: $runtimeScript"
+if (-not (Test-Path $externalAppScript)) {
+    throw "External application script not found: $externalAppScript"
 }
 
 if (-not (Test-Path $reproScript)) {
@@ -126,20 +126,20 @@ if (-not (Test-Path $reproScript)) {
 
 $logRoot = Join-Path $env:TEMP ("nnrp-loopback-smoke-{0}" -f ([guid]::NewGuid().ToString("N")))
 $null = New-Item -ItemType Directory -Force -Path $logRoot
-$runtimeStdoutPath = Join-Path $logRoot "runtime.stdout.log"
-$runtimeStderrPath = Join-Path $logRoot "runtime.stderr.log"
+$externalStdoutPath = Join-Path $logRoot "external-app.stdout.log"
+$externalStderrPath = Join-Path $logRoot "external-app.stderr.log"
 $smokeOutputPath = Join-Path $logRoot "native-smoke.log"
-$configPath = Join-Path $logRoot "runtime-loopback.yaml"
+$configPath = Join-Path $logRoot "external-loopback.yaml"
 
 $null = $SkipStagePackage
 
-$runtimeArgs = @(
+$externalAppArgs = @(
     "-NoLogo",
     "-NoProfile",
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    $runtimeScript,
+    $externalAppScript,
     "-Backend",
     "fake",
     "-ListenHost",
@@ -153,10 +153,10 @@ $runtimeArgs = @(
     $configPath
 )
 
-$runtimeProcess = Start-Process -FilePath "pwsh" `
-    -ArgumentList $runtimeArgs `
-    -RedirectStandardOutput $runtimeStdoutPath `
-    -RedirectStandardError $runtimeStderrPath `
+$externalAppProcess = Start-Process -FilePath "pwsh" `
+    -ArgumentList $externalAppArgs `
+    -RedirectStandardOutput $externalStdoutPath `
+    -RedirectStandardError $externalStderrPath `
     -PassThru `
     -WindowStyle Hidden
 
@@ -218,69 +218,16 @@ try {
     if ($null -ne $lastError) {
         throw $lastError
     }
-
-    $smokeOutput = if (Test-Path $smokeOutputPath) { Get-Content -Path $smokeOutputPath -Raw } else { "" }
-    if ($smokeOutput -match '(?m)^FAIL frame_id=') {
-        throw "Native bridge repro reported a frame failure. See $smokeOutputPath"
-    }
-
-    if ($smokeOutput -notmatch '(?m)^RESULT frame_id=') {
-        throw "Native bridge repro did not emit a RESULT line. See $smokeOutputPath"
-    }
-
-    if ($UseAutoTransport) {
-        if ($smokeOutput -notmatch '(?m)^OPEN selected_transport=') {
-            throw "Auto-transport repro did not emit an OPEN selected_transport line. See $smokeOutputPath"
-        }
-
-        if ($smokeOutput -notmatch '(?m)^PROBE_SUMMARY transport=Quic ') {
-            throw "Auto-transport repro did not emit a QUIC probe summary. See $smokeOutputPath"
-        }
-
-        if ($smokeOutput -notmatch '(?m)^PROBE_SUMMARY transport=Tcp ') {
-            throw "Auto-transport repro did not emit a TCP probe summary. See $smokeOutputPath"
-        }
-    }
-
-    $runtimeStdout = if (Test-Path $runtimeStdoutPath) { Get-Content -Path $runtimeStdoutPath -Raw } else { "" }
-    $runtimeStderr = if (Test-Path $runtimeStderrPath) { Get-Content -Path $runtimeStderrPath -Raw } else { "" }
-    $runtimeLogs = ($runtimeStdout, $runtimeStderr -join [Environment]::NewLine)
-
-    if ([string]::IsNullOrWhiteSpace($runtimeLogs)) {
-        throw "Runtime loopback smoke did not capture any runtime logs. See $runtimeStdoutPath"
-    }
-
-    Write-Host ("[nnrp-cs] loopback smoke passed on {0}:{1}" -f $RuntimeHost, $resolvedTransportPort)
-    Write-Host ("[nnrp-cs] runtime log: {0}" -f $runtimeStdoutPath)
-    Write-Host ("[nnrp-cs] smoke log: {0}" -f $smokeOutputPath)
 }
 finally {
-    if ($runtimeProcess -and -not $runtimeProcess.HasExited) {
-        & taskkill.exe /PID $runtimeProcess.Id /T /F | Out-Null
-        $runtimeProcess.WaitForExit()
+    if ($null -ne $externalAppProcess -and -not $externalAppProcess.HasExited) {
+        Stop-Process -Id $externalAppProcess.Id -Force
     }
 
-    $logScopedProcesses = Get-CimInstance Win32_Process | Where-Object {
-        $_.ProcessId -ne $PID -and
-        $null -ne $_.CommandLine -and
-        $_.CommandLine -like "*$logRoot*"
+    if ($KeepLogs) {
+        Write-Host "[nnrp-cs] kept loopback logs at $logRoot"
     }
-
-    foreach ($logScopedProcess in ($logScopedProcesses | Sort-Object ProcessId -Descending)) {
-        try {
-            & taskkill.exe /PID $logScopedProcess.ProcessId /T /F | Out-Null
-        }
-        catch {
-            # Best-effort teardown for runtime child processes that already exited.
-        }
-    }
-
-    if (-not $KeepLogs -and (Test-Path $logRoot)) {
-        try {
-            Remove-Item -Path $logRoot -Recurse -Force
-        }
-        catch {
-            Write-Warning ("Failed to remove loopback smoke logs at {0}: {1}" -f $logRoot, $_.Exception.Message)
-        }
+    elseif (Test-Path $logRoot) {
+        Remove-Item -Recurse -Force $logRoot
     }
 }

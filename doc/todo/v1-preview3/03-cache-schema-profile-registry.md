@@ -9,13 +9,14 @@
 ## Schema And Registry Surface
 
 - [ ] Add managed wrappers for schema/profile installation, lookup, invalidation, and version mismatch handling.
-- [ ] Model schema descriptor common headers and typed payload descriptor views only after 32B / 24B layouts freeze upstream.
+- [ ] Model schema descriptor common headers and typed payload descriptor views against the frozen 32B / 24B layouts plus the first-round standard registry assignments from `nnrp-doc`.
 - [ ] Keep schema/profile interpretation native-core-owned; managed code should expose descriptors and safe wrappers only.
 
 ## Standard Profiles
 
 - [ ] Treat `tensor` and `token` as peer first-round standard profiles on the public C# surface.
-- [ ] Add host-facing token-profile wrappers only after token minimum semantics freeze upstream.
+- [ ] Treat `profile_id = 0` as `unspecified` on the public C# surface rather than an implicit tensor default.
+- [ ] Add host-facing token-profile wrappers against the frozen token minimum semantics and first-round registry assignments from `nnrp-doc`.
 - [ ] Do not keep preview3 public APIs tensor-privileged once the Rust/profile contract is frozen.
 
 ## Payload Family Boundaries

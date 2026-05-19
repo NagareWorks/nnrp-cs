@@ -6,19 +6,19 @@ using Xunit;
 
 namespace Nnrp.NativeBridge.Tests
 {
-    public sealed class RuntimeLoopbackSmokeTests
+    public sealed class ExternalLoopbackSmokeTests
     {
         private const string KeepLogsVariableName = "NNRP_KEEP_LOOPBACK_LOGS";
         private const string SkipStagePackageVariableName = "NNRP_SKIP_STAGE_PACKAGE";
         private const string TimeoutSecondsVariableName = "NNRP_QUIC_SMOKE_TIMEOUT_SECONDS";
 
-        [RuntimeLoopbackFact]
-        public Task LoopbackSmokePassesAgainstSupportedRuntime()
+        [ExternalLoopbackFact]
+        public Task LoopbackSmokePassesAgainstConfiguredExternalApplication()
         {
-            Assert.True(RuntimeLoopbackFactAttribute.TryFindRepoRoot(out var repoRoot), "Could not locate the nnrp-cs repository root.");
-            Assert.True(RuntimeLoopbackFactAttribute.TryFindRuntimeRepoRoot(repoRoot, out var runtimeRepoRoot), "Could not locate the neural-render-runtime repository root.");
+            Assert.True(ExternalLoopbackFactAttribute.TryFindRepoRoot(out var repoRoot), "Could not locate the nnrp-cs repository root.");
+            Assert.True(ExternalLoopbackFactAttribute.TryFindExternalAppRepoRoot(out var externalAppRepoRoot), "Could not locate the external application repository root.");
 
-            var scriptPath = Path.Combine(repoRoot, "scripts", "run_runtime_loopback_smoke.ps1");
+            var scriptPath = Path.Combine(repoRoot, "scripts", "run_external_loopback_smoke.ps1");
             var startInfo = new ProcessStartInfo("pwsh")
             {
                 WorkingDirectory = repoRoot,
@@ -30,28 +30,28 @@ namespace Nnrp.NativeBridge.Tests
             startInfo.ArgumentList.Add("Bypass");
             startInfo.ArgumentList.Add("-File");
             startInfo.ArgumentList.Add(scriptPath);
-            startInfo.ArgumentList.Add("-RuntimeRepoRoot");
-            startInfo.ArgumentList.Add(runtimeRepoRoot);
+            startInfo.ArgumentList.Add("-ExternalAppRepoRoot");
+            startInfo.ArgumentList.Add(externalAppRepoRoot);
             startInfo.ArgumentList.Add("-UseAutoTransport");
 
-            if (RuntimeLoopbackFactAttribute.IsEnabled(Environment.GetEnvironmentVariable(SkipStagePackageVariableName)))
+            if (ExternalLoopbackFactAttribute.IsEnabled(Environment.GetEnvironmentVariable(SkipStagePackageVariableName)))
             {
                 startInfo.ArgumentList.Add("-SkipStagePackage");
             }
 
-            if (RuntimeLoopbackFactAttribute.IsEnabled(Environment.GetEnvironmentVariable(KeepLogsVariableName)))
+            if (ExternalLoopbackFactAttribute.IsEnabled(Environment.GetEnvironmentVariable(KeepLogsVariableName)))
             {
                 startInfo.ArgumentList.Add("-KeepLogs");
             }
 
             using var process = new Process { StartInfo = startInfo };
-            Assert.True(process.Start(), "Failed to start the runtime loopback smoke process.");
+            Assert.True(process.Start(), "Failed to start the external loopback smoke process.");
 
             var timeout = GetTimeout();
             if (!process.WaitForExit((int)timeout.TotalMilliseconds))
             {
                 TryKill(process);
-                Assert.Fail($"Runtime loopback smoke timed out after {timeout.TotalSeconds:F0} seconds.");
+                Assert.Fail($"External loopback smoke timed out after {timeout.TotalSeconds:F0} seconds.");
             }
 
             Assert.True(
@@ -83,7 +83,7 @@ namespace Nnrp.NativeBridge.Tests
 
         private static string BuildFailureMessage(int exitCode, string scriptPath)
         {
-            return $"Runtime loopback smoke exited with code {exitCode}. Re-run {scriptPath} manually for detailed logs.";
+            return $"External loopback smoke exited with code {exitCode}. Re-run {scriptPath} manually for detailed logs.";
         }
     }
 }

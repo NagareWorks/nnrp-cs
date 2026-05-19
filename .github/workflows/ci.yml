@@ -111,6 +111,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Checkout nnrp-conformance action
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/nnrp-conformance
+          path: nnrp-conformance-action
+          fetch-depth: 1
+
       - name: Validate tracked UPM metadata
         shell: pwsh
         run: >-
@@ -130,6 +137,7 @@ jobs:
         shell: pwsh
         run: |
           $coverageRoot = Join-Path $PWD "artifacts/test-results"
+          $env:NNRP_CONFORMANCE_RECIPE_MANIFEST = Join-Path $PWD 'nnrp-conformance-action/protocol/nnrp-1-preview2/vectors/semantic-vectors.json'
 
           function Invoke-CoveredTest {
             param(
@@ -169,7 +177,7 @@ jobs:
             }
           }
 
-          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceExporter]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj" -ArtifactName "Nnrp.Client.Tests" -IncludeFilter "[Nnrp.Client]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
@@ -276,6 +284,7 @@ jobs:
           sdk-vector-command: >-
             dotnet run --project tools/Nnrp.ConformanceExporter/Nnrp.ConformanceExporter.csproj --
             --protocol-version ${{ steps.conformance-baseline.outputs.protocol-version }}
+            --recipe-manifest nnrp-conformance-action/protocol/${{ steps.conformance-baseline.outputs.protocol-version }}/vectors/semantic-vectors.json
             --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
 
   docs-only:

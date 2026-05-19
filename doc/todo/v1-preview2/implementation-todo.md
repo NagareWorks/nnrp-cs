@@ -228,8 +228,8 @@
 - [x] Add unit tests that freeze multi-sample probe scoring outcomes, including tie-breaks and failure penalties.
 - [x] Add loopback smoke tests for probing and migration on both QUIC and TCP bindings.
 	- [x] Add TCP auto-probe loopback smoke coverage for `TRANSPORT_PROBE -> CLIENT_HELLO -> FRAME_SUBMIT -> RESULT_PUSH -> PING/PONG -> CLOSE`.
-	- [x] Add native runtime auto-probe smoke coverage that exercises QUIC/TCP probe summaries against the split preview/gateway ports.
-	- [x] Extend the native runtime auto-probe smoke from `PING/PONG + FRAME_CANCEL + probe summaries` to `FRAME_SUBMIT -> RESULT_PUSH` once `neural-render-runtime` preview bridge decodes preview2 `FrameSubmitMetadata`.
+	- [x] Add opt-in external loopback auto-probe smoke coverage that exercises QUIC/TCP probe summaries against the split preview/gateway ports.
+	- [x] Extend the opt-in external loopback auto-probe smoke from `PING/PONG + FRAME_CANCEL + probe summaries` to `FRAME_SUBMIT -> RESULT_PUSH` once the external application's preview bridge decodes preview2 `FrameSubmitMetadata`.
 	- [x] Add migration loopback coverage and QUIC-backed probe/migration smoke paths; the remaining gap is transport-switching coverage beyond the current TCP `SESSION_MIGRATE -> SESSION_MIGRATE_ACK` control-plane loopback.
 
 ## 6. Validation
