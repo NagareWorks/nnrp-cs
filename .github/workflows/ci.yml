@@ -238,6 +238,26 @@ jobs:
           path: nnrp-conformance-action
           fetch-depth: 1
 
+      - name: Resolve conformance baseline
+        id: conformance-baseline
+        shell: pwsh
+        run: |
+          $capabilityFiles = Get-ChildItem (Join-Path $PWD 'conformance') -Filter '*.capabilities.json'
+          if ($capabilityFiles.Count -ne 1) {
+            throw "Expected exactly one capability manifest under conformance/, found $($capabilityFiles.Count)."
+          }
+
+          $capabilityFile = $capabilityFiles[0]
+          $capabilityManifest = Get-Content -Raw $capabilityFile.FullName | ConvertFrom-Json
+          $protocolVersion = [string]$capabilityManifest.protocol_version
+          if ([string]::IsNullOrWhiteSpace($protocolVersion)) {
+            throw "Capability manifest does not declare protocol_version: $($capabilityFile.FullName)"
+          }
+
+          "protocol-version=$protocolVersion" >> $env:GITHUB_OUTPUT
+          "capabilities-path=conformance/$($capabilityFile.Name)" >> $env:GITHUB_OUTPUT
+          "artifact-name=nnrp-cs-conformance" >> $env:GITHUB_OUTPUT
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -249,13 +269,13 @@ jobs:
       - name: Run suite-owned conformance action
         uses: ./nnrp-conformance-action/.github/actions/run-conformance
         with:
-          protocol-version: nnrp-1-preview2
-          capabilities-path: conformance/nnrp-1-preview2.capabilities.json
+          protocol-version: ${{ steps.conformance-baseline.outputs.protocol-version }}
+          capabilities-path: ${{ steps.conformance-baseline.outputs.capabilities-path }}
           working-directory: .
-          artifact-name: nnrp-cs-conformance-preview2
+          artifact-name: ${{ steps.conformance-baseline.outputs.artifact-name }}
           sdk-vector-command: >-
             dotnet run --project tools/Nnrp.ConformanceExporter/Nnrp.ConformanceExporter.csproj --
-            --protocol-version nnrp-1-preview2
+            --protocol-version ${{ steps.conformance-baseline.outputs.protocol-version }}
             --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
 
   docs-only:
