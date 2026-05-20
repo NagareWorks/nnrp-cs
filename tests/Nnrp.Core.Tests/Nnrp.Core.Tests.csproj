@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\..\tools\Nnrp.ConformanceAdapter\Nnrp.ConformanceAdapter.csproj" />
     <ProjectReference Include="..\..\tools\Nnrp.ConformanceExporter\Nnrp.ConformanceExporter.csproj" />
   </ItemGroup>
 

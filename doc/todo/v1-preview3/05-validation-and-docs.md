@@ -2,6 +2,10 @@
 
 ## Validation
 
+- [x] Freeze the preview3 adapter command contract as a C#-owned wrapper over the suite-owned plan/result JSON: `dotnet run --project tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj -- --plan <path> --output <path>`.
+- [x] Freeze that `nnrp-conformance` owns only the execution-plan/result JSON and selected-case semantics; `nnrp-cs` owns the project path, extra flags, native bridge bootstrap, and Unity/.NET host plumbing around the adapter wrapper.
+- [x] Add the initial `tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj` wrapper so it can read the suite-owned execution plan and emit a schema-valid explicit `not_implemented` case-result report.
+- [ ] Implement real preview3 adapter case execution inside `tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj` so selected cases stop returning placeholder `not_implemented` results.
 - [ ] Add a preview3 conformance exporter and wire it into the suite-owned conformance action against the Rust canonical vectors.
 - [ ] Add native smoke coverage for multi-session preview3 flows on one live connection.
 - [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
