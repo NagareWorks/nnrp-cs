@@ -1,7 +1,7 @@
 {
   "name": "com.nnrp.client",
   "displayName": "NNRP Client SDK",
-  "version": "1.0.0-preview.2",
+  "version": "1.0.0-preview.3",
   "unity": "2022.3",
   "description": "UPM distribution of the NNRP managed client SDK and packaged native bridge assets.",
   "documentationUrl": "https://nagareworks.github.io/nnrp-doc/",
