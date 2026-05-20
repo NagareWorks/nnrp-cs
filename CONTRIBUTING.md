@@ -33,6 +33,8 @@ Rules:
 
 `release/<version>` branches are optional and should be used only when a version needs stabilization passes, packaging rehearsals, or manual workflow runs without publishing from `main`.
 
+Manual `Release` workflow runs should leave external publishing disabled unless you intentionally enable `create_tag`; package publication from an untagged ref is not allowed.
+
 ## Commit Message Convention
 
 Use Conventional Commits.

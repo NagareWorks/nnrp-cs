@@ -10,11 +10,16 @@ on:
         description: Git ref to release when running manually
         required: true
         default: main
+      create_tag:
+        description: Create and push the resolved release tag before publishing
+        required: true
+        type: boolean
+        default: false
       publish_github_release:
         description: Publish or update the GitHub Release
         required: true
         type: boolean
-        default: true
+        default: false
       publish_github_packages:
         description: Publish NuGet packages to GitHub Packages
         required: true
@@ -159,8 +164,29 @@ jobs:
             echo "Release tag mismatch: expected $expected_tag but workflow was triggered by $actual_tag."
             exit 1
           fi
-      - name: Create git tag
+
+      - name: Validate manual release options
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ inputs.publish_github_release }}" = "true" ] && [ "${{ inputs.create_tag }}" != "true" ]; then
+            echo "Manual GitHub Release publishing requires create_tag=true so the release is anchored to an explicit tag."
+            exit 1
+          fi
+
+          if [ "${{ inputs.publish_github_packages }}" = "true" ] && [ "${{ inputs.create_tag }}" != "true" ]; then
+            echo "Manual GitHub Packages publishing requires create_tag=true so package publication cannot start from an untagged ref."
+            exit 1
+          fi
+
+          if [ "${{ inputs.publish_nuget }}" = "true" ] && [ "${{ inputs.create_tag }}" != "true" ]; then
+            echo "Manual nuget.org publishing requires create_tag=true so package publication cannot start from an untagged ref."
+            exit 1
+          fi
+      - name: Create git tag
+        if: github.event_name == 'workflow_dispatch' && inputs.create_tag
         shell: pwsh
         run: |
           git fetch --tags
@@ -262,7 +288,7 @@ jobs:
           retention-days: 14
 
       - name: Publish GitHub release
-        if: github.event_name == 'push' || inputs.publish_github_release
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_tag && inputs.publish_github_release)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
@@ -273,7 +299,7 @@ jobs:
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
 
       - name: Publish NuGet packages to GitHub Packages
-        if: (github.event_name == 'push' || inputs.publish_github_packages) && env.GITHUB_PACKAGES_PUBLISH_MODE == 'enabled'
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_tag && inputs.publish_github_packages)) && env.GITHUB_PACKAGES_PUBLISH_MODE == 'enabled'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -284,14 +310,14 @@ jobs:
           }
 
       - name: NuGet login (OIDC to temporary API key)
-        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_tag && inputs.publish_nuget)) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
         id: nuget_login
         uses: NuGet/login@v1
         with:
           user: ${{ env.NUGET_USER }}
 
       - name: Publish NuGet packages to nuget.org via Trusted Publishing
-        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_tag && inputs.publish_nuget)) && env.NUGET_PUBLISH_MODE == 'trusted' && env.NUGET_USER != ''
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
@@ -301,7 +327,7 @@ jobs:
           }
 
       - name: Publish NuGet packages to nuget.org via API token
-        if: (github.event_name == 'push' || inputs.publish_nuget) && env.NUGET_PUBLISH_MODE == 'token' && env.NUGET_API_KEY != ''
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_tag && inputs.publish_nuget)) && env.NUGET_PUBLISH_MODE == 'token' && env.NUGET_API_KEY != ''
         shell: pwsh
         run: |
           Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
