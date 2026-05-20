@@ -2,6 +2,9 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
+      - release/**
   pull_request:
   workflow_dispatch:
 
@@ -177,7 +180,7 @@ jobs:
             }
           }
 
-          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceExporter]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceExporter]*%2c[Nnrp.ConformanceAdapter]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj" -ArtifactName "Nnrp.Client.Tests" -IncludeFilter "[Nnrp.Client]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
@@ -286,6 +289,10 @@ jobs:
             --protocol-version ${{ steps.conformance-baseline.outputs.protocol-version }}
             --recipe-manifest nnrp-conformance-action/protocol/${{ steps.conformance-baseline.outputs.protocol-version }}/vectors/semantic-vectors.json
             --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
+          adapter-command: >-
+            dotnet run --project tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj --
+            --plan $env:NNRP_CONFORMANCE_ADAPTER_PLAN
+            --output $env:NNRP_CONFORMANCE_ADAPTER_RESULTS
 
   docs-only:
     needs:
