@@ -13,7 +13,13 @@ namespace Nnrp.NativeBridge
     {
         NnrpQuicClient CreateQuicClient(NnrpQuicClientOptions options);
 
-        byte[] ProbeQuic(string host, ushort port, string tlsServerName, byte[] probePacket);
+        byte[] ProbeQuic(
+            string host,
+            ushort port,
+            string tlsServerName,
+            byte[] probePacket,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null);
     }
 
     internal sealed class NnrpAutoTransportRuntime : INnrpAutoTransportRuntime
@@ -29,9 +35,21 @@ namespace Nnrp.NativeBridge
             return new NnrpQuicClient(options);
         }
 
-        public byte[] ProbeQuic(string host, ushort port, string tlsServerName, byte[] probePacket)
+        public byte[] ProbeQuic(
+            string host,
+            ushort port,
+            string tlsServerName,
+            byte[] probePacket,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
-            return NnrpNativeQuicClient.Probe(host, port, tlsServerName, probePacket);
+            return NnrpNativeQuicClient.Probe(
+                host,
+                port,
+                tlsServerName,
+                probePacket,
+                certificateVerificationMode,
+                caCertificatePath);
         }
     }
 
@@ -43,7 +61,9 @@ namespace Nnrp.NativeBridge
             string tlsServerName,
             string requestedModel,
             uint requestedSessionId = 11,
-            ushort tcpPort = 0)
+            ushort tcpPort = 0,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
             if (string.IsNullOrWhiteSpace(host))
             {
@@ -60,12 +80,24 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentException("Requested model must not be empty.", nameof(requestedModel));
             }
 
+            if (!Enum.IsDefined(typeof(NnrpQuicCertificateVerificationMode), certificateVerificationMode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(certificateVerificationMode));
+            }
+
+            if (caCertificatePath != null && string.IsNullOrWhiteSpace(caCertificatePath))
+            {
+                throw new ArgumentException("CA certificate path must not be empty when provided.", nameof(caCertificatePath));
+            }
+
             Host = host;
             Port = port;
             TcpPort = tcpPort == 0 ? port : tcpPort;
             TlsServerName = tlsServerName;
             RequestedModel = requestedModel;
             RequestedSessionId = requestedSessionId;
+            CertificateVerificationMode = certificateVerificationMode;
+            CaCertificatePath = caCertificatePath;
         }
 
         public string Host { get; }
@@ -79,6 +111,10 @@ namespace Nnrp.NativeBridge
         public string RequestedModel { get; }
 
         public uint RequestedSessionId { get; }
+
+        public NnrpQuicCertificateVerificationMode CertificateVerificationMode { get; }
+
+        public string? CaCertificatePath { get; }
 
         public byte RequestedWireFormat => NnrpHeader.CurrentWireFormat;
     }
@@ -192,7 +228,9 @@ namespace Nnrp.NativeBridge
                     options.Port,
                     options.TlsServerName,
                     options.RequestedModel,
-                    options.RequestedSessionId);
+                    options.RequestedSessionId,
+                    options.CertificateVerificationMode,
+                    options.CaCertificatePath);
                 quicClient = runtime.CreateQuicClient(quicOptions);
                 NnrpNativeQuicClient.OpenResult openResult;
                 try
@@ -598,11 +636,13 @@ namespace Nnrp.NativeBridge
 
             var stopwatch = Stopwatch.StartNew();
             var response = await RunBlockingNativeCallAsync(
-                    () => runtime.ProbeQuic(
+                () => runtime.ProbeQuic(
                     options.Host,
                     options.Port,
                     options.TlsServerName,
-                    probe.ToArray()),
+                    probe.ToArray(),
+                    options.CertificateVerificationMode,
+                    options.CaCertificatePath),
                 cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
 
@@ -801,7 +841,9 @@ namespace Nnrp.NativeBridge
                 options.Port,
                 options.TlsServerName,
                 string.IsNullOrWhiteSpace(ActiveModelName) ? options.RequestedModel : ActiveModelName,
-                requestedSessionId: NegotiatedSessionId);
+                requestedSessionId: NegotiatedSessionId,
+                certificateVerificationMode: options.CertificateVerificationMode,
+                caCertificatePath: options.CaCertificatePath);
             var preparedClient = runtime.CreateQuicClient(quicOptions);
             try
             {

@@ -16,6 +16,8 @@ namespace Nnrp.NativeBridge
             string requestedModel,
             uint requestedSessionId,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out ulong handle,
             out uint negotiatedSessionId,
             out byte negotiatedWireFormat,
@@ -76,6 +78,8 @@ namespace Nnrp.NativeBridge
             byte[] probePacket,
             int probePacketLength,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out IntPtr responsePacketPointer,
             out int responsePacketLength,
             out IntPtr errorPointer);
@@ -212,7 +216,9 @@ namespace Nnrp.NativeBridge
             ushort port,
             string tlsServerName,
             string requestedModel,
-            uint requestedSessionId = 11)
+            uint requestedSessionId = 11,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
             return Open(
                 host,
@@ -220,7 +226,9 @@ namespace Nnrp.NativeBridge
                 tlsServerName,
                 requestedModel,
                 requestedSessionId,
-                nnrp_quic_client_open,
+                certificateVerificationMode,
+                caCertificatePath,
+                nnrp_quic_client_open_with_tls,
                 nnrp_quic_string_free);
         }
 
@@ -230,6 +238,29 @@ namespace Nnrp.NativeBridge
             string tlsServerName,
             string requestedModel,
             uint requestedSessionId,
+            OpenInvoker openInvoker,
+            Action<IntPtr> freeString)
+        {
+            return Open(
+                host,
+                port,
+                tlsServerName,
+                requestedModel,
+                requestedSessionId,
+                NnrpQuicCertificateVerificationMode.Secure,
+                null,
+                openInvoker,
+                freeString);
+        }
+
+        internal static OpenResult Open(
+            string host,
+            ushort port,
+            string tlsServerName,
+            string requestedModel,
+            uint requestedSessionId,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode,
+            string? caCertificatePath,
             OpenInvoker openInvoker,
             Action<IntPtr> freeString)
         {
@@ -247,6 +278,8 @@ namespace Nnrp.NativeBridge
             {
                 throw new ArgumentException("Requested model must not be empty.", nameof(requestedModel));
             }
+
+            ValidateCertificateOptions(certificateVerificationMode, caCertificatePath);
 
             if (openInvoker == null)
             {
@@ -269,6 +302,8 @@ namespace Nnrp.NativeBridge
                     requestedModel,
                     requestedSessionId,
                     NnrpHeader.CurrentWireFormat,
+                    (byte)certificateVerificationMode,
+                    caCertificatePath ?? string.Empty,
                     out ulong handle,
                     out uint negotiatedSessionId,
                     out byte negotiatedWireFormat,
@@ -651,14 +686,18 @@ namespace Nnrp.NativeBridge
             string host,
             ushort port,
             string tlsServerName,
-            byte[] probePacket)
+            byte[] probePacket,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
             return Probe(
                 host,
                 port,
                 tlsServerName,
                 probePacket,
-                nnrp_quic_client_probe,
+                certificateVerificationMode,
+                caCertificatePath,
+                nnrp_quic_client_probe_with_tls,
                 nnrp_quic_buffer_free,
                 nnrp_quic_string_free);
         }
@@ -668,6 +707,29 @@ namespace Nnrp.NativeBridge
             ushort port,
             string tlsServerName,
             byte[] probePacket,
+            ProbeInvoker probeInvoker,
+            Action<IntPtr, int> freeBuffer,
+            Action<IntPtr> freeString)
+        {
+            return Probe(
+                host,
+                port,
+                tlsServerName,
+                probePacket,
+                NnrpQuicCertificateVerificationMode.Secure,
+                null,
+                probeInvoker,
+                freeBuffer,
+                freeString);
+        }
+
+        internal static byte[] Probe(
+            string host,
+            ushort port,
+            string tlsServerName,
+            byte[] probePacket,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode,
+            string? caCertificatePath,
             ProbeInvoker probeInvoker,
             Action<IntPtr, int> freeBuffer,
             Action<IntPtr> freeString)
@@ -686,6 +748,8 @@ namespace Nnrp.NativeBridge
             {
                 throw new ArgumentException("Probe packet must not be empty.", nameof(probePacket));
             }
+
+            ValidateCertificateOptions(certificateVerificationMode, caCertificatePath);
 
             if (probeInvoker == null)
             {
@@ -714,6 +778,8 @@ namespace Nnrp.NativeBridge
                     probePacket,
                     probePacket.Length,
                     NnrpHeader.CurrentWireFormat,
+                    (byte)certificateVerificationMode,
+                    caCertificatePath ?? string.Empty,
                     out responsePacketPointer,
                     out responsePacketLength,
                     out errorPointer);
@@ -976,14 +1042,31 @@ namespace Nnrp.NativeBridge
             }
         }
 
+        private static void ValidateCertificateOptions(
+            NnrpQuicCertificateVerificationMode certificateVerificationMode,
+            string? caCertificatePath)
+        {
+            if (!Enum.IsDefined(typeof(NnrpQuicCertificateVerificationMode), certificateVerificationMode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(certificateVerificationMode));
+            }
+
+            if (caCertificatePath != null && string.IsNullOrWhiteSpace(caCertificatePath))
+            {
+                throw new ArgumentException("CA certificate path must not be empty when provided.", nameof(caCertificatePath));
+            }
+        }
+
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        private static extern int nnrp_quic_client_open(
+        private static extern int nnrp_quic_client_open_with_tls(
             string host,
             ushort port,
             string tlsServerName,
             string requestedModel,
             uint requestedSessionId,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out ulong handle,
             out uint negotiatedSessionId,
             out byte negotiatedWireFormat,
@@ -1054,13 +1137,15 @@ namespace Nnrp.NativeBridge
             out IntPtr errorPointer);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        private static extern int nnrp_quic_client_probe(
+        private static extern int nnrp_quic_client_probe_with_tls(
             string host,
             ushort port,
             string tlsServerName,
             byte[] probePacket,
             int probePacketLength,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out IntPtr responsePacketPointer,
             out int responsePacketLength,
             out IntPtr errorPointer);

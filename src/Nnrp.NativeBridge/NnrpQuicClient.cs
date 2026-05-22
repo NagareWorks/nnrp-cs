@@ -4,9 +4,22 @@ using Nnrp.Core;
 
 namespace Nnrp.NativeBridge
 {
+    public enum NnrpQuicCertificateVerificationMode : byte
+    {
+        Secure = 0,
+        InsecureSkipVerify = 1,
+    }
+
     internal interface INnrpQuicRuntime
     {
-        NnrpNativeQuicClient.OpenResult Open(string host, ushort port, string tlsServerName, string requestedModel, uint requestedSessionId);
+        NnrpNativeQuicClient.OpenResult Open(
+            string host,
+            ushort port,
+            string tlsServerName,
+            string requestedModel,
+            uint requestedSessionId,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null);
 
         ResultPushMessage Submit(ulong handle, FrameSubmitMessage submitMessage);
 
@@ -33,9 +46,23 @@ namespace Nnrp.NativeBridge
         {
         }
 
-        public NnrpNativeQuicClient.OpenResult Open(string host, ushort port, string tlsServerName, string requestedModel, uint requestedSessionId)
+        public NnrpNativeQuicClient.OpenResult Open(
+            string host,
+            ushort port,
+            string tlsServerName,
+            string requestedModel,
+            uint requestedSessionId,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
-            return NnrpNativeQuicClient.Open(host, port, tlsServerName, requestedModel, requestedSessionId);
+            return NnrpNativeQuicClient.Open(
+                host,
+                port,
+                tlsServerName,
+                requestedModel,
+                requestedSessionId,
+                certificateVerificationMode,
+                caCertificatePath);
         }
 
         public ResultPushMessage Submit(ulong handle, FrameSubmitMessage submitMessage)
@@ -86,7 +113,9 @@ namespace Nnrp.NativeBridge
             ushort port,
             string tlsServerName,
             string requestedModel,
-            uint requestedSessionId = 11)
+            uint requestedSessionId = 11,
+            NnrpQuicCertificateVerificationMode certificateVerificationMode = NnrpQuicCertificateVerificationMode.Secure,
+            string? caCertificatePath = null)
         {
             if (string.IsNullOrWhiteSpace(host))
             {
@@ -103,11 +132,23 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentException("Requested model must not be empty.", nameof(requestedModel));
             }
 
+            if (!Enum.IsDefined(typeof(NnrpQuicCertificateVerificationMode), certificateVerificationMode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(certificateVerificationMode));
+            }
+
+            if (caCertificatePath != null && string.IsNullOrWhiteSpace(caCertificatePath))
+            {
+                throw new ArgumentException("CA certificate path must not be empty when provided.", nameof(caCertificatePath));
+            }
+
             Host = host;
             Port = port;
             TlsServerName = tlsServerName;
             RequestedModel = requestedModel;
             RequestedSessionId = requestedSessionId;
+            CertificateVerificationMode = certificateVerificationMode;
+            CaCertificatePath = caCertificatePath;
         }
 
         public string Host { get; }
@@ -119,6 +160,10 @@ namespace Nnrp.NativeBridge
         public string RequestedModel { get; }
 
         public uint RequestedSessionId { get; }
+
+        public NnrpQuicCertificateVerificationMode CertificateVerificationMode { get; }
+
+        public string? CaCertificatePath { get; }
 
         public byte RequestedWireFormat => NnrpHeader.CurrentWireFormat;
     }
@@ -194,7 +239,9 @@ namespace Nnrp.NativeBridge
                 Options.Port,
                 Options.TlsServerName,
                 Options.RequestedModel,
-                Options.RequestedSessionId);
+                Options.RequestedSessionId,
+                Options.CertificateVerificationMode,
+                Options.CaCertificatePath);
             if (result.Handle == 0)
             {
                 throw new InvalidOperationException("Native QUIC open returned handle 0.");

@@ -14,6 +14,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => new NnrpQuicClientOptions("", 50072, "localhost", "engine-sr"));
             Assert.Throws<ArgumentException>(() => new NnrpQuicClientOptions("127.0.0.1", 50072, "", "engine-sr"));
             Assert.Throws<ArgumentException>(() => new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", ""));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", certificateVerificationMode: (NnrpQuicCertificateVerificationMode)99));
+            Assert.Throws<ArgumentException>(() => new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", caCertificatePath: " "));
             _ = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 11);
         }
 
@@ -23,6 +25,23 @@ namespace Nnrp.NativeBridge.Tests
             var options = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr");
 
             Assert.Equal(NnrpHeader.CurrentWireFormat, options.RequestedWireFormat);
+            Assert.Equal(NnrpQuicCertificateVerificationMode.Secure, options.CertificateVerificationMode);
+            Assert.Null(options.CaCertificatePath);
+        }
+
+        [Fact]
+        public void OptionsAcceptCertificateVerificationPolicy()
+        {
+            var options = new NnrpQuicClientOptions(
+                "127.0.0.1",
+                50072,
+                "localhost",
+                "engine-sr",
+                certificateVerificationMode: NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                caCertificatePath: "certs/test-ca.pem");
+
+            Assert.Equal(NnrpQuicCertificateVerificationMode.InsecureSkipVerify, options.CertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", options.CaCertificatePath);
         }
 
         [Fact]
@@ -124,6 +143,34 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal("engine-sr", observedRequestedModel);
             Assert.Equal(41u, observedRequestedSessionId);
             Assert.Equal(NnrpHeader.CurrentWireFormat, options.RequestedWireFormat);
+        }
+
+        [Fact]
+        public void ConnectPassesCertificateOptionsToRuntime()
+        {
+            NnrpQuicCertificateVerificationMode observedCertificateVerificationMode = 0;
+            string? observedCaCertificatePath = null;
+            var options = new NnrpQuicClientOptions(
+                "127.0.0.1",
+                50072,
+                "localhost",
+                "engine-sr",
+                41,
+                NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                "certs/test-ca.pem");
+            var client = CreateClient(
+                options,
+                openConnectionWithCertificateOptions: (_, _, _, _, _, certificateVerificationMode, caCertificatePath) =>
+                {
+                    observedCertificateVerificationMode = certificateVerificationMode;
+                    observedCaCertificatePath = caCertificatePath;
+                    return new NnrpNativeQuicClient.OpenResult(9, 77, "imdn-x2-tile32");
+                });
+
+            client.Connect();
+
+            Assert.Equal(NnrpQuicCertificateVerificationMode.InsecureSkipVerify, observedCertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", observedCaCertificatePath);
         }
 
         [Fact]
@@ -529,7 +576,8 @@ namespace Nnrp.NativeBridge.Tests
             Func<ulong, PingMessage, PongMessage>? pingRoundTrip = null,
             Action<ulong, FrameCancelMessage>? cancelFrame = null,
             Action<ulong>? closeConnection = null,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult>? openConnection = null)
+            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult>? openConnection = null,
+            Func<string, ushort, string, string, uint, NnrpQuicCertificateVerificationMode, string?, NnrpNativeQuicClient.OpenResult>? openConnectionWithCertificateOptions = null)
         {
             var client = CreateClient(
                 new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41),
@@ -540,7 +588,8 @@ namespace Nnrp.NativeBridge.Tests
                 pingRoundTrip: pingRoundTrip,
                 cancelFrame: cancelFrame,
                 closeConnection: closeConnection,
-                openConnection: openConnection);
+                openConnection: openConnection,
+                openConnectionWithCertificateOptions: openConnectionWithCertificateOptions);
             client.Connect();
             return client;
         }
@@ -555,7 +604,8 @@ namespace Nnrp.NativeBridge.Tests
             Func<ulong, PingMessage, PongMessage>? pingRoundTrip = null,
             Action<ulong, FrameCancelMessage>? cancelFrame = null,
             Action<ulong>? closeConnection = null,
-            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult>? openConnection = null)
+            Func<string, ushort, string, string, uint, NnrpNativeQuicClient.OpenResult>? openConnection = null,
+            Func<string, ushort, string, string, uint, NnrpQuicCertificateVerificationMode, string?, NnrpNativeQuicClient.OpenResult>? openConnectionWithCertificateOptions = null)
         {
             return new NnrpQuicClient(
                 options,
@@ -568,7 +618,8 @@ namespace Nnrp.NativeBridge.Tests
                     receiveSessionPacket: receiveSessionPacket,
                     pingRoundTrip: pingRoundTrip ?? PingRoundTrip,
                     cancelFrame: cancelFrame ?? CancelFrame,
-                    closeConnection: closeConnection ?? CloseConnection));
+                    closeConnection: closeConnection ?? CloseConnection,
+                    openConnectionWithCertificateOptions: openConnectionWithCertificateOptions));
         }
 
         private static NnrpNativeQuicClient.OpenResult OpenConnection(

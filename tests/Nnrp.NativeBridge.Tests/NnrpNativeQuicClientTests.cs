@@ -15,6 +15,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Open("", 443, "localhost", "model", 7, OpenSuccess, _ => { }));
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "", "model", 7, OpenSuccess, _ => { }));
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "localhost", "", 7, OpenSuccess, _ => { }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "localhost", "model", 7, (NnrpQuicCertificateVerificationMode)99, null, OpenSuccess, _ => { }));
+            Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "localhost", "model", 7, NnrpQuicCertificateVerificationMode.Secure, " ", OpenSuccess, _ => { }));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "localhost", "model", 7, (NnrpNativeQuicClient.OpenInvoker)null!, _ => { }));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.Open("127.0.0.1", 443, "localhost", "model", 7, OpenSuccess, null!));
         }
@@ -37,6 +39,60 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(NnrpHeader.CurrentWireFormat, result.NegotiatedWireFormat);
             Assert.Equal("imdn-x2-tile32", result.ActiveModelName);
             Assert.Equal(new[] { "imdn-x2-tile32" }, freed);
+        }
+
+        [Fact]
+        public void OpenPassesCertificateOptionsToNativeInvoker()
+        {
+            byte observedCertificateVerificationMode = 0;
+            string? observedCaCertificatePath = null;
+
+            int OpenWithObservation(
+                string host,
+                ushort port,
+                string tlsServerName,
+                string requestedModel,
+                uint requestedSessionId,
+                byte requestedWireFormat,
+                byte certificateVerificationMode,
+                string caCertificatePath,
+                out ulong handle,
+                out uint negotiatedSessionId,
+                out byte negotiatedWireFormat,
+                out IntPtr activeModelNamePointer,
+                out IntPtr errorPointer)
+            {
+                observedCertificateVerificationMode = certificateVerificationMode;
+                observedCaCertificatePath = caCertificatePath;
+                return OpenSuccess(
+                    host,
+                    port,
+                    tlsServerName,
+                    requestedModel,
+                    requestedSessionId,
+                    requestedWireFormat,
+                    certificateVerificationMode,
+                    caCertificatePath,
+                    out handle,
+                    out negotiatedSessionId,
+                    out negotiatedWireFormat,
+                    out activeModelNamePointer,
+                    out errorPointer);
+            }
+
+            NnrpNativeQuicClient.Open(
+                "127.0.0.1",
+                50072,
+                "localhost",
+                "engine-sr",
+                41,
+                NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                "certs/test-ca.pem",
+                OpenWithObservation,
+                Marshal.FreeHGlobal);
+
+            Assert.Equal((byte)NnrpQuicCertificateVerificationMode.InsecureSkipVerify, observedCertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", observedCaCertificatePath);
         }
 
         [Fact]
@@ -82,6 +138,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Probe("", 443, "localhost", packet, ProbeSuccess, (_, _) => { }, _ => { }));
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "", packet, ProbeSuccess, (_, _) => { }, _ => { }));
             Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", Array.Empty<byte>(), ProbeSuccess, (_, _) => { }, _ => { }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", packet, (NnrpQuicCertificateVerificationMode)99, null, ProbeSuccess, (_, _) => { }, _ => { }));
+            Assert.Throws<ArgumentException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", packet, NnrpQuicCertificateVerificationMode.Secure, " ", ProbeSuccess, (_, _) => { }, _ => { }));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", packet, (NnrpNativeQuicClient.ProbeInvoker)null!, (_, _) => { }, _ => { }));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", packet, ProbeSuccess, null!, _ => { }));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeQuicClient.Probe("127.0.0.1", 443, "localhost", packet, ProbeSuccess, (_, _) => { }, null!));
@@ -112,6 +170,57 @@ namespace Nnrp.NativeBridge.Tests
             Assert.NotEqual(IntPtr.Zero, freedBuffer);
             Assert.Equal(3, freedLength);
             Assert.Empty(freedStrings);
+        }
+
+        [Fact]
+        public void ProbePassesCertificateOptionsToNativeInvoker()
+        {
+            byte observedCertificateVerificationMode = 0;
+            string? observedCaCertificatePath = null;
+
+            int ProbeWithObservation(
+                string host,
+                ushort port,
+                string tlsServerName,
+                byte[] probePacket,
+                int probePacketLength,
+                byte requestedWireFormat,
+                byte certificateVerificationMode,
+                string caCertificatePath,
+                out IntPtr responsePacketPointer,
+                out int responsePacketLength,
+                out IntPtr errorPointer)
+            {
+                observedCertificateVerificationMode = certificateVerificationMode;
+                observedCaCertificatePath = caCertificatePath;
+                return ProbeSuccess(
+                    host,
+                    port,
+                    tlsServerName,
+                    probePacket,
+                    probePacketLength,
+                    requestedWireFormat,
+                    certificateVerificationMode,
+                    caCertificatePath,
+                    out responsePacketPointer,
+                    out responsePacketLength,
+                    out errorPointer);
+            }
+
+            var response = NnrpNativeQuicClient.Probe(
+                "127.0.0.1",
+                50072,
+                "localhost",
+                new byte[] { 0xAA, 0xBB },
+                NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                "certs/test-ca.pem",
+                ProbeWithObservation,
+                (pointer, _) => Marshal.FreeHGlobal(pointer),
+                _ => { });
+
+            Assert.Equal(new byte[] { 0x10, 0x20, 0x30 }, response);
+            Assert.Equal((byte)NnrpQuicCertificateVerificationMode.InsecureSkipVerify, observedCertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", observedCaCertificatePath);
         }
 
         [Fact]
@@ -739,6 +848,8 @@ namespace Nnrp.NativeBridge.Tests
             string requestedModel,
             uint requestedSessionId,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out ulong handle,
             out uint negotiatedSessionId,
             out byte negotiatedWireFormat,
@@ -760,6 +871,8 @@ namespace Nnrp.NativeBridge.Tests
             string requestedModel,
             uint requestedSessionId,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out ulong handle,
             out uint negotiatedSessionId,
             out byte negotiatedWireFormat,
@@ -781,6 +894,8 @@ namespace Nnrp.NativeBridge.Tests
             string requestedModel,
             uint requestedSessionId,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out ulong handle,
             out uint negotiatedSessionId,
             out byte negotiatedWireFormat,
@@ -856,6 +971,8 @@ namespace Nnrp.NativeBridge.Tests
             byte[] probePacket,
             int probePacketLength,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out IntPtr responsePacketPointer,
             out int responsePacketLength,
             out IntPtr errorPointer)
@@ -875,6 +992,8 @@ namespace Nnrp.NativeBridge.Tests
             byte[] probePacket,
             int probePacketLength,
             byte requestedWireFormat,
+            byte certificateVerificationMode,
+            string caCertificatePath,
             out IntPtr responsePacketPointer,
             out int responsePacketLength,
             out IntPtr errorPointer)
