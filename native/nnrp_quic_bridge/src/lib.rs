@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
+use std::fs::File;
+use std::io::BufReader;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -35,6 +37,8 @@ const DEFAULT_IDLE_TIMEOUT_SECONDS: u64 = 120;
 const DEFAULT_KEEPALIVE_INTERVAL_SECONDS: u64 = 10;
 const DEFAULT_CONNECT_STAGE_TIMEOUT_SECONDS: u64 = 10;
 const DEFAULT_SUBMIT_STAGE_TIMEOUT_SECONDS: u64 = 10;
+const TLS_VERIFY_SECURE: u8 = 0;
+const TLS_VERIFY_INSECURE_SKIP_VERIFY: u8 = 1;
 
 static NEXT_CLIENT_HANDLE: AtomicU64 = AtomicU64::new(1);
 static ACTIVE_CLIENTS: OnceLock<Mutex<HashMap<u64, NativeClientWorker>>> = OnceLock::new();
@@ -171,11 +175,26 @@ fn build_runtime() -> Result<Runtime, String> {
 
 fn build_client_config(
     requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: Option<&str>,
 ) -> Result<ClientConfig, String> {
-    let crypto = rustls::ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
-        .with_no_client_auth();
+    let crypto = match tls_verification_mode {
+        TLS_VERIFY_SECURE => {
+            let root_store = build_secure_root_store(ca_certificate_path)?;
+            rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        }
+        TLS_VERIFY_INSECURE_SKIP_VERIFY => rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
+            .with_no_client_auth(),
+        _ => {
+            return Err(format!(
+                "unsupported TLS verification mode {tls_verification_mode}"
+            ))
+        }
+    };
     let mut crypto = crypto;
     crypto.alpn_protocols = build_alpn_protocols(requested_wire_format)?;
 
@@ -195,9 +214,54 @@ fn build_client_config(
     Ok(client_config)
 }
 
-fn build_alpn_protocols(
-    requested_wire_format: u8,
-) -> Result<Vec<Vec<u8>>, String> {
+fn build_secure_root_store(
+    ca_certificate_path: Option<&str>,
+) -> Result<rustls::RootCertStore, String> {
+    let mut root_store = rustls::RootCertStore::empty();
+    let native_certificates = rustls_native_certs::load_native_certs();
+    let native_error_count = native_certificates.errors.len();
+    root_store.add_parsable_certificates(native_certificates.certs);
+
+    if let Some(path) = ca_certificate_path {
+        for certificate in load_ca_certificates(path)? {
+            root_store
+                .add(certificate)
+                .map_err(|error| format!("failed to add CA certificate from {path}: {error}"))?;
+        }
+    }
+
+    if root_store.roots.is_empty() {
+        return Err(if native_error_count == 0 {
+            "no TLS root certificates were available".to_string()
+        } else {
+            format!("no TLS root certificates were available; native store reported {native_error_count} load error(s)")
+        });
+    }
+
+    Ok(root_store)
+}
+
+fn load_ca_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>, String> {
+    if path.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let file = File::open(path)
+        .map_err(|error| format!("failed to open CA certificate file {path}: {error}"))?;
+    let mut reader = BufReader::new(file);
+    let certificates = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed to read CA certificate file {path}: {error}"))?;
+    if certificates.is_empty() {
+        return Err(format!(
+            "CA certificate file {path} did not contain any certificates"
+        ));
+    }
+
+    Ok(certificates)
+}
+
+fn build_alpn_protocols(requested_wire_format: u8) -> Result<Vec<Vec<u8>>, String> {
     if requested_wire_format != CURRENT_WIRE_FORMAT {
         return Err(format!(
             "requested_wire_format must be {}",
@@ -216,6 +280,39 @@ pub extern "C" fn nnrp_quic_client_open(
     requested_model: *const c_char,
     requested_session_id: u32,
     requested_wire_format: u8,
+    out_handle: *mut u64,
+    out_negotiated_session_id: *mut u32,
+    out_negotiated_wire_format: *mut u8,
+    out_active_model_name: *mut *mut c_char,
+    out_error: *mut *mut c_char,
+) -> c_int {
+    nnrp_quic_client_open_with_tls(
+        host,
+        port,
+        tls_server_name,
+        requested_model,
+        requested_session_id,
+        requested_wire_format,
+        TLS_VERIFY_INSECURE_SKIP_VERIFY,
+        ptr::null(),
+        out_handle,
+        out_negotiated_session_id,
+        out_negotiated_wire_format,
+        out_active_model_name,
+        out_error,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn nnrp_quic_client_open_with_tls(
+    host: *const c_char,
+    port: u16,
+    tls_server_name: *const c_char,
+    requested_model: *const c_char,
+    requested_session_id: u32,
+    requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: *const c_char,
     out_handle: *mut u64,
     out_negotiated_session_id: *mut u32,
     out_negotiated_wire_format: *mut u8,
@@ -243,6 +340,7 @@ pub extern "C" fn nnrp_quic_client_open(
         let host = read_required_c_string(host, "host")?;
         let tls_server_name = read_required_c_string(tls_server_name, "tls_server_name")?;
         let requested_model = read_required_c_string(requested_model, "requested_model")?;
+        let ca_certificate_path = read_optional_c_string(ca_certificate_path)?;
         let (client, negotiated_session_id, negotiated_wire_format, active_model_name) =
             spawn_native_client_worker(
                 &host,
@@ -251,6 +349,8 @@ pub extern "C" fn nnrp_quic_client_open(
                 &requested_model,
                 requested_session_id,
                 requested_wire_format,
+                tls_verification_mode,
+                ca_certificate_path.as_deref(),
             )?;
 
         let handle = NEXT_CLIENT_HANDLE.fetch_add(1, Ordering::Relaxed);
@@ -293,6 +393,35 @@ pub extern "C" fn nnrp_quic_client_probe(
     out_response_packet_len: *mut c_int,
     out_error: *mut *mut c_char,
 ) -> c_int {
+    nnrp_quic_client_probe_with_tls(
+        host,
+        port,
+        tls_server_name,
+        probe_packet,
+        probe_packet_len,
+        requested_wire_format,
+        TLS_VERIFY_INSECURE_SKIP_VERIFY,
+        ptr::null(),
+        out_response_packet,
+        out_response_packet_len,
+        out_error,
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn nnrp_quic_client_probe_with_tls(
+    host: *const c_char,
+    port: u16,
+    tls_server_name: *const c_char,
+    probe_packet: *const u8,
+    probe_packet_len: c_int,
+    requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: *const c_char,
+    out_response_packet: *mut *mut u8,
+    out_response_packet_len: *mut c_int,
+    out_error: *mut *mut c_char,
+) -> c_int {
     if host.is_null()
         || tls_server_name.is_null()
         || probe_packet.is_null()
@@ -315,12 +444,15 @@ pub extern "C" fn nnrp_quic_client_probe(
     let result = (|| -> Result<Vec<u8>, String> {
         let host = read_required_c_string(host, "host")?;
         let tls_server_name = read_required_c_string(tls_server_name, "tls_server_name")?;
+        let ca_certificate_path = read_optional_c_string(ca_certificate_path)?;
         probe_native_quic(
             &host,
             port,
             &tls_server_name,
             probe_packet,
             requested_wire_format,
+            tls_verification_mode,
+            ca_certificate_path.as_deref(),
         )
     })();
 
@@ -494,7 +626,8 @@ pub extern "C" fn nnrp_quic_client_begin_submit(
         *out_error = ptr::null_mut();
     }
 
-    let submit_packet = unsafe { std::slice::from_raw_parts(submit_packet, submit_packet_len as usize) };
+    let submit_packet =
+        unsafe { std::slice::from_raw_parts(submit_packet, submit_packet_len as usize) };
     let result = (|| -> Result<(), String> {
         ensure_message_type(submit_packet, MSG_FRAME_SUBMIT, "FRAME_SUBMIT")?;
 
@@ -513,7 +646,9 @@ pub extern "C" fn nnrp_quic_client_begin_submit(
                 submit_packet: submit_packet.to_vec(),
                 response_tx,
             })
-            .map_err(|_| format!("native client worker terminated before begin-submit: {handle}"))?;
+            .map_err(|_| {
+                format!("native client worker terminated before begin-submit: {handle}")
+            })?;
 
         response_rx
             .recv()
@@ -599,7 +734,11 @@ pub extern "C" fn nnrp_quic_client_receive_result(
     out_result_packet_len: *mut c_int,
     out_error: *mut *mut c_char,
 ) -> c_int {
-    if handle == 0 || out_result_packet.is_null() || out_result_packet_len.is_null() || out_error.is_null() {
+    if handle == 0
+        || out_result_packet.is_null()
+        || out_result_packet_len.is_null()
+        || out_error.is_null()
+    {
         return 1;
     }
 
@@ -622,11 +761,13 @@ pub extern "C" fn nnrp_quic_client_receive_result(
         let (response_tx, response_rx) = mpsc::channel();
         command_tx
             .send(NativeClientCommand::ReceiveResult { response_tx })
-            .map_err(|_| format!("native client worker terminated before receive-result: {handle}"))?;
+            .map_err(|_| {
+                format!("native client worker terminated before receive-result: {handle}")
+            })?;
 
-        response_rx
-            .recv()
-            .map_err(|_| format!("native client worker dropped receive-result response: {handle}"))?
+        response_rx.recv().map_err(|_| {
+            format!("native client worker dropped receive-result response: {handle}")
+        })?
     })();
 
     match result {
@@ -673,11 +814,13 @@ pub extern "C" fn nnrp_quic_client_receive_session_packet(
         let (response_tx, response_rx) = mpsc::channel();
         command_tx
             .send(NativeClientCommand::ReceiveSessionPacket { response_tx })
-            .map_err(|_| format!("native client worker terminated before receive-session-packet: {handle}"))?;
+            .map_err(|_| {
+                format!("native client worker terminated before receive-session-packet: {handle}")
+            })?;
 
-        response_rx
-            .recv()
-            .map_err(|_| format!("native client worker dropped receive-session-packet response: {handle}"))?
+        response_rx.recv().map_err(|_| {
+            format!("native client worker dropped receive-session-packet response: {handle}")
+        })?
     })();
 
     match result {
@@ -872,6 +1015,8 @@ fn run_smoke(
         "",
         requested_session_id,
         CURRENT_WIRE_FORMAT,
+        TLS_VERIFY_INSECURE_SKIP_VERIFY,
+        None,
     )?;
     let negotiated_session_id = client.negotiated_session_id;
     let active_model_name = client.active_model_name.clone();
@@ -943,9 +1088,15 @@ fn open_native_client(
     requested_model: &str,
     requested_session_id: u32,
     requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: Option<&str>,
 ) -> Result<NativeClient, String> {
     let remote = resolve_remote_endpoint(host, port)?;
-    let client_config = build_client_config(requested_wire_format)?;
+    let client_config = build_client_config(
+        requested_wire_format,
+        tls_verification_mode,
+        ca_certificate_path,
+    )?;
     let bind_address: SocketAddr = "0.0.0.0:0"
         .parse()
         .map_err(|error| format!("failed to parse local bind address: {error}"))?;
@@ -1065,12 +1216,15 @@ fn spawn_native_client_worker(
     requested_model: &str,
     requested_session_id: u32,
     requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: Option<&str>,
 ) -> Result<(NativeClientWorker, u32, u8, String), String> {
     let (ready_tx, ready_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
     let host = host.to_string();
     let tls_server_name = tls_server_name.to_string();
     let requested_model = requested_model.to_string();
+    let ca_certificate_path = ca_certificate_path.map(str::to_string);
 
     let worker_thread = thread::spawn(move || {
         let open_result = (|| -> Result<NativeClient, String> {
@@ -1083,6 +1237,8 @@ fn spawn_native_client_worker(
                 &requested_model,
                 requested_session_id,
                 requested_wire_format,
+                tls_verification_mode,
+                ca_certificate_path.as_deref(),
             )
         })();
 
@@ -1101,10 +1257,9 @@ fn spawn_native_client_worker(
         }
     });
 
-    let (negotiated_session_id, negotiated_wire_format, active_model_name) =
-        ready_rx
-            .recv()
-            .map_err(|_| "native client worker terminated before open completed".to_string())??;
+    let (negotiated_session_id, negotiated_wire_format, active_model_name) = ready_rx
+        .recv()
+        .map_err(|_| "native client worker terminated before open completed".to_string())??;
 
     Ok((
         NativeClientWorker {
@@ -1123,10 +1278,16 @@ fn probe_native_quic(
     tls_server_name: &str,
     probe_packet: &[u8],
     requested_wire_format: u8,
+    tls_verification_mode: u8,
+    ca_certificate_path: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     let runtime = build_runtime()?;
     let remote = resolve_remote_endpoint(host, port)?;
-    let client_config = build_client_config(requested_wire_format)?;
+    let client_config = build_client_config(
+        requested_wire_format,
+        tls_verification_mode,
+        ca_certificate_path,
+    )?;
     let bind_address: SocketAddr = "0.0.0.0:0"
         .parse()
         .map_err(|error| format!("failed to parse local bind address: {error}"))?;
@@ -1249,7 +1410,10 @@ fn run_native_client_worker_loop(
     let _ = close_native_client(client);
 }
 
-fn begin_submit_native_client(client: &mut NativeClient, submit_packet: &[u8]) -> Result<(), String> {
+fn begin_submit_native_client(
+    client: &mut NativeClient,
+    submit_packet: &[u8],
+) -> Result<(), String> {
     client.runtime.block_on(async {
         ensure_message_type(submit_packet, MSG_FRAME_SUBMIT, "FRAME_SUBMIT")?;
 
@@ -1315,11 +1479,11 @@ fn receive_session_packet_native_client(client: &mut NativeClient) -> Result<Vec
         .await
         .map_err(|_| {
             format!(
-                    "timed out after {}s while reading session packet payload",
+                "timed out after {}s while reading session packet payload",
                 DEFAULT_SUBMIT_STAGE_TIMEOUT_SECONDS
             )
         })?
-            .map_err(|error| format!("failed to receive session packet: {error}"))?;
+        .map_err(|error| format!("failed to receive session packet: {error}"))?;
 
         ensure_runtime_session_message_type(&result_packet)?;
         Ok(result_packet)
@@ -1804,6 +1968,23 @@ fn read_required_c_string(value: *const c_char, field_name: &str) -> Result<Stri
     Ok(text)
 }
 
+fn read_optional_c_string(value: *const c_char) -> Result<Option<String>, String> {
+    if value.is_null() {
+        return Ok(None);
+    }
+
+    let text = unsafe { CStr::from_ptr(value) }
+        .to_str()
+        .map_err(|error| format!("ca_certificate_path is not valid UTF-8: {error}"))?
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(text))
+}
+
 unsafe fn write_c_string(out_json: *mut *mut c_char, value: &str) {
     let sanitized = value.replace('\0', " ");
     let c_string = CString::new(sanitized).expect("CString::new should succeed after null removal");
@@ -1830,8 +2011,7 @@ mod tests {
 
     #[test]
     fn client_hello_uses_current_wire_format_and_current_bitmap() {
-        let packet = build_client_hello_packet(CURRENT_WIRE_FORMAT, 41, b"engine-sr")
-            .unwrap();
+        let packet = build_client_hello_packet(CURRENT_WIRE_FORMAT, 41, b"engine-sr").unwrap();
 
         assert_eq!(packet[5], CURRENT_WIRE_FORMAT);
         assert_eq!(
@@ -1853,10 +2033,10 @@ mod tests {
     }
 
     #[test]
-    fn client_hello_rejects_legacy_fallback() {
-        let error = build_client_hello_packet(CURRENT_WIRE_FORMAT, true, 41, b"engine-sr")
-            .unwrap_err();
+    fn client_hello_rejects_unsupported_wire_format() {
+        let error =
+            build_client_hello_packet(CURRENT_WIRE_FORMAT + 1, 41, b"engine-sr").unwrap_err();
 
-        assert!(error.contains("legacy wire fallback"));
+        assert!(error.contains("requested_wire_format"));
     }
 }
