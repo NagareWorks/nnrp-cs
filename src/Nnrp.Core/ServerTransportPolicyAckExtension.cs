@@ -2,6 +2,14 @@ using System;
 
 namespace Nnrp.Core
 {
+    /// <summary>
+    /// Optional transport identity surface for transports that can report the active NNRP binding.
+    /// </summary>
+    public interface INnrpTransportIdentity
+    {
+        TransportId TransportId { get; }
+    }
+
     public readonly struct ServerTransportPolicyAckExtension : IEquatable<ServerTransportPolicyAckExtension>
     {
         public const int PayloadLength = 8;
