@@ -145,8 +145,8 @@ namespace Nnrp.Server
 
         private TransportId ResolveActiveTransportId()
         {
-            return string.Equals(transport.GetType().FullName, "Nnrp.Transport.Tcp.NnrpTcpMessageTransport", StringComparison.Ordinal)
-                ? TransportId.Tcp
+            return transport is INnrpTransportIdentity identity
+                ? identity.TransportId
                 : TransportId.Unspecified;
         }
 

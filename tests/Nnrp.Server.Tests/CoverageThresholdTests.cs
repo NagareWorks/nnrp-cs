@@ -210,7 +210,7 @@ namespace Nnrp.Transport.Tcp
     using System.Threading.Tasks;
     using Nnrp.Core;
 
-    internal sealed class NnrpTcpMessageTransport : INnrpMessageTransport
+    internal sealed class NnrpTcpMessageTransport : INnrpMessageTransport, INnrpTransportIdentity
     {
         private readonly Queue<NnrpFramedMessage> inbound;
 
@@ -220,6 +220,8 @@ namespace Nnrp.Transport.Tcp
         }
 
         public List<NnrpFramedMessage> Sent { get; } = new List<NnrpFramedMessage>();
+
+        public TransportId TransportId => Nnrp.Core.TransportId.Tcp;
 
         public ValueTask SendAsync(NnrpFramedMessage message, CancellationToken cancellationToken)
         {

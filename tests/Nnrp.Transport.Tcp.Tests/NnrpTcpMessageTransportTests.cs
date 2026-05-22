@@ -20,6 +20,25 @@ namespace Nnrp.Transport.Tcp.Tests
         }
 
         [Fact]
+        public async Task TransportReportsTcpIdentity()
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var endpoint = (IPEndPoint)listener.LocalEndpoint;
+            var acceptTask = listener.AcceptTcpClientAsync();
+
+            await using var transport = await NnrpTcpMessageTransport.ConnectAsync(
+                IPAddress.Loopback.ToString(),
+                endpoint.Port,
+                timeout.Token);
+            using var accepted = await acceptTask;
+
+            var identity = Assert.IsAssignableFrom<INnrpTransportIdentity>(transport);
+            Assert.Equal(TransportId.Tcp, identity.TransportId);
+        }
+
+        [Fact]
         public async Task ConnectAsyncRejectsInvalidArgumentsAndConnectionFailures()
         {
             await Assert.ThrowsAsync<ArgumentException>(async () =>
