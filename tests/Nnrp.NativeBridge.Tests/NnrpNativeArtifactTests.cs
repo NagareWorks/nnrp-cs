@@ -144,11 +144,21 @@ namespace Nnrp.NativeBridge.Tests
         {
             var result = NnrpNativeArtifact.Probe(
                 "fake-path",
-                currentProtocolVersion: () => new NnrpProtocolVersion(1, 0));
+                runtimeCapabilities: () => MatchingCapabilities());
 
             Assert.Equal("fake-path", result.ArtifactPath);
+            Assert.Equal(1, result.AbiMajor);
+            Assert.Equal(0, result.AbiMinor);
+            Assert.Equal(0, result.AbiPatch);
             Assert.Equal(1, result.ProtocolMajor);
             Assert.Equal(0, result.ProtocolWireFormat);
+            Assert.Equal(1, result.SdkMajor);
+            Assert.Equal(0, result.SdkMinor);
+            Assert.Equal(0, result.SdkPatch);
+            Assert.Equal(3, result.SdkPreview);
+            Assert.Equal(1, result.SdkRevision);
+            Assert.Equal(NnrpNativeArtifact.TransportSlotTcp, result.TransportSlots);
+            Assert.Equal(NnrpNativeArtifact.RequiredRuntimeFeatures, result.FeatureFlags);
         }
 
         [Fact]
@@ -165,7 +175,7 @@ namespace Nnrp.NativeBridge.Tests
                 var result = NnrpNativeArtifact.Probe(
                     artifactRoot: root,
                     platform: new NnrpNativePlatform("windows", "x64"),
-                    currentProtocolVersion: () => new NnrpProtocolVersion(1, 0));
+                    runtimeCapabilities: () => MatchingCapabilities());
 
                 Assert.Equal(artifactPath, result.ArtifactPath);
             }
@@ -181,9 +191,53 @@ namespace Nnrp.NativeBridge.Tests
             var error = Assert.Throws<NnrpNativeArtifactException>(() =>
                 NnrpNativeArtifact.Probe(
                     "fake-path",
-                    currentProtocolVersion: () => new NnrpProtocolVersion(2, 0)));
+                    runtimeCapabilities: () => MatchingCapabilities(protocolMajor: 2)));
 
             Assert.Contains("protocol mismatch", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProbeRejectsAbiMismatch()
+        {
+            var error = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.Probe(
+                    "fake-path",
+                    runtimeCapabilities: () => MatchingCapabilities(abiMajor: 2)));
+
+            Assert.Contains("ABI mismatch", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProbeRejectsMissingRequiredFeature()
+        {
+            var error = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.Probe(
+                    "fake-path",
+                    runtimeCapabilities: () => MatchingCapabilities(
+                        featureFlags: NnrpNativeArtifact.RequiredRuntimeFeatures & ~NnrpNativeArtifact.RuntimeFeatureProtocolCore)));
+
+            Assert.Contains("required runtime feature flags", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProbeRejectsMissingRequiredTransportSlot()
+        {
+            var error = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.Probe(
+                    "fake-path",
+                    runtimeCapabilities: () => MatchingCapabilities(transportSlots: NnrpNativeArtifact.TransportSlotQuic)));
+
+            Assert.Contains("required transport slots", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProbeDoesNotRequireQuicTransportSlot()
+        {
+            var result = NnrpNativeArtifact.Probe(
+                "fake-path",
+                runtimeCapabilities: () => MatchingCapabilities(transportSlots: NnrpNativeArtifact.TransportSlotTcp));
+
+            Assert.Equal(NnrpNativeArtifact.TransportSlotTcp, result.TransportSlots);
         }
 
         [Fact]
@@ -196,7 +250,7 @@ namespace Nnrp.NativeBridge.Tests
                     NnrpNativeArtifact.Probe(
                         artifactRoot: root,
                         platform: new NnrpNativePlatform("windows", "x64"),
-                        currentProtocolVersion: () => new NnrpProtocolVersion(1, 0)));
+                        runtimeCapabilities: () => MatchingCapabilities()));
             }
             finally
             {
@@ -218,6 +272,29 @@ namespace Nnrp.NativeBridge.Tests
             string path = Path.Combine(Path.GetTempPath(), "nnrp-native-artifact-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(path);
             return path;
+        }
+
+        private static NnrpRuntimeCapabilities MatchingCapabilities(
+            ushort abiMajor = 1,
+            ushort abiMinor = 0,
+            ushort abiPatch = 0,
+            byte protocolMajor = 1,
+            byte protocolWireFormat = 0,
+            uint transportSlots = NnrpNativeArtifact.TransportSlotTcp,
+            ulong featureFlags = NnrpNativeArtifact.RequiredRuntimeFeatures)
+        {
+            return new NnrpRuntimeCapabilities(
+                abiMajor,
+                abiMinor,
+                abiPatch,
+                new NnrpProtocolVersion(protocolMajor, protocolWireFormat),
+                1,
+                0,
+                0,
+                3,
+                1,
+                transportSlots,
+                featureFlags);
         }
     }
 }

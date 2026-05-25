@@ -5,8 +5,8 @@
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
 - [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
 - [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
-- [ ] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
-- [ ] Reject ABI/protocol mismatches with deterministic managed exceptions and actionable diagnostic text.
+- [x] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
+- [x] Reject ABI/protocol mismatches with deterministic managed exceptions and actionable diagnostic text.
 - [ ] Wrap stable native handles for connection, session, operation, schema, and buffer views.
 - [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
