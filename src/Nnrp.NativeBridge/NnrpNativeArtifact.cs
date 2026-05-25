@@ -322,6 +322,195 @@ namespace Nnrp.NativeBridge
         public readonly ulong FeatureFlags;
     }
 
+    public enum NnrpHandleKind : uint
+    {
+        Invalid = 0,
+        Connection = 1,
+        Session = 2,
+        Operation = 3,
+        EventPump = 4,
+        Buffer = 5,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpHandle : IEquatable<NnrpHandle>
+    {
+        public NnrpHandle(NnrpHandleKind kind, ulong id, uint generation, uint flags = 0)
+        {
+            Kind = kind;
+            Id = id;
+            Generation = generation;
+            Flags = flags;
+
+            if (kind == NnrpHandleKind.Invalid)
+            {
+                if (id != 0 || generation != 0 || flags != 0)
+                {
+                    throw new ArgumentException("Invalid handles must use zero id, generation, and flags.");
+                }
+
+                return;
+            }
+
+            if (id == 0 || generation == 0)
+            {
+                throw new ArgumentException("Native handles require non-zero id and generation.");
+            }
+        }
+
+        public readonly NnrpHandleKind Kind;
+
+        public readonly ulong Id;
+
+        public readonly uint Generation;
+
+        public readonly uint Flags;
+
+        public static NnrpHandle Invalid => new NnrpHandle(NnrpHandleKind.Invalid, 0, 0);
+
+        public bool IsValid => Kind != NnrpHandleKind.Invalid;
+
+        public void RequireKind(NnrpHandleKind expectedKind)
+        {
+            if (Kind != expectedKind)
+            {
+                throw new ArgumentException("Expected native handle kind " + expectedKind + ", got " + Kind + ".");
+            }
+        }
+
+        public bool Equals(NnrpHandle other)
+        {
+            return Kind == other.Kind
+                && Id == other.Id
+                && Generation == other.Generation
+                && Flags == other.Flags;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is NnrpHandle other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = (int)Kind;
+                hash = (hash * 397) ^ Id.GetHashCode();
+                hash = (hash * 397) ^ Generation.GetHashCode();
+                hash = (hash * 397) ^ Flags.GetHashCode();
+                return hash;
+            }
+        }
+
+        public static bool operator ==(NnrpHandle left, NnrpHandle right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(NnrpHandle left, NnrpHandle right)
+        {
+            return !left.Equals(right);
+        }
+    }
+
+    public readonly struct NnrpConnectionHandle
+    {
+        public NnrpConnectionHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.Connection);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    public readonly struct NnrpSessionHandle
+    {
+        public NnrpSessionHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.Session);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    public readonly struct NnrpOperationHandle
+    {
+        public NnrpOperationHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.Operation);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    public readonly struct NnrpEventPumpHandle
+    {
+        public NnrpEventPumpHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.EventPump);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    public readonly struct NnrpBufferHandle
+    {
+        public NnrpBufferHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.Buffer);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpBufferView
+    {
+        public NnrpBufferView(IntPtr pointer, UIntPtr length)
+        {
+            if (length != UIntPtr.Zero && pointer == IntPtr.Zero)
+            {
+                throw new ArgumentException("Non-empty buffer views require a non-null pointer.", nameof(pointer));
+            }
+
+            Pointer = pointer;
+            Length = length;
+        }
+
+        public readonly IntPtr Pointer;
+
+        public readonly UIntPtr Length;
+
+        public static NnrpBufferView Empty => new NnrpBufferView(IntPtr.Zero, UIntPtr.Zero);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpMutableBufferView
+    {
+        public NnrpMutableBufferView(IntPtr pointer, UIntPtr length)
+        {
+            if (length != UIntPtr.Zero && pointer == IntPtr.Zero)
+            {
+                throw new ArgumentException("Non-empty mutable buffer views require a non-null pointer.", nameof(pointer));
+            }
+
+            Pointer = pointer;
+            Length = length;
+        }
+
+        public readonly IntPtr Pointer;
+
+        public readonly UIntPtr Length;
+
+        public static NnrpMutableBufferView Empty => new NnrpMutableBufferView(IntPtr.Zero, UIntPtr.Zero);
+    }
+
     public static class NnrpNativeArtifact
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
