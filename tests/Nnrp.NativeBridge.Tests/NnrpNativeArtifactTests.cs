@@ -267,6 +267,82 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => new NnrpNativePlatform("linux", ""));
         }
 
+        [Fact]
+        public void NativeHandleKeepsStableFfiShapeAndValueEquality()
+        {
+            var left = new NnrpHandle(NnrpHandleKind.Connection, 7, 2);
+            var right = new NnrpHandle(NnrpHandleKind.Connection, 7, 2);
+            var different = new NnrpHandle(NnrpHandleKind.Session, 7, 2);
+
+            Assert.True(left.IsValid);
+            Assert.Equal(NnrpHandleKind.Connection, left.Kind);
+            Assert.Equal((ulong)7, left.Id);
+            Assert.Equal((uint)2, left.Generation);
+            Assert.Equal((uint)0, left.Flags);
+            Assert.Equal(left, right);
+            Assert.True(left == right);
+            Assert.False(left != right);
+            Assert.NotEqual(left, different);
+            Assert.False(left.Equals("not-a-handle"));
+            Assert.Equal(left.GetHashCode(), right.GetHashCode());
+        }
+
+        [Fact]
+        public void NativeHandleInvalidShapeIsZeroOnly()
+        {
+            var invalid = NnrpHandle.Invalid;
+
+            Assert.False(invalid.IsValid);
+            Assert.Equal(NnrpHandleKind.Invalid, invalid.Kind);
+            Assert.Throws<ArgumentException>(() => new NnrpHandle(NnrpHandleKind.Invalid, 1, 0));
+        }
+
+        [Fact]
+        public void NativeHandleRejectsMissingIdOrGeneration()
+        {
+            Assert.Throws<ArgumentException>(() => new NnrpHandle(NnrpHandleKind.Connection, 0, 1));
+            Assert.Throws<ArgumentException>(() => new NnrpHandle(NnrpHandleKind.Connection, 1, 0));
+        }
+
+        [Fact]
+        public void TypedNativeHandlesAcceptOnlyMatchingKinds()
+        {
+            Assert.Equal(NnrpHandleKind.Connection, new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.Session, new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.Operation, new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.EventPump, new NnrpEventPumpHandle(new NnrpHandle(NnrpHandleKind.EventPump, 4, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.Buffer, new NnrpBufferHandle(new NnrpHandle(NnrpHandleKind.Buffer, 5, 1)).Handle.Kind);
+
+            Assert.Throws<ArgumentException>(() => new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpEventPumpHandle(new NnrpHandle(NnrpHandleKind.Buffer, 5, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpBufferHandle(new NnrpHandle(NnrpHandleKind.EventPump, 4, 1)));
+        }
+
+        [Fact]
+        public void BufferViewsAcceptEmptyOrNonNullPointers()
+        {
+            var view = new NnrpBufferView(new IntPtr(0x1000), new UIntPtr(64));
+            var mutableView = new NnrpMutableBufferView(new IntPtr(0x2000), new UIntPtr(128));
+
+            Assert.Equal(new IntPtr(0x1000), view.Pointer);
+            Assert.Equal(new UIntPtr(64), view.Length);
+            Assert.Equal(new IntPtr(0x2000), mutableView.Pointer);
+            Assert.Equal(new UIntPtr(128), mutableView.Length);
+            Assert.Equal(IntPtr.Zero, NnrpBufferView.Empty.Pointer);
+            Assert.Equal(UIntPtr.Zero, NnrpBufferView.Empty.Length);
+            Assert.Equal(IntPtr.Zero, NnrpMutableBufferView.Empty.Pointer);
+            Assert.Equal(UIntPtr.Zero, NnrpMutableBufferView.Empty.Length);
+        }
+
+        [Fact]
+        public void BufferViewsRejectNonEmptyNullPointers()
+        {
+            Assert.Throws<ArgumentException>(() => new NnrpBufferView(IntPtr.Zero, new UIntPtr(1)));
+            Assert.Throws<ArgumentException>(() => new NnrpMutableBufferView(IntPtr.Zero, new UIntPtr(1)));
+        }
+
         private static string CreateTempDirectory()
         {
             string path = Path.Combine(Path.GetTempPath(), "nnrp-native-artifact-" + Guid.NewGuid().ToString("N"));
