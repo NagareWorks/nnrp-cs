@@ -19,11 +19,30 @@ namespace Nnrp.NativeBridge.Tests
             var runtime = NnrpAutoTransportRuntime.Instance;
 
             Assert.Equal(NnrpHeader.CurrentWireFormat, options.RequestedWireFormat);
+            Assert.Equal(NnrpQuicCertificateVerificationMode.Secure, options.CertificateVerificationMode);
+            Assert.Null(options.CaCertificatePath);
 
             var client = runtime.CreateQuicClient(new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"));
             Assert.Equal("127.0.0.1", client.Options.Host);
 
             Assert.Throws<ArgumentException>(() => runtime.ProbeQuic("", 50072, "localhost", new byte[] { 0x01 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpAutoTransportClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", certificateVerificationMode: (NnrpQuicCertificateVerificationMode)99));
+            Assert.Throws<ArgumentException>(() => new NnrpAutoTransportClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", caCertificatePath: " "));
+        }
+
+        [Fact]
+        public void OptionsAcceptCertificateVerificationPolicy()
+        {
+            var options = new NnrpAutoTransportClientOptions(
+                "127.0.0.1",
+                50072,
+                "localhost",
+                "engine-sr",
+                certificateVerificationMode: NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                caCertificatePath: "certs/test-ca.pem");
+
+            Assert.Equal(NnrpQuicCertificateVerificationMode.InsecureSkipVerify, options.CertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", options.CaCertificatePath);
         }
 
         [Fact]
@@ -32,6 +51,8 @@ namespace Nnrp.NativeBridge.Tests
             var callingThread = Thread.CurrentThread.ManagedThreadId;
             var openThread = callingThread;
             ushort observedPort = 0;
+            NnrpQuicCertificateVerificationMode observedCertificateVerificationMode = 0;
+            string? observedCaCertificatePath = null;
             using var signal = new ManualResetEventSlim(false);
 
             var client = new NnrpAutoTransportClient(
@@ -41,23 +62,30 @@ namespace Nnrp.NativeBridge.Tests
                     50072,
                     "localhost",
                     "engine-sr",
-                    tcpPort: 50051),
+                    tcpPort: 50051,
+                    certificateVerificationMode: NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                    caCertificatePath: "certs/test-ca.pem"),
                 new TestAutoTransportRuntime(
-                    quicClientFactory: _ => new NnrpQuicClient(
-                        new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr"),
-                        new TestQuicRuntime(
-                            openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
-                            {
-                                openThread = Thread.CurrentThread.ManagedThreadId;
-                                observedPort = port;
-                                signal.Set();
-                                return new NnrpNativeQuicClient.OpenResult(9, 77, "engine-sr");
-                            },
-                            submitFrame: (_, message) => throw new NotSupportedException(),
-                            submitPacket: (_, packet) => throw new NotSupportedException(),
-                            pingRoundTrip: (_, ping) => throw new NotSupportedException(),
-                            cancelFrame: (_, cancel) => { },
-                            closeConnection: _ => { }))));
+                    quicClientFactory: options =>
+                    {
+                        observedCertificateVerificationMode = options.CertificateVerificationMode;
+                        observedCaCertificatePath = options.CaCertificatePath;
+                        return new NnrpQuicClient(
+                            options,
+                            new TestQuicRuntime(
+                                openConnection: (host, port, tlsServerName, requestedModel, requestedSessionId) =>
+                                {
+                                    openThread = Thread.CurrentThread.ManagedThreadId;
+                                    observedPort = port;
+                                    signal.Set();
+                                    return new NnrpNativeQuicClient.OpenResult(9, 77, "engine-sr");
+                                },
+                                submitFrame: (_, message) => throw new NotSupportedException(),
+                                submitPacket: (_, packet) => throw new NotSupportedException(),
+                                pingRoundTrip: (_, ping) => throw new NotSupportedException(),
+                                cancelFrame: (_, cancel) => { },
+                                closeConnection: _ => { }));
+                    }));
 
             var connectTask = client.ConnectAsync(
                 new NnrpTransportProbeOptions(),
@@ -69,6 +97,8 @@ namespace Nnrp.NativeBridge.Tests
 
             Assert.Equal(TransportId.Quic, result.SelectedTransportId);
             Assert.Equal<ushort>(50072, observedPort);
+            Assert.Equal(NnrpQuicCertificateVerificationMode.InsecureSkipVerify, observedCertificateVerificationMode);
+            Assert.Equal("certs/test-ca.pem", observedCaCertificatePath);
             Assert.NotEqual(callingThread, openThread);
         }
 
@@ -523,6 +553,8 @@ namespace Nnrp.NativeBridge.Tests
             var quicProbeCount = 0;
             var quicMigrateSubmitCount = 0;
             var quicCloseCount = 0;
+            NnrpQuicCertificateVerificationMode observedProbeCertificateVerificationMode = 0;
+            string? observedProbeCaCertificatePath = null;
 
             try
             {
@@ -537,7 +569,9 @@ namespace Nnrp.NativeBridge.Tests
                         tlsServerName: "localhost",
                         requestedModel: "engine-sr",
                         requestedSessionId: 41,
-                        tcpPort: (ushort)endpoint.Port),
+                        tcpPort: (ushort)endpoint.Port,
+                        certificateVerificationMode: NnrpQuicCertificateVerificationMode.InsecureSkipVerify,
+                        caCertificatePath: "certs/test-ca.pem"),
                     new TestAutoTransportRuntime(
                         quicClientFactory: _ => new NnrpQuicClient(
                             new NnrpQuicClientOptions(IPAddress.Loopback.ToString(), 65000, "localhost", "engine-sr", requestedSessionId: 41),
@@ -557,9 +591,11 @@ namespace Nnrp.NativeBridge.Tests
                                 pingRoundTrip: (_, __) => throw new InvalidOperationException("Ping should route over migrated TCP transport."),
                                 cancelFrame: (_, __) => { },
                                 closeConnection: _ => quicCloseCount++)),
-                        quicProbe: (host, port, tlsServerName, probePacket) =>
+                        quicProbeWithCertificateOptions: (host, port, tlsServerName, probePacket, certificateVerificationMode, caCertificatePath) =>
                         {
                             quicProbeCount++;
+                            observedProbeCertificateVerificationMode = certificateVerificationMode;
+                            observedProbeCaCertificatePath = caCertificatePath;
                             Assert.Equal(IPAddress.Loopback.ToString(), host);
                             Assert.Equal((ushort)65000, port);
                             Assert.Equal("localhost", tlsServerName);
@@ -611,6 +647,8 @@ namespace Nnrp.NativeBridge.Tests
                 Assert.Equal(TransportId.Quic, connectResult.ProbeSelection.Value.SelectedTransportId);
                 Assert.Equal(41u, connectResult.NegotiatedSessionId);
                 Assert.Equal(NnrpHeader.CurrentWireFormat, connectResult.NegotiatedWireFormat);
+                Assert.Equal(NnrpQuicCertificateVerificationMode.InsecureSkipVerify, observedProbeCertificateVerificationMode);
+                Assert.Equal("certs/test-ca.pem", observedProbeCaCertificatePath);
                 Assert.Equal(0u, ack.Metadata.AcceptCode);
                 Assert.Equal(TransportId.Tcp, client.SelectedTransportId);
                 Assert.Equal("tcp", client.SelectedBindingName);
