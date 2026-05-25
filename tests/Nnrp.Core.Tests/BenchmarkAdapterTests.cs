@@ -10,7 +10,7 @@ namespace Nnrp.Core.Tests
     public sealed class BenchmarkAdapterTests
     {
         [Fact]
-        public void BuildResultsJsonMeasuresHeaderScenarioAndSkipsUnimplementedScenarios()
+        public void BuildResultsJsonMeasuresConfiguredScenarios()
         {
             var reportJson = BenchmarkProgram.BuildResultsJson(SamplePlanJson);
 
@@ -21,7 +21,7 @@ namespace Nnrp.Core.Tests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(2, results.Length);
+            Assert.Equal(9, results.Length);
 
             var headerResult = results.Single(result => result.GetProperty("id").GetString() == "l4.header.encode_decode.latency");
             Assert.Equal("measured", headerResult.GetProperty("outcome").GetString());
@@ -30,8 +30,16 @@ namespace Nnrp.Core.Tests
             Assert.True(headerResult.GetProperty("metrics").GetProperty("p99_us").GetDouble() >= 0);
 
             var submitResult = results.Single(result => result.GetProperty("id").GetString() == "l4.submit_result.inline_tensor.throughput");
-            Assert.Equal("skip", submitResult.GetProperty("outcome").GetString());
-            Assert.Contains("not implemented", submitResult.GetProperty("message").GetString(), StringComparison.Ordinal);
+            Assert.Equal("measured", submitResult.GetProperty("outcome").GetString());
+            Assert.True(submitResult.GetProperty("metrics").GetProperty("throughput_ops_per_sec").GetDouble() > 0);
+
+            AssertMeasured(results, "l4.metadata.session_open_ack.latency");
+            AssertMeasured(results, "l4.metadata.submit_result.latency");
+            AssertMeasured(results, "l4.typed_payload.tensor_pack_unpack.latency");
+            AssertMeasured(results, "l4.runtime.probe.latency");
+            AssertMeasured(results, "l4.session.lifecycle.latency");
+            AssertMeasured(results, "l4.transport.tcp.loopback.throughput");
+            AssertMeasured(results, "l4.transport.quic.loopback.throughput");
         }
 
         [Fact]
@@ -55,7 +63,7 @@ namespace Nnrp.Core.Tests
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
                 Assert.Equal("nnrp-1-preview3", document.RootElement.GetProperty("protocol_version").GetString());
-                Assert.Equal(2, document.RootElement.GetProperty("results").GetArrayLength());
+                Assert.Equal(9, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
             {
@@ -66,6 +74,12 @@ namespace Nnrp.Core.Tests
                     Directory.Delete(tempDirectory, recursive: true);
                 }
             }
+        }
+
+        private static void AssertMeasured(JsonElement[] results, string id)
+        {
+            var result = results.Single(entry => entry.GetProperty("id").GetString() == id);
+            Assert.Equal("measured", result.GetProperty("outcome").GetString());
         }
 
         [Fact]
@@ -123,7 +137,73 @@ namespace Nnrp.Core.Tests
                   "workload": {
                     "operation": "submit_result_loop",
                     "payload": "inline_tensor_4k",
-                    "duration_seconds": 1
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.metadata.session_open_ack.latency",
+                  "workload": {
+                    "operation": "metadata_encode_decode",
+                    "payload": "session_open_ack",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.metadata.submit_result.latency",
+                  "workload": {
+                    "operation": "submit_result_metadata_encode_decode",
+                    "payload": "frame_submit_result_push",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.typed_payload.tensor_pack_unpack.latency",
+                  "workload": {
+                    "operation": "typed_payload_pack_unpack",
+                    "payload": "tensor_descriptor_plus_payload",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.runtime.probe.latency",
+                  "workload": {
+                    "operation": "runtime_probe",
+                    "payload": "version_capability_query",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.session.lifecycle.latency",
+                  "workload": {
+                    "operation": "session_lifecycle",
+                    "payload": "open_close_loop",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.transport.tcp.loopback.throughput",
+                  "workload": {
+                    "operation": "transport_loopback",
+                    "payload": "request_result_stream",
+                    "transport": "tcp",
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.transport.quic.loopback.throughput",
+                  "workload": {
+                    "operation": "transport_loopback",
+                    "payload": "request_result_stream",
+                    "transport": "quic",
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1
                   }
                 }
               ]

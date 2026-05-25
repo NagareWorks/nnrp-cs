@@ -131,6 +131,13 @@ public static class Program
         return operation switch
         {
             "header_encode_decode" => RunHeaderEncodeDecode(id, workload),
+            "metadata_encode_decode" => RunMetadataEncodeDecode(id, workload),
+            "submit_result_metadata_encode_decode" => RunSubmitResultMetadataEncodeDecode(id, workload),
+            "typed_payload_pack_unpack" => RunTypedPayloadPackUnpack(id, workload),
+            "runtime_probe" => RunRuntimeProbe(id, workload),
+            "session_lifecycle" => RunSessionLifecycle(id, workload),
+            "submit_result_loop" => RunSubmitResultLoop(id, workload),
+            "transport_loopback" => RunTransportLoopback(id, workload),
             _ => new BenchmarkScenarioResult
             {
                 Id = id,
@@ -186,6 +193,338 @@ public static class Program
         };
     }
 
+    private static BenchmarkScenarioResult RunMetadataEncodeDecode(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var clientHello = new ClientHelloMetadata(
+            minVersionMajor: 1,
+            maxVersionMajor: 1,
+            supportedWireFormatBitmap: 1,
+            supportedProfileBitmap: 1,
+            supportedPayloadKindBitmap: (uint)PayloadKind.Tensor,
+            supportedCodecBitmap: (uint)CodecId.Raw,
+            supportedCompressionBitmap: (uint)CodecId.Raw,
+            supportedDTypeBitmap: 1u << (int)DTypeId.UInt8,
+            supportedLayoutBitmap: 1u << (int)TensorLayoutId.Nhwc,
+            cacheDigestBitmap: 0,
+            cacheObjectBitmap: 0,
+            cacheNamespaceCount: 0,
+            maxLaneCount: 2,
+            maxCacheEntries: 0,
+            maxCacheBytes: 0,
+            targetCadenceX100: 6000,
+            latencyBudgetMilliseconds: 16,
+            qualityTier: 1,
+            degradePolicy: 0,
+            requestedSessionId: 41,
+            authBytes: 0,
+            controlExtensionBytes: 0);
+        var serverAck = new ServerHelloAckMetadata(
+            selectedVersionMajor: 1,
+            selectedWireFormat: NnrpHeader.CurrentWireFormat,
+            authStatus: 0,
+            reserved0: 0,
+            sessionId: 41,
+            acceptedProfileBitmap: 1,
+            acceptedPayloadKindBitmap: (uint)PayloadKind.Tensor,
+            acceptedCodecBitmap: (uint)CodecId.Raw,
+            acceptedCompressionBitmap: (uint)CodecId.Raw,
+            acceptedDTypeBitmap: 1u << (int)DTypeId.UInt8,
+            acceptedLayoutBitmap: 1u << (int)TensorLayoutId.Nhwc,
+            cacheDigestBitmap: 0,
+            cacheObjectBitmap: 0,
+            maxCacheEntries: 0,
+            maxCacheBytes: 0,
+            maxLaneCount: 2,
+            maxConcurrentFrames: 4,
+            targetCadenceX100: 6000,
+            latencyBudgetMilliseconds: 16,
+            qualityTier: 1,
+            degradePolicy: 0,
+            maxBodyBytes: 1u << 20,
+            tokenTtlMilliseconds: 30000,
+            retryAfterMilliseconds: 0,
+            controlExtensionBytes: 0,
+            serverFlags: 0);
+        var helloBuffer = new byte[ClientHelloMetadata.MetadataLength];
+        var ackBuffer = new byte[ServerHelloAckMetadata.MetadataLength];
+
+        void Operation()
+        {
+            clientHello.Write(helloBuffer);
+            serverAck.Write(ackBuffer);
+            if (!ClientHelloMetadata.TryParse(helloBuffer, out var decodedHello, out _)
+                || !ServerHelloAckMetadata.TryParse(ackBuffer, out var decodedAck, out _)
+                || !decodedHello.Equals(clientHello)
+                || !decodedAck.Equals(serverAck))
+            {
+                throw new InvalidOperationException("Metadata benchmark roundtrip mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        var samples = MeasureMicroseconds(Operation, iterations);
+        return MeasuredLatencyResult(id, samples);
+    }
+
+    private static BenchmarkScenarioResult RunSubmitResultMetadataEncodeDecode(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var (submitPacket, resultPacket) = BuildSubmitResultMessages();
+        var submitHeader = submitPacket.Header;
+        var submitMetadata = submitPacket.Metadata.ToArray();
+        var resultHeader = resultPacket.Header;
+        var resultMetadata = resultPacket.Metadata.ToArray();
+
+        void Operation()
+        {
+            var submitHeaderBuffer = new byte[NnrpHeader.HeaderLength];
+            var resultHeaderBuffer = new byte[NnrpHeader.HeaderLength];
+            submitHeader.Write(submitHeaderBuffer);
+            resultHeader.Write(resultHeaderBuffer);
+
+            if (!NnrpHeader.TryParse(submitHeaderBuffer, NnrpHeaderParseOptions.Strict, out var decodedSubmitHeader, out _)
+                || !NnrpHeader.TryParse(resultHeaderBuffer, NnrpHeaderParseOptions.Strict, out var decodedResultHeader, out _)
+                || !FrameSubmitMetadata.TryParse(submitMetadata, strict: true, out _, out _)
+                || !ResultPushMetadata.TryParse(resultMetadata, strict: true, out _, out _)
+                || decodedSubmitHeader.MessageType != MessageType.FrameSubmit
+                || decodedResultHeader.MessageType != MessageType.ResultPush)
+            {
+                throw new InvalidOperationException("Submit/result metadata benchmark roundtrip mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunTypedPayloadPackUnpack(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 41, frameId: 303);
+        var tileIds = submit.TileIds.ToArray();
+        var section = submit.Sections.Span[0];
+
+        void Operation()
+        {
+            var tileIndex = TileIndexBlockCodec.Encode(tileIds, TileIndexMode.RawUInt16);
+            var decodedTileIds = TileIndexBlockCodec.Decode(tileIndex, TileIndexMode.RawUInt16, tileIds.Length);
+            if (decodedTileIds.Length != tileIds.Length)
+            {
+                throw new InvalidOperationException("Typed payload benchmark tile index mismatch.");
+            }
+
+            var sectionPayload = section.ToArray();
+            if (!TensorSectionBlock.TryParse(sectionPayload, tileIds.Length, out _, out var sectionBytes, out _)
+                || sectionBytes != sectionPayload.Length)
+            {
+                throw new InvalidOperationException("Typed payload benchmark tensor section mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunRuntimeProbe(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+
+        void Operation()
+        {
+            var environment = BuildEnvironment();
+            var capabilities = new[]
+            {
+                "benchmark.header",
+                "benchmark.metadata",
+                "benchmark.submit_result",
+                "benchmark.transport.tcp",
+                "benchmark.transport.quic",
+            };
+            if (string.IsNullOrWhiteSpace(environment.Os) || !capabilities.Contains("benchmark.header", StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException("Runtime probe benchmark mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunSessionLifecycle(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var close = CloseMessage.Create(sessionId: 41, reason: string.Empty).ToArray();
+
+        void Operation()
+        {
+            var stateMachine = new NnrpSessionStateMachine();
+            if (!stateMachine.TryBeginNegotiation(out _)
+                || !stateMachine.TryActivate(out _)
+                || !CloseMessage.TryParse(close, out var closeMessage, out _)
+                || closeMessage.Header.MessageType != MessageType.Close
+                || !stateMachine.TryClose(out _))
+            {
+                throw new InvalidOperationException("Session lifecycle benchmark mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunSubmitResultLoop(string id, JsonElement workload)
+    {
+        var durationSeconds = GetPositiveDouble(workload, "duration_seconds", 10.0);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", 1_000);
+        var (submitPacket, resultPacket) = BuildSubmitResultPackets();
+
+        void Operation()
+        {
+            if (!FrameSubmitMessage.TryParse(submitPacket, out var submit, out var submitError)
+                || submit.Header.MessageType != MessageType.FrameSubmit)
+            {
+                throw new InvalidOperationException($"Submit benchmark parse mismatch: {submitError}.");
+            }
+
+            if (!ResultPushMessage.TryParse(resultPacket, out var result, out var resultError)
+                || result.Header.MessageType != MessageType.ResultPush)
+            {
+                throw new InvalidOperationException($"Result benchmark parse mismatch: {resultError}.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredThroughputResult(id, MeasureThroughputOpsPerSecond(Operation, durationSeconds));
+    }
+
+    private static BenchmarkScenarioResult RunTransportLoopback(string id, JsonElement workload)
+    {
+        var durationSeconds = GetPositiveDouble(workload, "duration_seconds", 10.0);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", 1_000);
+        var probePayloadBytes = GetPositiveInt(workload, "probe_payload_bytes", 32 * 1024);
+        var probePayload = new byte[probePayloadBytes];
+        Array.Fill(probePayload, (byte)'x');
+        var probe = new TransportProbeMessage(
+            new NnrpHeader(
+                NnrpHeader.CurrentVersionMajor,
+                MessageType.TransportProbe,
+                HeaderFlags.None,
+                TransportProbeMetadata.MetadataLength,
+                (uint)probePayload.Length,
+                sessionId: 0,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 19),
+            new TransportProbeMetadata(7, (uint)probePayload.Length, 123000),
+            probePayload).ToArray();
+        var ack = new TransportProbeAckMessage(
+            new NnrpHeader(
+                NnrpHeader.CurrentVersionMajor,
+                MessageType.TransportProbeAck,
+                HeaderFlags.None,
+                TransportProbeAckMetadata.MetadataLength,
+                0,
+                sessionId: 0,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 19),
+            new TransportProbeAckMetadata(7, 0, 123456)).ToArray();
+
+        void Operation()
+        {
+            if (!TransportProbeMessage.TryParse(probe, out var decodedProbe, out var probeError)
+                || decodedProbe.Header.MessageType != MessageType.TransportProbe)
+            {
+                throw new InvalidOperationException($"Transport probe benchmark parse mismatch: {probeError}.");
+            }
+
+            if (!TransportProbeAckMessage.TryParse(ack, out var decodedAck, out var ackError)
+                || decodedAck.Header.MessageType != MessageType.TransportProbeAck)
+            {
+                throw new InvalidOperationException($"Transport ack benchmark parse mismatch: {ackError}.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredThroughputResult(id, MeasureThroughputOpsPerSecond(Operation, durationSeconds));
+    }
+
+    private static (byte[] SubmitPacket, byte[] ResultPacket) BuildSubmitResultPackets()
+    {
+        var (submit, result) = BuildSubmitResultMessages();
+        return (submit.ToArray(), result.ToArray());
+    }
+
+    private static (FrameSubmitMessage Submit, ResultPushMessage Result) BuildSubmitResultMessages()
+    {
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 41, frameId: 303);
+        var tileIndexBytes = TileIndexBlockCodec.GetEncodedLength(submit.TileIds.Span, TileIndexMode.RawUInt16);
+        var resultMetadata = new ResultPushMetadata(
+            ResultStatusCode.Success,
+            ResultFlags.None,
+            sectionCount: (ushort)submit.Sections.Length,
+            tileCount: (ushort)submit.TileIds.Length,
+            activeProfileId: 0,
+            inferenceMilliseconds: 4,
+            queueMilliseconds: 1,
+            serverTotalMilliseconds: 5,
+            tileBaseId: 0,
+            tileIndexBytes: (uint)tileIndexBytes);
+        var result = new ResultPushMessage(
+            new NnrpHeader(
+                NnrpHeader.CurrentVersionMajor,
+                MessageType.ResultPush,
+                HeaderFlags.None,
+                ResultPushMetadata.MetadataLength,
+                0,
+                sessionId: 41,
+                frameId: 303,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0),
+            resultMetadata,
+            submit.TileIds,
+            submit.Sections);
+
+        return (submit, result);
+    }
+
     private static List<double> MeasureMicroseconds(Action operation, int iterations)
     {
         var samples = new List<double>(iterations);
@@ -198,6 +537,47 @@ public static class Program
         }
 
         return samples;
+    }
+
+    private static double MeasureThroughputOpsPerSecond(Action operation, double durationSeconds)
+    {
+        var deadline = Stopwatch.GetTimestamp() + (long)(durationSeconds * Stopwatch.Frequency);
+        var completed = 0L;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            operation();
+            completed += 1;
+        }
+
+        return completed / durationSeconds;
+    }
+
+    private static BenchmarkScenarioResult MeasuredLatencyResult(string id, List<double> samples)
+    {
+        return new BenchmarkScenarioResult
+        {
+            Id = id,
+            Outcome = "measured",
+            Metrics = new BenchmarkMetrics
+            {
+                P50Microseconds = Percentile(samples, 50),
+                P95Microseconds = Percentile(samples, 95),
+                P99Microseconds = Percentile(samples, 99),
+            },
+        };
+    }
+
+    private static BenchmarkScenarioResult MeasuredThroughputResult(string id, double throughputOpsPerSecond)
+    {
+        return new BenchmarkScenarioResult
+        {
+            Id = id,
+            Outcome = "measured",
+            Metrics = new BenchmarkMetrics
+            {
+                ThroughputOpsPerSecond = throughputOpsPerSecond,
+            },
+        };
     }
 
     private static double Percentile(List<double> samples, int percentile)
@@ -259,6 +639,21 @@ public static class Program
         if (property.ValueKind != JsonValueKind.Number || !property.TryGetInt32(out var value) || value < 0)
         {
             throw new ArgumentException($"Benchmark workload field '{propertyName}' must be a non-negative integer.");
+        }
+
+        return value;
+    }
+
+    private static double GetPositiveDouble(JsonElement element, string propertyName, double defaultValue)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return defaultValue;
+        }
+
+        if (property.ValueKind != JsonValueKind.Number || !property.TryGetDouble(out var value) || value <= 0)
+        {
+            throw new ArgumentException($"Benchmark workload field '{propertyName}' must be a positive number.");
         }
 
         return value;
@@ -357,5 +752,8 @@ public static class Program
 
         [JsonPropertyName("p99_us")]
         public double? P99Microseconds { get; init; }
+
+        [JsonPropertyName("throughput_ops_per_sec")]
+        public double? ThroughputOpsPerSecond { get; init; }
     }
 }
