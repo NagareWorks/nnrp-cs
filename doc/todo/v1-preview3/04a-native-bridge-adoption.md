@@ -11,6 +11,6 @@
 - [x] Wrap the currently frozen Rust FFI value handles for connection, session, operation, event pump, and buffer views.
 - [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
-- [ ] Map stable Rust error codes into managed exception and result surfaces.
+- [x] Map stable Rust error codes into managed exception and result surfaces.
 - [ ] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.

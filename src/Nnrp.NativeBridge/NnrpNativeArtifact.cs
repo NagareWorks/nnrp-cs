@@ -322,6 +322,199 @@ namespace Nnrp.NativeBridge
         public readonly ulong FeatureFlags;
     }
 
+    public enum NnrpFfiStatusCode : uint
+    {
+        Ok = 0,
+        InvalidArgument = 1,
+        InvalidHandle = 2,
+        InvalidState = 3,
+        ProtocolError = 4,
+        WouldBlock = 5,
+        CallbackRejected = 6,
+        InternalError = 0xffff,
+    }
+
+    public enum NnrpErrorFamily : uint
+    {
+        None = 0,
+        Session = 1,
+        Cache = 2,
+        Schema = 3,
+        Transport = 4,
+        Lifecycle = 5,
+        Operation = 6,
+        Internal = 0xffff,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpFfiStatus : IEquatable<NnrpFfiStatus>
+    {
+        public NnrpFfiStatus(
+            NnrpFfiStatusCode statusCode,
+            NnrpErrorFamily errorFamily = NnrpErrorFamily.None,
+            uint protocolErrorCode = 0,
+            uint detailCode = 0)
+        {
+            StatusCode = statusCode;
+            ErrorFamily = errorFamily;
+            ProtocolErrorCode = protocolErrorCode;
+            DetailCode = detailCode;
+        }
+
+        public readonly NnrpFfiStatusCode StatusCode;
+
+        public readonly NnrpErrorFamily ErrorFamily;
+
+        public readonly uint ProtocolErrorCode;
+
+        public readonly uint DetailCode;
+
+        public static NnrpFfiStatus Ok => new NnrpFfiStatus(NnrpFfiStatusCode.Ok);
+
+        public bool Succeeded => StatusCode == NnrpFfiStatusCode.Ok;
+
+        public void ThrowIfError()
+        {
+            if (Succeeded)
+            {
+                return;
+            }
+
+            switch (StatusCode)
+            {
+                case NnrpFfiStatusCode.InvalidArgument:
+                    throw new NnrpNativeInvalidArgumentException(this);
+                case NnrpFfiStatusCode.InvalidHandle:
+                    throw new NnrpNativeInvalidHandleException(this);
+                case NnrpFfiStatusCode.InvalidState:
+                    throw new NnrpNativeInvalidStateException(this);
+                case NnrpFfiStatusCode.ProtocolError:
+                    throw new NnrpNativeProtocolException(this);
+                case NnrpFfiStatusCode.WouldBlock:
+                    throw new NnrpNativeWouldBlockException(this);
+                case NnrpFfiStatusCode.CallbackRejected:
+                    throw new NnrpNativeCallbackRejectedException(this);
+                case NnrpFfiStatusCode.InternalError:
+                default:
+                    throw new NnrpNativeInternalException(this);
+            }
+        }
+
+        public bool Equals(NnrpFfiStatus other)
+        {
+            return StatusCode == other.StatusCode
+                && ErrorFamily == other.ErrorFamily
+                && ProtocolErrorCode == other.ProtocolErrorCode
+                && DetailCode == other.DetailCode;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is NnrpFfiStatus other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = (int)StatusCode;
+                hash = (hash * 397) ^ (int)ErrorFamily;
+                hash = (hash * 397) ^ ProtocolErrorCode.GetHashCode();
+                hash = (hash * 397) ^ DetailCode.GetHashCode();
+                return hash;
+            }
+        }
+
+        public static bool operator ==(NnrpFfiStatus left, NnrpFfiStatus right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(NnrpFfiStatus left, NnrpFfiStatus right)
+        {
+            return !left.Equals(right);
+        }
+    }
+
+    public class NnrpNativeRuntimeException : InvalidOperationException
+    {
+        public NnrpNativeRuntimeException(NnrpFfiStatus status)
+            : base(FormatMessage(status))
+        {
+            Status = status;
+        }
+
+        public NnrpFfiStatus Status { get; }
+
+        private static string FormatMessage(NnrpFfiStatus status)
+        {
+            return "Native runtime status failed: status_code="
+                + status.StatusCode
+                + ", error_family="
+                + status.ErrorFamily
+                + ", protocol_error_code="
+                + status.ProtocolErrorCode
+                + ", detail_code="
+                + status.DetailCode;
+        }
+    }
+
+    public sealed class NnrpNativeInvalidArgumentException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeInvalidArgumentException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeInvalidHandleException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeInvalidHandleException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeInvalidStateException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeInvalidStateException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeProtocolException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeProtocolException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeWouldBlockException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeWouldBlockException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeCallbackRejectedException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeCallbackRejectedException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
+    public sealed class NnrpNativeInternalException : NnrpNativeRuntimeException
+    {
+        public NnrpNativeInternalException(NnrpFfiStatus status)
+            : base(status)
+        {
+        }
+    }
+
     public enum NnrpHandleKind : uint
     {
         Invalid = 0,
