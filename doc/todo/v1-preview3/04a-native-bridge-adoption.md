@@ -1,7 +1,7 @@
 # C# Preview3 Native Bridge Adoption
 
 - [ ] Consume the frozen Rust-to-C# bridge contract for preview3.
-- [ ] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
+- [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
 - [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
 - [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
