@@ -15,7 +15,7 @@
 ## Documentation And Rollout
 
 - [ ] Document the C# SDK as a Rust-backed preview3 binding plus Unity/.NET host integration layer.
-- [ ] Keep `doc/rs-native-artifacts-migration.md` updated with the native artifact plan, supported platform matrix, and pre/post migration benchmark results.
+- [ ] Keep `doc/benchmarks/rs-native-artifacts-migration.md` updated with the native artifact plan, supported platform matrix, and pre/post migration benchmark results.
 - [ ] Document the current connection/session model and how it replaces the earlier preview-era assumptions.
 - [ ] Document cache lease, schema registry, profile neutrality, and operation/workflow lifecycle semantics for hosts.
 - [ ] Document how the Rust-backed APIs replace the prior helper surface within `NNRP/1`, without reintroducing parallel helper families.

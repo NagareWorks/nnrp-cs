@@ -14,5 +14,5 @@
 - [ ] Decide which preview3 handles stay internal and which become public Unity/.NET abstractions.
 - [ ] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
 - [ ] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
-- [ ] Run the pre-migration benchmark suite and record the baseline in `doc/rs-native-artifacts-migration.md`.
-- [ ] Run the same benchmark suite after native migration and record the deltas in `doc/rs-native-artifacts-migration.md`.
+- [x] Run the pre-migration benchmark suite and record the baseline in `doc/benchmarks/rs-native-artifacts-migration.md`.
+- [ ] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
