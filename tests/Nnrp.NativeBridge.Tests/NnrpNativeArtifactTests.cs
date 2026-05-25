@@ -343,6 +343,56 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => new NnrpMutableBufferView(IntPtr.Zero, new UIntPtr(1)));
         }
 
+        [Fact]
+        public void NativeStatusKeepsStableFfiShapeAndValueEquality()
+        {
+            var left = new NnrpFfiStatus(NnrpFfiStatusCode.ProtocolError, NnrpErrorFamily.Cache, 7, 9);
+            var right = new NnrpFfiStatus(NnrpFfiStatusCode.ProtocolError, NnrpErrorFamily.Cache, 7, 9);
+            var different = new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Cache, 7, 9);
+
+            Assert.False(left.Succeeded);
+            Assert.True(NnrpFfiStatus.Ok.Succeeded);
+            Assert.Equal(NnrpFfiStatusCode.ProtocolError, left.StatusCode);
+            Assert.Equal(NnrpErrorFamily.Cache, left.ErrorFamily);
+            Assert.Equal((uint)7, left.ProtocolErrorCode);
+            Assert.Equal((uint)9, left.DetailCode);
+            Assert.Equal(left, right);
+            Assert.True(left == right);
+            Assert.False(left != right);
+            Assert.NotEqual(left, different);
+            Assert.False(left.Equals("not-a-status"));
+            Assert.Equal(left.GetHashCode(), right.GetHashCode());
+        }
+
+        [Theory]
+        [InlineData(NnrpFfiStatusCode.InvalidArgument, typeof(NnrpNativeInvalidArgumentException))]
+        [InlineData(NnrpFfiStatusCode.InvalidHandle, typeof(NnrpNativeInvalidHandleException))]
+        [InlineData(NnrpFfiStatusCode.InvalidState, typeof(NnrpNativeInvalidStateException))]
+        [InlineData(NnrpFfiStatusCode.ProtocolError, typeof(NnrpNativeProtocolException))]
+        [InlineData(NnrpFfiStatusCode.WouldBlock, typeof(NnrpNativeWouldBlockException))]
+        [InlineData(NnrpFfiStatusCode.CallbackRejected, typeof(NnrpNativeCallbackRejectedException))]
+        [InlineData(NnrpFfiStatusCode.InternalError, typeof(NnrpNativeInternalException))]
+        public void NativeStatusMapsStableStatusCodesToExceptions(NnrpFfiStatusCode statusCode, Type expectedExceptionType)
+        {
+            var status = new NnrpFfiStatus(statusCode, NnrpErrorFamily.Cache, 7, 9);
+
+            var error = Assert.Throws(expectedExceptionType, () => status.ThrowIfError());
+            var runtimeError = Assert.IsAssignableFrom<NnrpNativeRuntimeException>(error);
+
+            Assert.Equal(status, runtimeError.Status);
+            Assert.Contains("status_code=", runtimeError.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativeStatusDoesNotThrowForOkAndMapsUnknownStatusToInternal()
+        {
+            NnrpFfiStatus.Ok.ThrowIfError();
+
+            var status = new NnrpFfiStatus((NnrpFfiStatusCode)0x1234, NnrpErrorFamily.Internal, 0, 0);
+
+            Assert.Throws<NnrpNativeInternalException>(() => status.ThrowIfError());
+        }
+
         private static string CreateTempDirectory()
         {
             string path = Path.Combine(Path.GetTempPath(), "nnrp-native-artifact-" + Guid.NewGuid().ToString("N"));
