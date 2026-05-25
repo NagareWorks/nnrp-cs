@@ -10,7 +10,7 @@ namespace Nnrp.Transport.Tcp
     /// <summary>
     /// Streams framed NNRP messages over a TCP byte stream using the protocol header for message boundaries.
     /// </summary>
-    public sealed class NnrpTcpMessageTransport : INnrpMessageTransport, IDisposable, IAsyncDisposable
+    public sealed class NnrpTcpMessageTransport : INnrpMessageTransport, INnrpTransportIdentity, IDisposable, IAsyncDisposable
     {
         private readonly SemaphoreSlim receiveGate = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim sendGate = new SemaphoreSlim(1, 1);
@@ -29,6 +29,8 @@ namespace Nnrp.Transport.Tcp
             tcpClient.NoDelay = true;
             stream = tcpClient.GetStream();
         }
+
+        public TransportId TransportId => Nnrp.Core.TransportId.Tcp;
 
         public static async ValueTask<NnrpTcpMessageTransport> ConnectAsync(
             string host,
