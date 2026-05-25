@@ -193,18 +193,61 @@ namespace Nnrp.NativeBridge
 
     public readonly struct NnrpNativeProbeResult
     {
-        public NnrpNativeProbeResult(string artifactPath, byte protocolMajor, byte protocolWireFormat)
+        public NnrpNativeProbeResult(
+            string artifactPath,
+            ushort abiMajor,
+            ushort abiMinor,
+            ushort abiPatch,
+            byte protocolMajor,
+            byte protocolWireFormat,
+            ushort sdkMajor,
+            ushort sdkMinor,
+            ushort sdkPatch,
+            ushort sdkPreview,
+            ushort sdkRevision,
+            uint transportSlots,
+            ulong featureFlags)
         {
             ArtifactPath = artifactPath ?? throw new ArgumentNullException(nameof(artifactPath));
+            AbiMajor = abiMajor;
+            AbiMinor = abiMinor;
+            AbiPatch = abiPatch;
             ProtocolMajor = protocolMajor;
             ProtocolWireFormat = protocolWireFormat;
+            SdkMajor = sdkMajor;
+            SdkMinor = sdkMinor;
+            SdkPatch = sdkPatch;
+            SdkPreview = sdkPreview;
+            SdkRevision = sdkRevision;
+            TransportSlots = transportSlots;
+            FeatureFlags = featureFlags;
         }
 
         public string ArtifactPath { get; }
 
+        public ushort AbiMajor { get; }
+
+        public ushort AbiMinor { get; }
+
+        public ushort AbiPatch { get; }
+
         public byte ProtocolMajor { get; }
 
         public byte ProtocolWireFormat { get; }
+
+        public ushort SdkMajor { get; }
+
+        public ushort SdkMinor { get; }
+
+        public ushort SdkPatch { get; }
+
+        public ushort SdkPreview { get; }
+
+        public ushort SdkRevision { get; }
+
+        public uint TransportSlots { get; }
+
+        public ulong FeatureFlags { get; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -221,13 +264,96 @@ namespace Nnrp.NativeBridge
         public readonly byte WireFormat;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpRuntimeCapabilities
+    {
+        public NnrpRuntimeCapabilities(
+            ushort abiMajor,
+            ushort abiMinor,
+            ushort abiPatch,
+            NnrpProtocolVersion protocolVersion,
+            ushort sdkMajor,
+            ushort sdkMinor,
+            ushort sdkPatch,
+            ushort sdkPreview,
+            ushort sdkRevision,
+            uint transportSlots,
+            ulong featureFlags)
+        {
+            AbiMajor = abiMajor;
+            AbiMinor = abiMinor;
+            AbiPatch = abiPatch;
+            Reserved0 = 0;
+            ProtocolVersion = protocolVersion;
+            SdkMajor = sdkMajor;
+            SdkMinor = sdkMinor;
+            SdkPatch = sdkPatch;
+            SdkPreview = sdkPreview;
+            SdkRevision = sdkRevision;
+            Reserved1 = 0;
+            TransportSlots = transportSlots;
+            FeatureFlags = featureFlags;
+        }
+
+        public readonly ushort AbiMajor;
+
+        public readonly ushort AbiMinor;
+
+        public readonly ushort AbiPatch;
+
+        public readonly ushort Reserved0;
+
+        public readonly NnrpProtocolVersion ProtocolVersion;
+
+        public readonly ushort SdkMajor;
+
+        public readonly ushort SdkMinor;
+
+        public readonly ushort SdkPatch;
+
+        public readonly ushort SdkPreview;
+
+        public readonly ushort SdkRevision;
+
+        public readonly ushort Reserved1;
+
+        public readonly uint TransportSlots;
+
+        public readonly ulong FeatureFlags;
+    }
+
     public static class NnrpNativeArtifact
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
+        public const ushort ExpectedAbiMajor = 1;
+        public const ushort MinimumAbiMinor = 0;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;
+        public const uint TransportSlotQuic = 0x00000001;
+        public const uint TransportSlotTcp = 0x00000002;
+        public const ulong RuntimeFeatureProtocolCore = 0x0000000000000001;
+        public const ulong RuntimeFeatureClientApi = 0x0000000000000002;
+        public const ulong RuntimeFeatureServerApi = 0x0000000000000004;
+        public const ulong RuntimeFeatureEventPolling = 0x0000000000000008;
+        public const ulong RuntimeFeatureCallbackDispatch = 0x0000000000000010;
+        public const ulong RuntimeFeatureCacheSchema = 0x0000000000000020;
+        public const ulong RuntimeFeatureRecovery = 0x0000000000000040;
+        public const ulong RuntimeFeatureTypedPayload = 0x0000000000000080;
+        public const ulong RuntimeFeatureTransportSlots = 0x0000000000000100;
+        public const ulong RequiredRuntimeFeatures =
+            RuntimeFeatureProtocolCore
+            | RuntimeFeatureClientApi
+            | RuntimeFeatureServerApi
+            | RuntimeFeatureEventPolling
+            | RuntimeFeatureCallbackDispatch
+            | RuntimeFeatureCacheSchema
+            | RuntimeFeatureRecovery
+            | RuntimeFeatureTypedPayload
+            | RuntimeFeatureTransportSlots;
+        public const uint RequiredTransportSlots = TransportSlotTcp;
 
-        public delegate NnrpProtocolVersion CurrentProtocolVersionInvoker();
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpRuntimeCapabilities RuntimeCapabilitiesInvoker();
 
         public static string DefaultArtifactRoot
         {
@@ -281,12 +407,47 @@ namespace Nnrp.NativeBridge
             string? artifactPath = null,
             string? artifactRoot = null,
             NnrpNativePlatform? platform = null,
-            CurrentProtocolVersionInvoker? currentProtocolVersion = null)
+            RuntimeCapabilitiesInvoker? runtimeCapabilities = null)
         {
             string resolvedPath = string.IsNullOrWhiteSpace(artifactPath) ? Resolve(artifactRoot, platform) : artifactPath!;
-            NnrpProtocolVersion version = currentProtocolVersion == null
-                ? ReadCurrentProtocolVersion(resolvedPath)
-                : currentProtocolVersion();
+            NnrpRuntimeCapabilities capabilities = runtimeCapabilities == null
+                ? ReadRuntimeCapabilities(resolvedPath)
+                : runtimeCapabilities();
+            ValidateRuntimeCapabilities(capabilities);
+            return new NnrpNativeProbeResult(
+                resolvedPath,
+                capabilities.AbiMajor,
+                capabilities.AbiMinor,
+                capabilities.AbiPatch,
+                capabilities.ProtocolVersion.Major,
+                capabilities.ProtocolVersion.WireFormat,
+                capabilities.SdkMajor,
+                capabilities.SdkMinor,
+                capabilities.SdkPatch,
+                capabilities.SdkPreview,
+                capabilities.SdkRevision,
+                capabilities.TransportSlots,
+                capabilities.FeatureFlags);
+        }
+
+        private static void ValidateRuntimeCapabilities(NnrpRuntimeCapabilities capabilities)
+        {
+            if (capabilities.AbiMajor != ExpectedAbiMajor || capabilities.AbiMinor < MinimumAbiMinor)
+            {
+                throw new NnrpNativeArtifactException(
+                    "Native artifact ABI mismatch: expected "
+                    + ExpectedAbiMajor
+                    + "."
+                    + MinimumAbiMinor
+                    + ".x, got "
+                    + capabilities.AbiMajor
+                    + "."
+                    + capabilities.AbiMinor
+                    + "."
+                    + capabilities.AbiPatch);
+            }
+
+            NnrpProtocolVersion version = capabilities.ProtocolVersion;
             if (version.Major != ExpectedProtocolMajor || version.WireFormat != ExpectedProtocolWireFormat)
             {
                 throw new NnrpNativeArtifactException(
@@ -300,11 +461,23 @@ namespace Nnrp.NativeBridge
                     + version.WireFormat);
             }
 
-            return new NnrpNativeProbeResult(resolvedPath, version.Major, version.WireFormat);
+            ulong missingFeatures = RequiredRuntimeFeatures & ~capabilities.FeatureFlags;
+            if (missingFeatures != 0)
+            {
+                throw new NnrpNativeArtifactException(
+                    "Native artifact is missing required runtime feature flags: 0x" + missingFeatures.ToString("x16"));
+            }
+
+            uint missingTransportSlots = RequiredTransportSlots & ~capabilities.TransportSlots;
+            if (missingTransportSlots != 0)
+            {
+                throw new NnrpNativeArtifactException(
+                    "Native artifact is missing required transport slots: 0x" + missingTransportSlots.ToString("x8"));
+            }
         }
 
         [ExcludeFromCodeCoverage]
-        private static NnrpProtocolVersion ReadCurrentProtocolVersion(string artifactPath)
+        private static NnrpRuntimeCapabilities ReadRuntimeCapabilities(string artifactPath)
         {
             if (string.IsNullOrWhiteSpace(artifactPath))
             {
@@ -315,8 +488,8 @@ namespace Nnrp.NativeBridge
             try
             {
                 handle = NativeDynamicLibrary.Load(artifactPath);
-                IntPtr symbol = NativeDynamicLibrary.GetSymbol(handle, "nnrp_current_protocol_version");
-                var invoker = Marshal.GetDelegateForFunctionPointer<CurrentProtocolVersionInvoker>(symbol);
+                IntPtr symbol = NativeDynamicLibrary.GetSymbol(handle, "nnrp_runtime_capabilities");
+                var invoker = Marshal.GetDelegateForFunctionPointer<RuntimeCapabilitiesInvoker>(symbol);
                 return invoker();
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
