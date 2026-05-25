@@ -1,0 +1,453 @@
+using System;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
+using System.Runtime.InteropServices;
+
+namespace Nnrp.NativeBridge
+{
+    public sealed class NnrpNativeArtifactException : InvalidOperationException
+    {
+        public NnrpNativeArtifactException(string message)
+            : base(message)
+        {
+        }
+
+        public NnrpNativeArtifactException(string message, Exception innerException)
+            : base(message, innerException)
+        {
+        }
+    }
+
+    public readonly struct NnrpNativePlatform : IEquatable<NnrpNativePlatform>
+    {
+        public NnrpNativePlatform(string osName, string architecture)
+        {
+            OsName = NormalizeOs(osName);
+            Architecture = NormalizeArchitecture(architecture);
+        }
+
+        public string OsName { get; }
+
+        public string Architecture { get; }
+
+        public string RuntimeIdentifier
+        {
+            get
+            {
+                string ridOs;
+                switch (OsName)
+                {
+                    case "windows":
+                        ridOs = "win";
+                        break;
+                    case "macos":
+                        ridOs = "osx";
+                        break;
+                    case "linux":
+                    case "android":
+                    case "ios":
+                        ridOs = OsName;
+                        break;
+                    default:
+                        throw new NnrpNativeArtifactException("Unsupported native artifact OS: " + OsName);
+                }
+
+                string ridArch;
+                switch (Architecture)
+                {
+                    case "x86_64":
+                        ridArch = "x64";
+                        break;
+                    case "arm64":
+                        ridArch = "arm64";
+                        break;
+                    case "x86":
+                        ridArch = "x86";
+                        break;
+                    case "arm":
+                        ridArch = "arm";
+                        break;
+                    default:
+                        throw new NnrpNativeArtifactException("Unsupported native artifact architecture: " + Architecture);
+                }
+
+                return ridOs + "-" + ridArch;
+            }
+        }
+
+        [ExcludeFromCodeCoverage]
+        public static NnrpNativePlatform Current
+        {
+            get
+            {
+                string osName;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    osName = "windows";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    osName = "macos";
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    osName = "linux";
+                }
+                else
+                {
+                    throw new NnrpNativeArtifactException("Unsupported native artifact OS: " + RuntimeInformation.OSDescription);
+                }
+
+                return new NnrpNativePlatform(osName, RuntimeInformation.ProcessArchitecture.ToString());
+            }
+        }
+
+        public bool Equals(NnrpNativePlatform other)
+        {
+            return string.Equals(OsName, other.OsName, StringComparison.Ordinal)
+                && string.Equals(Architecture, other.Architecture, StringComparison.Ordinal);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is NnrpNativePlatform other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return ((OsName != null ? OsName.GetHashCode() : 0) * 397)
+                    ^ (Architecture != null ? Architecture.GetHashCode() : 0);
+            }
+        }
+
+        public static bool operator ==(NnrpNativePlatform left, NnrpNativePlatform right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(NnrpNativePlatform left, NnrpNativePlatform right)
+        {
+            return !left.Equals(right);
+        }
+
+        private static string NormalizeOs(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException("OS name is required.", nameof(value));
+            }
+
+            string normalized = value.Trim().ToLowerInvariant();
+            switch (normalized)
+            {
+                case "win":
+                case "win32":
+                case "windows":
+                    return "windows";
+                case "darwin":
+                case "macosx":
+                case "osx":
+                case "macos":
+                    return "macos";
+                case "linux":
+                case "android":
+                case "ios":
+                    return normalized;
+                default:
+                    throw new NnrpNativeArtifactException("Unsupported native artifact OS: " + value);
+            }
+        }
+
+        private static string NormalizeArchitecture(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException("Architecture is required.", nameof(value));
+            }
+
+            string normalized = value.Trim().ToLowerInvariant().Replace("-", "_");
+            switch (normalized)
+            {
+                case "amd64":
+                case "x64":
+                case "x86_64":
+                    return "x86_64";
+                case "i386":
+                case "i686":
+                case "x86":
+                    return "x86";
+                case "aarch64":
+                case "arm64":
+                    return "arm64";
+                case "armv7":
+                case "armv7l":
+                case "arm":
+                    return "arm";
+                default:
+                    throw new NnrpNativeArtifactException("Unsupported native artifact architecture: " + value);
+            }
+        }
+    }
+
+    public readonly struct NnrpNativeProbeResult
+    {
+        public NnrpNativeProbeResult(string artifactPath, byte protocolMajor, byte protocolWireFormat)
+        {
+            ArtifactPath = artifactPath ?? throw new ArgumentNullException(nameof(artifactPath));
+            ProtocolMajor = protocolMajor;
+            ProtocolWireFormat = protocolWireFormat;
+        }
+
+        public string ArtifactPath { get; }
+
+        public byte ProtocolMajor { get; }
+
+        public byte ProtocolWireFormat { get; }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpProtocolVersion
+    {
+        public NnrpProtocolVersion(byte major, byte wireFormat)
+        {
+            Major = major;
+            WireFormat = wireFormat;
+        }
+
+        public readonly byte Major;
+
+        public readonly byte WireFormat;
+    }
+
+    public static class NnrpNativeArtifact
+    {
+        public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
+        public const byte ExpectedProtocolMajor = 1;
+        public const byte ExpectedProtocolWireFormat = 0;
+
+        public delegate NnrpProtocolVersion CurrentProtocolVersionInvoker();
+
+        public static string DefaultArtifactRoot
+        {
+            get
+            {
+                string configured = Environment.GetEnvironmentVariable(ArtifactRootEnvironmentVariable);
+                if (!string.IsNullOrWhiteSpace(configured))
+                {
+                    return configured;
+                }
+
+                return Path.Combine(AppContext.BaseDirectory, "native_artifacts");
+            }
+        }
+
+        public static string LibraryName(string osName)
+        {
+            string normalized = new NnrpNativePlatform(osName, "x86_64").OsName;
+            if (normalized == "windows")
+            {
+                return "nnrp_ffi.dll";
+            }
+
+            if (normalized == "macos" || normalized == "ios")
+            {
+                return "libnnrp_ffi.dylib";
+            }
+
+            return "libnnrp_ffi.so";
+        }
+
+        public static string Resolve(string? artifactRoot = null, NnrpNativePlatform? platform = null)
+        {
+            NnrpNativePlatform selectedPlatform = platform ?? NnrpNativePlatform.Current;
+            string root = string.IsNullOrWhiteSpace(artifactRoot) ? DefaultArtifactRoot : artifactRoot!;
+            string path = Path.Combine(
+                root,
+                "runtimes",
+                selectedPlatform.RuntimeIdentifier,
+                "native",
+                LibraryName(selectedPlatform.OsName));
+            if (!File.Exists(path))
+            {
+                throw new NnrpNativeArtifactException("Native artifact was not found: " + path);
+            }
+
+            return path;
+        }
+
+        public static NnrpNativeProbeResult Probe(
+            string? artifactPath = null,
+            string? artifactRoot = null,
+            NnrpNativePlatform? platform = null,
+            CurrentProtocolVersionInvoker? currentProtocolVersion = null)
+        {
+            string resolvedPath = string.IsNullOrWhiteSpace(artifactPath) ? Resolve(artifactRoot, platform) : artifactPath!;
+            NnrpProtocolVersion version = currentProtocolVersion == null
+                ? ReadCurrentProtocolVersion(resolvedPath)
+                : currentProtocolVersion();
+            if (version.Major != ExpectedProtocolMajor || version.WireFormat != ExpectedProtocolWireFormat)
+            {
+                throw new NnrpNativeArtifactException(
+                    "Native artifact protocol mismatch: expected "
+                    + ExpectedProtocolMajor
+                    + "/"
+                    + ExpectedProtocolWireFormat
+                    + ", got "
+                    + version.Major
+                    + "/"
+                    + version.WireFormat);
+            }
+
+            return new NnrpNativeProbeResult(resolvedPath, version.Major, version.WireFormat);
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static NnrpProtocolVersion ReadCurrentProtocolVersion(string artifactPath)
+        {
+            if (string.IsNullOrWhiteSpace(artifactPath))
+            {
+                throw new ArgumentException("Native artifact path is required.", nameof(artifactPath));
+            }
+
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = NativeDynamicLibrary.Load(artifactPath);
+                IntPtr symbol = NativeDynamicLibrary.GetSymbol(handle, "nnrp_current_protocol_version");
+                var invoker = Marshal.GetDelegateForFunctionPointer<CurrentProtocolVersionInvoker>(symbol);
+                return invoker();
+            }
+            catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
+            {
+                throw new NnrpNativeArtifactException("Failed to load native artifact probe from " + artifactPath + ": " + error.Message, error);
+            }
+            finally
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    NativeDynamicLibrary.Free(handle);
+                }
+            }
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static class NativeDynamicLibrary
+        {
+            public static IntPtr Load(string path)
+            {
+                IntPtr handle;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    handle = LoadLibraryW(path);
+                }
+                else
+                {
+                    handle = Dlopen(path, 2);
+                }
+
+                if (handle == IntPtr.Zero)
+                {
+                    throw new DllNotFoundException(path);
+                }
+
+                return handle;
+            }
+
+            public static IntPtr GetSymbol(IntPtr handle, string name)
+            {
+                IntPtr symbol;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    symbol = GetProcAddress(handle, name);
+                }
+                else
+                {
+                    symbol = Dlsym(handle, name);
+                }
+
+                if (symbol == IntPtr.Zero)
+                {
+                    throw new EntryPointNotFoundException(name);
+                }
+
+                return symbol;
+            }
+
+            public static void Free(IntPtr handle)
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    FreeLibrary(handle);
+                    return;
+                }
+
+                Dlclose(handle);
+            }
+
+            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+            private static extern IntPtr LoadLibraryW(string path);
+
+            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
+            private static extern IntPtr GetProcAddress(IntPtr module, string name);
+
+            [DllImport("kernel32", SetLastError = true)]
+            private static extern bool FreeLibrary(IntPtr module);
+
+            [DllImport("libdl")]
+            private static extern IntPtr dlopen(string path, int flags);
+
+            [DllImport("libdl")]
+            private static extern IntPtr dlsym(IntPtr handle, string symbol);
+
+            [DllImport("libdl")]
+            private static extern int dlclose(IntPtr handle);
+
+            private static IntPtr Dlopen(string path, int flags)
+            {
+                try
+                {
+                    return dlopen(path, flags);
+                }
+                catch (DllNotFoundException)
+                {
+                    return dlopen2(path, flags);
+                }
+            }
+
+            private static IntPtr Dlsym(IntPtr handle, string symbol)
+            {
+                try
+                {
+                    return dlsym(handle, symbol);
+                }
+                catch (DllNotFoundException)
+                {
+                    return dlsym2(handle, symbol);
+                }
+            }
+
+            private static void Dlclose(IntPtr handle)
+            {
+                try
+                {
+                    dlclose(handle);
+                }
+                catch (DllNotFoundException)
+                {
+                    dlclose2(handle);
+                }
+            }
+
+            [DllImport("libdl.so.2", EntryPoint = "dlopen")]
+            private static extern IntPtr dlopen2(string path, int flags);
+
+            [DllImport("libdl.so.2", EntryPoint = "dlsym")]
+            private static extern IntPtr dlsym2(IntPtr handle, string symbol);
+
+            [DllImport("libdl.so.2", EntryPoint = "dlclose")]
+            private static extern int dlclose2(IntPtr handle);
+        }
+    }
+}
