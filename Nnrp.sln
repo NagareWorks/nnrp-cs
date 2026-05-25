@@ -33,6 +33,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.ConformanceExporter", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.ConformanceAdapter", "tools\Nnrp.ConformanceAdapter\Nnrp.ConformanceAdapter.csproj", "{1FC5E045-FD80-45C2-847C-32C984E7D50B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.BenchmarkAdapter", "tools\Nnrp.BenchmarkAdapter\Nnrp.BenchmarkAdapter.csproj", "{E86B6846-4926-426D-BEEC-96834EE21D89}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -187,6 +189,18 @@ Global
 		{1FC5E045-FD80-45C2-847C-32C984E7D50B}.Release|x64.Build.0 = Release|Any CPU
 		{1FC5E045-FD80-45C2-847C-32C984E7D50B}.Release|x86.ActiveCfg = Release|Any CPU
 		{1FC5E045-FD80-45C2-847C-32C984E7D50B}.Release|x86.Build.0 = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|x64.Build.0 = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Debug|x86.Build.0 = Debug|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|x64.ActiveCfg = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|x64.Build.0 = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|x86.ActiveCfg = Release|Any CPU
+		{E86B6846-4926-426D-BEEC-96834EE21D89}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -204,5 +218,6 @@ Global
 		{B57C9789-C59A-4E3D-BE65-3E59515E78FB} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{23162CFB-B0FC-4E81-9078-EF78C00B078D} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{1FC5E045-FD80-45C2-847C-32C984E7D50B} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{E86B6846-4926-426D-BEEC-96834EE21D89} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal
