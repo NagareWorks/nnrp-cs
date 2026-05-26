@@ -141,6 +141,36 @@ public static class Program
                 case "l1.handshake.capability_window.validation":
                     RunHandshakeBasic();
                     return Pass(caseId, "CLIENT_HELLO and SERVER_HELLO_ACK capability negotiation passed.");
+                case "l0.session_open.metadata.golden":
+                    RunSessionOpenMetadataGolden();
+                    return Pass(caseId, "SESSION_OPEN fixed metadata matched the golden vector.");
+                case "l0.session_open_ack.metadata.golden":
+                    RunSessionOpenAckMetadataGolden();
+                    return Pass(caseId, "SESSION_OPEN_ACK fixed metadata matched the golden vector.");
+                case "l0.session_close.metadata.golden":
+                    RunSessionCloseMetadataGolden();
+                    return Pass(caseId, "SESSION_CLOSE fixed metadata matched the golden vector.");
+                case "l0.session_close_ack.metadata.golden":
+                    RunSessionCloseAckMetadataGolden();
+                    return Pass(caseId, "SESSION_CLOSE_ACK fixed metadata matched the golden vector.");
+                case "l0.session_open.reserved_fields.reject":
+                    RunSessionOpenReservedFieldsReject();
+                    return Pass(caseId, "SESSION_OPEN reserved fields were rejected.");
+                case "l0.session_open_ack.reserved_fields.reject":
+                    RunSessionOpenAckReservedFieldsReject();
+                    return Pass(caseId, "SESSION_OPEN_ACK reserved flags were rejected.");
+                case "l1.session.open.fixed_metadata.validation":
+                    RunSessionOpenMetadataValidation();
+                    return Pass(caseId, "SESSION_OPEN fixed metadata validation passed.");
+                case "l1.session.open_ack.fixed_metadata.validation":
+                    RunSessionOpenAckMetadataValidation();
+                    return Pass(caseId, "SESSION_OPEN_ACK fixed metadata validation passed.");
+                case "l1.session.close.state_machine.validation":
+                    RunSessionCloseStateMachineValidation();
+                    return Pass(caseId, "SESSION_CLOSE lifecycle ordering validation passed.");
+                case "l1.session.open_close":
+                    RunSessionOpenClose();
+                    return Pass(caseId, "SESSION_OPEN to SESSION_CLOSE roundtrip passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -340,6 +370,260 @@ public static class Program
             ServerHelloAckMessage.TryParse(ack.ToArray(), out var parsedAck, out var ackError),
             $"SERVER_HELLO_ACK strict parse failed: {ackError}.");
         AssertTrue(parsedAck.Metadata.Equals(ackMetadata), "SERVER_HELLO_ACK metadata roundtrip changed.");
+    }
+
+    private static void RunSessionOpenMetadataGolden()
+    {
+        var metadata = GoldenSessionOpenMetadata();
+        var expected = new byte[]
+        {
+            0x2A, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x05,
+            0x01, 0x10, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0xF4, 0x01, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+            0x30, 0x75, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,
+            0x20, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00,
+            0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01,
+        };
+        var actual = metadata.ToArray();
+
+        AssertTrue(actual.AsSpan().SequenceEqual(expected), "SESSION_OPEN golden bytes changed.");
+        AssertTrue(SessionOpenMetadata.TryParse(actual, strict: true, out var parsed, out var error), $"SESSION_OPEN strict parse failed: {error}.");
+        AssertTrue(parsed.Equals(metadata), "SESSION_OPEN metadata roundtrip changed.");
+    }
+
+    private static void RunSessionOpenAckMetadataGolden()
+    {
+        var metadata = GoldenSessionOpenAckMetadata();
+        var expected = new byte[]
+        {
+            0x2A, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0x00,
+            0x01, 0x10, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x02, 0x00, 0x04, 0x00, 0x30, 0x75, 0x00, 0x00,
+            0xC0, 0xD4, 0x01, 0x00, 0x10, 0x00, 0x00, 0x00,
+            0x08, 0x00, 0x00, 0x00, 0x21, 0x43, 0x65, 0x87,
+            0xA9, 0xCB, 0xED, 0x0F, 0x07, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
+        };
+        var actual = metadata.ToArray();
+
+        AssertTrue(actual.AsSpan().SequenceEqual(expected), "SESSION_OPEN_ACK golden bytes changed.");
+        AssertTrue(SessionOpenAckMetadata.TryParse(actual, out var parsed, out var error), $"SESSION_OPEN_ACK parse failed: {error}.");
+        AssertTrue(parsed.Equals(metadata), "SESSION_OPEN_ACK metadata roundtrip changed.");
+    }
+
+    private static void RunSessionCloseMetadataGolden()
+    {
+        var metadata = GoldenSessionCloseMetadata();
+        var expected = new byte[]
+        {
+            0x01, 0x00, 0x00, 0x00, 0xE8, 0x03, 0x00, 0x00,
+            0x63, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x44, 0x33, 0x22, 0x11,
+        };
+        var actual = metadata.ToArray();
+
+        AssertTrue(actual.AsSpan().SequenceEqual(expected), "SESSION_CLOSE golden bytes changed.");
+        AssertTrue(SessionCloseMetadata.TryParse(actual, strict: true, out var parsed, out var error), $"SESSION_CLOSE strict parse failed: {error}.");
+        AssertTrue(parsed.Equals(metadata), "SESSION_CLOSE metadata roundtrip changed.");
+    }
+
+    private static void RunSessionCloseAckMetadataGolden()
+    {
+        var metadata = GoldenSessionCloseAckMetadata();
+        var expected = new byte[]
+        {
+            0x01, 0x00, 0x00, 0x00, 0x63, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        var actual = metadata.ToArray();
+
+        AssertTrue(actual.AsSpan().SequenceEqual(expected), "SESSION_CLOSE_ACK golden bytes changed.");
+        AssertTrue(SessionCloseAckMetadata.TryParse(actual, strict: true, out var parsed, out var error), $"SESSION_CLOSE_ACK strict parse failed: {error}.");
+        AssertTrue(parsed.Equals(metadata), "SESSION_CLOSE_ACK metadata roundtrip changed.");
+    }
+
+    private static void RunSessionOpenReservedFieldsReject()
+    {
+        var bytes = GoldenSessionOpenMetadata().ToArray();
+        bytes[22] = 1;
+
+        AssertTrue(
+            !SessionOpenMetadata.TryParse(bytes, strict: true, out _, out var error)
+                && error == NnrpParseError.NonZeroReservedField,
+            $"SESSION_OPEN reserved field was not rejected as NonZeroReservedField: {error}.");
+    }
+
+    private static void RunSessionOpenAckReservedFieldsReject()
+    {
+        var bytes = GoldenSessionOpenAckMetadata().ToArray();
+        bytes[52] = 0x20;
+
+        AssertTrue(
+            !SessionOpenAckMetadata.TryParse(bytes, out _, out var error)
+                && error == NnrpParseError.InvalidMessageLayout,
+            $"SESSION_OPEN_ACK reserved flag bits were not rejected as InvalidMessageLayout: {error}.");
+    }
+
+    private static void RunSessionOpenMetadataValidation()
+    {
+        RunSessionOpenMetadataGolden();
+        var bytes = GoldenSessionOpenMetadata().ToArray();
+        bytes[6] = 0xFF;
+        AssertTrue(
+            !SessionOpenMetadata.TryParse(bytes, strict: true, out _, out var priorityError)
+                && priorityError == NnrpParseError.InvalidMessageLayout,
+            $"SESSION_OPEN invalid priority class was not rejected: {priorityError}.");
+
+        bytes = GoldenSessionOpenMetadata().ToArray();
+        bytes[7] = 0x80;
+        AssertTrue(
+            !SessionOpenMetadata.TryParse(bytes, strict: true, out _, out var flagsError)
+                && flagsError == NnrpParseError.InvalidMessageLayout,
+            $"SESSION_OPEN invalid flags were not rejected: {flagsError}.");
+    }
+
+    private static void RunSessionOpenAckMetadataValidation()
+    {
+        RunSessionOpenAckMetadataGolden();
+        var bytes = GoldenSessionOpenAckMetadata().ToArray();
+        bytes[7] = 0xFF;
+        AssertTrue(
+            !SessionOpenAckMetadata.TryParse(bytes, out _, out var statusError)
+                && statusError == NnrpParseError.InvalidMessageLayout,
+            $"SESSION_OPEN_ACK invalid status was not rejected: {statusError}.");
+
+        bytes = GoldenSessionOpenAckMetadata().ToArray();
+        bytes[52] = 0x80;
+        AssertTrue(
+            !SessionOpenAckMetadata.TryParse(bytes, out _, out var flagsError)
+                && flagsError == NnrpParseError.InvalidMessageLayout,
+            $"SESSION_OPEN_ACK invalid flags were not rejected: {flagsError}.");
+    }
+
+    private static void RunSessionCloseStateMachineValidation()
+    {
+        var state = new NnrpSessionStateMachine();
+        AssertTrue(state.TryBeginNegotiation(out _), "Session state machine did not begin negotiation.");
+        AssertTrue(state.TryActivate(out _), "Session state machine did not activate.");
+        AssertTrue(state.TryAcceptFrameSubmit(out _), "Session state machine rejected active frame submit.");
+        AssertTrue(state.TryBeginDraining(out _), "Session state machine did not begin draining.");
+        AssertTrue(state.TryClose(out _), "Session state machine did not close after draining.");
+        AssertTrue(state.State == NnrpSessionState.Closed, "Session state machine did not enter Closed after draining.");
+
+        AssertTrue(
+            SessionCloseMetadata.TryParse(GoldenSessionCloseMetadata().ToArray(), strict: true, out _, out var closeError),
+            $"SESSION_CLOSE metadata parse failed: {closeError}.");
+        AssertTrue(
+            SessionCloseAckMetadata.TryParse(GoldenSessionCloseAckMetadata().ToArray(), strict: true, out _, out var ackError),
+            $"SESSION_CLOSE_ACK metadata parse failed: {ackError}.");
+    }
+
+    private static void RunSessionOpenClose()
+    {
+        var openMetadata = GoldenSessionOpenMetadata();
+        var openBody = new byte[openMetadata.BodyLength];
+        var open = new SessionOpenMessage(
+            SessionHeader(MessageType.SessionOpen, SessionOpenMetadata.MetadataLength, openMetadata.BodyLength, 0, 0x1010),
+            openMetadata,
+            openBody);
+        AssertTrue(SessionOpenMessage.TryParse(open.ToArray(), out var parsedOpen, out var openError), $"SESSION_OPEN message parse failed: {openError}.");
+        AssertTrue(parsedOpen.Metadata.Equals(openMetadata), "SESSION_OPEN message metadata changed.");
+
+        var ackMetadata = GoldenSessionOpenAckMetadata();
+        var ackBody = new byte[ackMetadata.BodyLength];
+        var ack = new SessionOpenAckMessage(
+            SessionHeader(MessageType.SessionOpenAck, SessionOpenAckMetadata.MetadataLength, ackMetadata.BodyLength, ackMetadata.SessionId, 0x1010),
+            ackMetadata,
+            ackBody);
+        AssertTrue(SessionOpenAckMessage.TryParse(ack.ToArray(), out var parsedAck, out var ackError), $"SESSION_OPEN_ACK message parse failed: {ackError}.");
+        AssertTrue(parsedAck.Metadata.Equals(ackMetadata), "SESSION_OPEN_ACK message metadata changed.");
+
+        var closeMetadata = GoldenSessionCloseMetadata();
+        var close = new SessionCloseMessage(
+            SessionHeader(MessageType.SessionClose, SessionCloseMetadata.MetadataLength, 0, ackMetadata.SessionId, 0x2020),
+            closeMetadata);
+        AssertTrue(SessionCloseMessage.TryParse(close.ToArray(), out var parsedClose, out var closeError), $"SESSION_CLOSE message parse failed: {closeError}.");
+        AssertTrue(parsedClose.Metadata.Equals(closeMetadata), "SESSION_CLOSE message metadata changed.");
+
+        var closeAckMetadata = GoldenSessionCloseAckMetadata();
+        var closeAck = new SessionCloseAckMessage(
+            SessionHeader(MessageType.SessionCloseAck, SessionCloseAckMetadata.MetadataLength, 0, ackMetadata.SessionId, 0x2020),
+            closeAckMetadata);
+        AssertTrue(SessionCloseAckMessage.TryParse(closeAck.ToArray(), out var parsedCloseAck, out var closeAckError), $"SESSION_CLOSE_ACK message parse failed: {closeAckError}.");
+        AssertTrue(parsedCloseAck.Metadata.Equals(closeAckMetadata), "SESSION_CLOSE_ACK message metadata changed.");
+    }
+
+    private static SessionOpenMetadata GoldenSessionOpenMetadata()
+    {
+        return new SessionOpenMetadata(
+            requestedSessionId: 42,
+            profileId: 2,
+            priorityClass: SessionPriorityClass.Balanced,
+            sessionFlags: SessionFlags.AllowResume | SessionFlags.AllowCacheLeases,
+            schemaId: 4097,
+            schemaVersion: 3,
+            defaultDeadlineMilliseconds: 500,
+            maxInFlightOperations: 4,
+            leaseTtlHintMilliseconds: 30000,
+            resumeTokenBytes: 16,
+            authBytes: 32,
+            sessionExtensionBytes: 8,
+            clientSessionTag: 0x0123456789ABCDEF);
+    }
+
+    private static SessionOpenAckMetadata GoldenSessionOpenAckMetadata()
+    {
+        return new SessionOpenAckMetadata(
+            sessionId: 42,
+            acceptedProfileId: 2,
+            acceptedPriorityClass: SessionPriorityClass.Balanced,
+            sessionStatus: SessionStatus.Opened,
+            schemaId: 4097,
+            schemaVersion: 3,
+            grantedOperationCredit: 2,
+            maxInFlightOperations: 4,
+            leaseTtlMilliseconds: 30000,
+            resumeWindowMilliseconds: 120000,
+            resumeTokenBytes: 16,
+            sessionExtensionBytes: 8,
+            serverSessionTag: 0x0FEDCBA987654321,
+            routeScopeId: 7,
+            sessionErrorCode: SessionErrorCode.None,
+            sessionFlagsAck: SessionAckFlags.ResumeEnabled | SessionAckFlags.CacheLeasesEnabled);
+    }
+
+    private static SessionCloseMetadata GoldenSessionCloseMetadata()
+    {
+        return new SessionCloseMetadata(
+            closeReason: SessionCloseReason.ClientShutdown,
+            inFlightPolicy: InFlightPolicy.Drain,
+            drainTimeoutMilliseconds: 1000,
+            lastOperationId: 99,
+            sessionErrorCode: SessionErrorCode.None,
+            sessionCloseTag: 0x11223344);
+    }
+
+    private static SessionCloseAckMetadata GoldenSessionCloseAckMetadata()
+    {
+        return new SessionCloseAckMetadata(
+            closeStatus: SessionCloseStatus.Draining,
+            lastOperationId: 99,
+            sessionErrorCode: SessionErrorCode.None);
+    }
+
+    private static NnrpHeader SessionHeader(MessageType messageType, int metadataLength, uint bodyLength, uint sessionId, ulong traceId)
+    {
+        return new NnrpHeader(
+            versionMajor: NnrpHeader.CurrentVersionMajor,
+            messageType: messageType,
+            flags: HeaderFlags.None,
+            metaLength: (uint)metadataLength,
+            bodyLength: bodyLength,
+            sessionId: sessionId,
+            frameId: 0,
+            viewId: 0,
+            routeId: 0,
+            traceId: traceId);
     }
 
     private static void AssertHandshakeWindow(ClientHelloMetadata hello, ServerHelloAckMetadata ack)

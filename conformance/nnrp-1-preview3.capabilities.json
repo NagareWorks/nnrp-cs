@@ -2,6 +2,7 @@
   "implementation_name": "nnrp-cs",
   "protocol_version": "nnrp-1-preview3",
   "supports": [
-    "handshake.basic"
+    "handshake.basic",
+    "session.open_close"
   ]
 }

@@ -16,6 +16,9 @@
 ## Protocol Contract Adoption
 
 - [ ] Implement `SESSION_OPEN` / `SESSION_OPEN_ACK`, explicit session-close, and recovery semantics exactly as frozen in `nnrp-doc`.
+  - [x] Implement fixed `SESSION_OPEN` / `SESSION_OPEN_ACK` metadata and message roundtrip support.
+  - [x] Implement fixed `SESSION_CLOSE` / `SESSION_CLOSE_ACK` metadata and message roundtrip support.
+  - [ ] Implement recovery semantics exactly as frozen in `nnrp-doc`.
 - [ ] Implement session priority classes, operation lifecycle states, cancellation scopes, and `FLOW_UPDATE` semantics from frozen protocol enums and metadata tables.
 - [ ] Implement cache lease, schema registry, and typed payload descriptor wrappers against the frozen 32B / 24B layouts and standard error behavior.
 - [ ] Consume Rust-generated conformance fixtures as the only canonical preview3 protocol baseline.

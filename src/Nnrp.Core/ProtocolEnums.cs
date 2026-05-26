@@ -25,6 +25,18 @@ namespace Nnrp.Core
         /// <summary>Error message, encoded as <c>0x06</c>.</summary>
         Error = 0x06,
 
+        /// <summary>Session open request, encoded as <c>0x07</c>.</summary>
+        SessionOpen = 0x07,
+
+        /// <summary>Session open acknowledgement, encoded as <c>0x08</c>.</summary>
+        SessionOpenAck = 0x08,
+
+        /// <summary>Session close request, encoded as <c>0x09</c>.</summary>
+        SessionClose = 0x09,
+
+        /// <summary>Session close acknowledgement, encoded as <c>0x0A</c>.</summary>
+        SessionCloseAck = 0x0A,
+
         /// <summary>Frame submit message, encoded as <c>0x10</c>.</summary>
         FrameSubmit = 0x10,
 
@@ -69,6 +81,181 @@ namespace Nnrp.Core
 
         /// <summary>Pong message, encoded as <c>0x21</c>.</summary>
         Pong = 0x21,
+    }
+
+    public static class MessageTypeExtensions
+    {
+        public static bool IsSessionLifecycle(this MessageType messageType)
+        {
+            return messageType == MessageType.SessionOpen
+                || messageType == MessageType.SessionOpenAck
+                || messageType == MessageType.SessionClose
+                || messageType == MessageType.SessionCloseAck;
+        }
+    }
+
+    /// <summary>
+    /// Session priority class identifiers.
+    /// </summary>
+    public enum SessionPriorityClass : byte
+    {
+        /// <summary>Interactive work, encoded as <c>0</c>.</summary>
+        Interactive = 0,
+
+        /// <summary>Balanced latency/throughput work, encoded as <c>1</c>.</summary>
+        Balanced = 1,
+
+        /// <summary>Background work, encoded as <c>2</c>.</summary>
+        Background = 2,
+    }
+
+    /// <summary>
+    /// SESSION_OPEN request flags.
+    /// </summary>
+    [Flags]
+    public enum SessionFlags : byte
+    {
+        /// <summary>No session flags, encoded as <c>0x00</c>.</summary>
+        None = 0,
+
+        /// <summary>Allow session resume, encoded as <c>0x01</c>.</summary>
+        AllowResume = 0x01,
+
+        /// <summary>Allow background results, encoded as <c>0x02</c>.</summary>
+        AllowBackgroundResults = 0x02,
+
+        /// <summary>Allow cache leases, encoded as <c>0x04</c>.</summary>
+        AllowCacheLeases = 0x04,
+
+        /// <summary>Allow schema override, encoded as <c>0x08</c>.</summary>
+        AllowSchemaOverride = 0x08,
+    }
+
+    /// <summary>
+    /// SESSION_OPEN_ACK status identifiers.
+    /// </summary>
+    public enum SessionStatus : byte
+    {
+        /// <summary>Session opened, encoded as <c>0</c>.</summary>
+        Opened = 0,
+
+        /// <summary>Session rejected, encoded as <c>1</c>.</summary>
+        Rejected = 1,
+
+        /// <summary>Client should retry later, encoded as <c>2</c>.</summary>
+        RetryLater = 2,
+
+        /// <summary>Session resumed, encoded as <c>3</c>.</summary>
+        Resumed = 3,
+    }
+
+    /// <summary>
+    /// SESSION_OPEN_ACK negotiated flags.
+    /// </summary>
+    [Flags]
+    public enum SessionAckFlags : uint
+    {
+        /// <summary>No acknowledgement flags, encoded as <c>0x00000000</c>.</summary>
+        None = 0,
+
+        /// <summary>Resume is enabled, encoded as <c>0x00000001</c>.</summary>
+        ResumeEnabled = 0x00000001,
+
+        /// <summary>Background results are enabled, encoded as <c>0x00000002</c>.</summary>
+        BackgroundResultsEnabled = 0x00000002,
+
+        /// <summary>Cache leases are enabled, encoded as <c>0x00000004</c>.</summary>
+        CacheLeasesEnabled = 0x00000004,
+
+        /// <summary>Schema override is enabled, encoded as <c>0x00000008</c>.</summary>
+        SchemaOverrideEnabled = 0x00000008,
+
+        /// <summary>Priority was downgraded, encoded as <c>0x00000010</c>.</summary>
+        PriorityDowngraded = 0x00000010,
+    }
+
+    /// <summary>
+    /// Session lifecycle error identifiers.
+    /// </summary>
+    public enum SessionErrorCode : uint
+    {
+        /// <summary>No session error, encoded as <c>0</c>.</summary>
+        None = 0,
+
+        /// <summary>Authentication failed, encoded as <c>0x00010001</c>.</summary>
+        AuthFailed = 0x00010001,
+
+        /// <summary>Profile unsupported, encoded as <c>0x00010002</c>.</summary>
+        ProfileUnsupported = 0x00010002,
+
+        /// <summary>Schema unsupported, encoded as <c>0x00010003</c>.</summary>
+        SchemaUnsupported = 0x00010003,
+
+        /// <summary>Priority rejected, encoded as <c>0x00010004</c>.</summary>
+        PriorityRejected = 0x00010004,
+
+        /// <summary>Lease policy rejected, encoded as <c>0x00010005</c>.</summary>
+        LeasePolicyRejected = 0x00010005,
+
+        /// <summary>Resume rejected, encoded as <c>0x00010006</c>.</summary>
+        ResumeRejected = 0x00010006,
+
+        /// <summary>Session limit reached, encoded as <c>0x00010007</c>.</summary>
+        SessionLimitReached = 0x00010007,
+    }
+
+    /// <summary>
+    /// SESSION_CLOSE reason identifiers.
+    /// </summary>
+    public enum SessionCloseReason : ushort
+    {
+        /// <summary>Normal close, encoded as <c>0</c>.</summary>
+        Normal = 0,
+
+        /// <summary>Client shutdown, encoded as <c>1</c>.</summary>
+        ClientShutdown = 1,
+
+        /// <summary>Server shutdown, encoded as <c>2</c>.</summary>
+        ServerShutdown = 2,
+
+        /// <summary>Idle timeout, encoded as <c>3</c>.</summary>
+        IdleTimeout = 3,
+
+        /// <summary>Protocol error, encoded as <c>4</c>.</summary>
+        ProtocolError = 4,
+
+        /// <summary>Authentication revoked, encoded as <c>5</c>.</summary>
+        AuthRevoked = 5,
+    }
+
+    /// <summary>
+    /// SESSION_CLOSE in-flight operation policy identifiers.
+    /// </summary>
+    public enum InFlightPolicy : byte
+    {
+        /// <summary>Drain in-flight operations, encoded as <c>0</c>.</summary>
+        Drain = 0,
+
+        /// <summary>Abort in-flight operations, encoded as <c>1</c>.</summary>
+        Abort = 1,
+    }
+
+    /// <summary>
+    /// SESSION_CLOSE_ACK status identifiers.
+    /// </summary>
+    public enum SessionCloseStatus : byte
+    {
+        /// <summary>Close acknowledged, encoded as <c>0</c>.</summary>
+        Acknowledged = 0,
+
+        /// <summary>Session is draining, encoded as <c>1</c>.</summary>
+        Draining = 1,
+
+        /// <summary>Session is closed, encoded as <c>2</c>.</summary>
+        Closed = 2,
+
+        /// <summary>Close rejected, encoded as <c>3</c>.</summary>
+        Rejected = 3,
     }
 
     /// <summary>
