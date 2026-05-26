@@ -186,16 +186,14 @@
 
 ### 5.3 Unity Package Surface
 
-- [ ] Replace the retired repo-staged Unity package path with a CI-owned Unity-style package definition.
-- [ ] Add a deterministic CI step that generates Unity `.meta` files for the package tree instead of relying on committed package outputs.
-- [ ] Define one Unity-style client package that contains all current common-platform native bridge binaries in the correct Unity plugin paths.
-	- [ ] Include Windows native bridge binaries in the Windows plugin path.
-	- [ ] Include macOS native bridge binaries in the macOS plugin path.
-	- [ ] Include Linux native bridge binaries in the Linux plugin path.
-	- [ ] Include Android native bridge binaries in the Android plugin path.
-	- [ ] Include iOS native bridge binaries in the iOS plugin path.
-- [ ] Keep NuGet-style server/client packages separate from the Unity-style client package.
-- [ ] Keep the current compatibility scope limited to Windows, macOS, Linux, Android, and iOS.
+- [x] Replace the retired repo-staged Unity package path with a CI-owned Unity-style package definition.
+- [x] Add a deterministic CI step that generates Unity `.meta` files for the package tree instead of relying on committed package outputs.
+- [x] Define one Unity-style client package that contains all current preview2 release native bridge binaries in the correct Unity plugin paths.
+	- [x] Include Windows native bridge binaries in the Windows plugin path.
+	- [x] Include macOS native bridge binaries in the macOS plugin path.
+	- [x] Include Linux native bridge binaries in the Linux plugin path.
+- [x] Keep NuGet-style server/client packages separate from the Unity-style client package.
+- [x] Keep the current preview2 Unity release compatibility scope limited to the desktop platforms built by CI: Windows x64, macOS x64/arm64, and Linux x64.
 
 - [x] Rename the staged Unity UPM package path to `unity/com.nnrp.client` and update package metadata, README examples, and staging/repro scripts to match.
 - [x] Decide which preview2 object-reference helpers need to be public in the Unity package and which stay internal.
@@ -258,5 +256,5 @@
 - [x] Document preview2 host-integration guidance for async submit/result pumps and clarify that one-shot `submit_and_wait` helpers are non-canonical convenience APIs.
 - [x] Document typed-payload / extension-frame usage for token streaming, multimodal dialogue, and coding-agent events.
 - [x] Document native smoke and staging workflow once preview2 package layout is decided.
-- [ ] Document the CI-generated Unity package format, including `.meta` generation policy and multi-platform native plugin layout.
-- [ ] Document the common-platform package matrix and plugin layout for Windows, macOS, Linux, Android, and iOS.
+- [x] Document the CI-generated Unity package format, including `.meta` generation policy and multi-platform native plugin layout.
+- [x] Document the common-platform package matrix and plugin layout for the current preview2 desktop Unity release scope.
