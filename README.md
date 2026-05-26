@@ -456,8 +456,17 @@ All SDK projects share the repository version from `Directory.Build.props`. SDK 
 dotnet pack Nnrp.sln -c Release
 ```
 
-This only covers the current .NET package build. It does not yet generate Unity `.meta` files, does not assemble a Unity-style package artifact, and does not produce a multi-platform native-binary bundle. The intended CI packaging flow still needs:
+The release workflow also builds the Unity-style `com.nnrp.client` package. The package is assembled in CI from the tracked OpenUPM metadata under `Packages/com.nnrp.client`, the managed `netstandard2.1` assemblies, and native bridge artifacts produced by the release matrix.
 
-- a deterministic Unity `.meta` generator or template-instantiation step,
-- a multi-platform native build matrix covering Windows, macOS, Linux, Android, and iOS,
-- one Unity-style package assembly step that places all supported common-platform native binaries into the correct Unity plugin directories.
+`scripts/build_upm_package.py` owns the package layout and deterministic Unity `.meta` generation. CI validates the tracked package metadata on every non-docs-only build and emits release `.zip` / `.tgz` bundles from the generated tree.
+
+Current release plugin layout:
+
+| Platform | Unity plugin path | Native bridge artifact |
+| --- | --- | --- |
+| Windows x64 | `Runtime/Plugins/Windows/x86_64/` | `nnrp_quic_bridge.dll` |
+| Linux x64 | `Runtime/Plugins/Linux/x86_64/` | `libnnrp_quic_bridge.so` |
+| macOS x64 | `Runtime/Plugins/macOS/x86_64/` | `libnnrp_quic_bridge.dylib` |
+| macOS arm64 | `Runtime/Plugins/macOS/arm64/` | `libnnrp_quic_bridge.dylib` |
+
+NuGet runtime asset inclusion is broader and conditional: `Nnrp.NativeBridge` will package native artifacts for supported runtime identifiers when those artifacts are supplied under `artifacts/native`. The current preview2 Unity release bundle ships the desktop `nnrp_quic_bridge` artifacts built by this repository's release matrix.
