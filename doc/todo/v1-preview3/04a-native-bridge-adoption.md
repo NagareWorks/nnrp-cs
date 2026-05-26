@@ -18,7 +18,7 @@
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
   - [x] Return managed poll/event snapshots from the native connection facade instead of raw FFI structs.
   - [x] Guard native session operations after explicit close on the managed facade.
-  - [ ] Add connection-level lifetime guards once native connection close/dispose is exposed.
+  - [x] Add connection-level lifetime guards once native connection close/dispose is exposed.
 - [x] Map stable Rust error codes into managed exception and result surfaces.
 - [ ] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.
