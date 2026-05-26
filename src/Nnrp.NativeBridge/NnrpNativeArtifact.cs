@@ -1039,7 +1039,9 @@ namespace Nnrp.NativeBridge
             HandleStatusInvoker serverClose,
             ControlInvoker control,
             PollEmptyInvoker pollEmpty,
-            DispatchEventInvoker dispatchEvent)
+            DispatchEventInvoker dispatchEvent,
+            HandleStatusInvoker? connectionClose = null,
+            HandleStatusInvoker? clientCloseConnection = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -1062,7 +1064,9 @@ namespace Nnrp.NativeBridge
                 serverClose,
                 control,
                 pollEmpty,
-                dispatchEvent)
+                dispatchEvent,
+                connectionClose,
+                clientCloseConnection)
         {
         }
 
@@ -1088,7 +1092,9 @@ namespace Nnrp.NativeBridge
             HandleStatusInvoker serverClose,
             ControlInvoker control,
             PollEmptyInvoker pollEmpty,
-            DispatchEventInvoker dispatchEvent)
+            DispatchEventInvoker dispatchEvent,
+            HandleStatusInvoker? connectionClose,
+            HandleStatusInvoker? clientCloseConnection)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -1112,6 +1118,8 @@ namespace Nnrp.NativeBridge
             Control = control ?? throw new ArgumentNullException(nameof(control));
             PollEmpty = pollEmpty ?? throw new ArgumentNullException(nameof(pollEmpty));
             DispatchEvent = dispatchEvent ?? throw new ArgumentNullException(nameof(dispatchEvent));
+            ConnectionClose = connectionClose ?? ClientClose;
+            ClientCloseConnection = clientCloseConnection ?? ConnectionClose;
         }
 
         private IntPtr _libraryHandle;
@@ -1153,7 +1161,9 @@ namespace Nnrp.NativeBridge
                     Bind<HandleStatusInvoker>(handle, "nnrp_server_close"),
                     Bind<ControlInvoker>(handle, "nnrp_control"),
                     Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
-                    Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"));
+                    Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_connection_close"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close_connection"));
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
             {
@@ -1252,6 +1262,10 @@ namespace Nnrp.NativeBridge
         public HandleStatusInvoker SessionClose { get; }
 
         public HandleStatusInvoker ClientClose { get; }
+
+        public HandleStatusInvoker ConnectionClose { get; }
+
+        public HandleStatusInvoker ClientCloseConnection { get; }
 
         public ClientCancelInvoker ClientCancel { get; }
 
@@ -1524,7 +1538,7 @@ namespace Nnrp.NativeBridge
         }
     }
 
-    public sealed class NnrpNativeRuntimeConnection
+    public sealed class NnrpNativeRuntimeConnection : IDisposable
     {
         public NnrpNativeRuntimeConnection(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
         {
@@ -1536,6 +1550,8 @@ namespace Nnrp.NativeBridge
 
         public NnrpConnectionHandle Handle { get; }
 
+        public bool IsClosed { get; private set; }
+
         public NnrpNativeRuntimeSession OpenSession(
             uint requestedSessionId,
             uint generation,
@@ -1543,6 +1559,7 @@ namespace Nnrp.NativeBridge
             uint schemaId,
             uint schemaVersion)
         {
+            EnsureOpen();
             NnrpHandle session;
             var status = Entrypoints.ClientOpenSession(
                 new NnrpSessionOpenRequest(
@@ -1554,11 +1571,16 @@ namespace Nnrp.NativeBridge
                     schemaVersion),
                 out session);
             status.ThrowIfError();
-            return new NnrpNativeRuntimeSession(Entrypoints, Handle, new NnrpSessionHandle(session));
+            return new NnrpNativeRuntimeSession(
+                Entrypoints,
+                Handle,
+                new NnrpSessionHandle(session),
+                () => IsClosed);
         }
 
         public NnrpNativeRuntimePollResult AwaitEvent()
         {
+            EnsureOpen();
             NnrpPollResult result;
             var status = Entrypoints.ClientAwaitEvent(Handle.Handle, out result);
             status.ThrowIfError();
@@ -1595,7 +1617,33 @@ namespace Nnrp.NativeBridge
 
         public void Control(uint controlCode, byte[]? payload = null)
         {
+            EnsureOpen();
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Close()
+        {
+            EnsureOpen();
+            Entrypoints.ClientCloseConnection(Handle.Handle).ThrowIfError();
+            IsClosed = true;
+        }
+
+        public void Dispose()
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+
+            Close();
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsClosed)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
         }
     }
 
@@ -1604,11 +1652,13 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeSession(
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle connection,
-            NnrpSessionHandle handle)
+            NnrpSessionHandle handle,
+            Func<bool>? isConnectionClosed = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Connection = connection;
             Handle = handle;
+            IsConnectionClosed = isConnectionClosed ?? (() => false);
         }
 
         public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
@@ -1618,6 +1668,8 @@ namespace Nnrp.NativeBridge
         public NnrpSessionHandle Handle { get; }
 
         public bool IsClosed { get; private set; }
+
+        private Func<bool> IsConnectionClosed { get; }
 
         public NnrpOperationHandle Submit(ulong operationId, uint frameId, byte[]? payload = null)
         {
@@ -1805,7 +1857,7 @@ namespace Nnrp.NativeBridge
 
         private void EnsureOpen()
         {
-            if (IsClosed)
+            if (IsClosed || IsConnectionClosed())
             {
                 throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
             }

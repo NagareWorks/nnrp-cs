@@ -15,10 +15,13 @@ namespace Nnrp.Core.Tests
             var reportJson = AdapterProgram.BuildResultsJson(
                 """
                 {
-                  "protocol_version": "nnrp-1",
+                  "protocol_version": "nnrp-1-preview3",
                   "cases": [
+                    { "id": "l0.header.roundtrip.basic" },
+                    { "id": "l0.header.invalid_length.reject" },
+                    { "id": "l0.header.length_mismatch.reject" },
                     { "id": "l1.handshake.basic" },
-                    { "id": "l1.session.open_close" },
+                    { "id": "l1.handshake.capability_window.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -26,15 +29,19 @@ namespace Nnrp.Core.Tests
 
             using var document = JsonDocument.Parse(reportJson);
             var root = document.RootElement;
-            Assert.Equal("nnrp-1", root.GetProperty("protocol_version").GetString());
+            Assert.Equal("nnrp-1-preview3", root.GetProperty("protocol_version").GetString());
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(3, results.Length);
-            Assert.Equal("l1.handshake.basic", results[0].GetProperty("id").GetString());
+            Assert.Equal(6, results.Length);
+            Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
             Assert.Equal("pass", results[1].GetProperty("outcome").GetString());
-            Assert.Equal("skip", results[2].GetProperty("outcome").GetString());
+            Assert.Equal("pass", results[2].GetProperty("outcome").GetString());
+            Assert.Equal("pass", results[3].GetProperty("outcome").GetString());
+            Assert.Equal("pass", results[4].GetProperty("outcome").GetString());
+            Assert.Equal("error", results[5].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[5].GetProperty("failure_kind").GetString());
         }
 
         [Fact]
@@ -53,7 +60,7 @@ namespace Nnrp.Core.Tests
                     planPath,
                     """
                     {
-                      "protocol_version": "nnrp-1",
+                      "protocol_version": "nnrp-1-preview3",
                       "cases": [
                         { "id": "l1.handshake.basic" }
                       ]

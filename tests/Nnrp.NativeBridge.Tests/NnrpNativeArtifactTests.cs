@@ -414,6 +414,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(entrypoints.ClientSubmit(MatchingSubmitRequest(), out handle).Succeeded);
             Assert.True(entrypoints.SessionClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
             Assert.True(entrypoints.ClientClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
+            Assert.True(entrypoints.ConnectionClose(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)).Succeeded);
+            Assert.True(entrypoints.ClientCloseConnection(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)).Succeeded);
             Assert.True(entrypoints.ClientCancel(new NnrpClientCancelRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 7)).Succeeded);
 
             NnrpPollResult pollResult;
@@ -496,6 +498,54 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((uint)8, operationScope.FrameId);
             Assert.Equal((ulong)99, operationScope.ParentOperationId);
             Assert.Equal((ulong)1234, operationScope.OperationGroupId);
+        }
+
+        [Fact]
+        public void NativeRuntimeConnectionClosesThroughNativeEntrypointAndGuardsChildren()
+        {
+            var closeCount = 0;
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent,
+                clientCloseConnection: handle =>
+                {
+                    closeCount++;
+                    return HandleStatus(handle);
+                });
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var session = connection.OpenSession(41, 3, 4, 5, 6);
+
+            connection.Close();
+
+            Assert.True(connection.IsClosed);
+            Assert.Equal(1, closeCount);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => connection.OpenSession(42, 4, 4, 5, 6));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => connection.AwaitEvent());
+            Assert.Throws<NnrpNativeInvalidStateException>(() => connection.Control(10));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Submit(99, 7));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Close());
+
+            connection.Dispose();
+            Assert.Equal(1, closeCount);
         }
 
         [Fact]
