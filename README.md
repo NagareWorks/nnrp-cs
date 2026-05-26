@@ -90,7 +90,7 @@ The authoritative current-wire design document lives in `nnrp-doc/docs/en/design
 | Protocol failure result model | Implemented |
 | Transport-neutral framed message abstractions | Implemented |
 | Transport-neutral client session facade | Implemented |
-| Suite-owned conformance exporter integration | Implemented |
+| Suite-owned adapter conformance integration | Implemented |
 | Per-package line coverage gate | Implemented at 90% |
 | Full `FRAME_SUBMIT` message body codec | Implemented |
 | Full `RESULT_PUSH` message body codec | Implemented |
