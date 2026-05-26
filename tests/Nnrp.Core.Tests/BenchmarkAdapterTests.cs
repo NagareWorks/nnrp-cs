@@ -16,7 +16,7 @@ namespace Nnrp.Core.Tests
 
             using var document = JsonDocument.Parse(reportJson);
             var root = document.RootElement;
-            Assert.Equal("nnrp-1-preview3", root.GetProperty("protocol_version").GetString());
+            Assert.Equal("nnrp-1", root.GetProperty("protocol_version").GetString());
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
@@ -62,7 +62,7 @@ namespace Nnrp.Core.Tests
                 Assert.Equal(0, BenchmarkProgram.Run(Array.Empty<string>()));
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
-                Assert.Equal("nnrp-1-preview3", document.RootElement.GetProperty("protocol_version").GetString());
+                Assert.Equal("nnrp-1", document.RootElement.GetProperty("protocol_version").GetString());
                 Assert.Equal(9, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
@@ -110,8 +110,8 @@ namespace Nnrp.Core.Tests
 
         [Theory]
         [InlineData("[]", "JSON object")]
-        [InlineData("{\"protocol_version\":\"nnrp-1-preview3\"}", "must be an array")]
-        [InlineData("{\"protocol_version\":\"nnrp-1-preview3\",\"scenarios\":[\"bad\"]}", "scenarios must be JSON objects")]
+        [InlineData("{\"protocol_version\":\"nnrp-1\"}", "must be an array")]
+        [InlineData("{\"protocol_version\":\"nnrp-1\",\"scenarios\":[\"bad\"]}", "scenarios must be JSON objects")]
         public void BuildResultsJsonRejectsInvalidPlanShapes(string rawPlan, string expectedMessageFragment)
         {
             var error = Assert.Throws<ArgumentException>(() => BenchmarkProgram.BuildResultsJson(rawPlan));
@@ -120,7 +120,7 @@ namespace Nnrp.Core.Tests
 
         private const string SamplePlanJson = """
             {
-              "protocol_version": "nnrp-1-preview3",
+              "protocol_version": "nnrp-1",
               "implementation_name": "nnrp-cs",
               "scenarios": [
                 {

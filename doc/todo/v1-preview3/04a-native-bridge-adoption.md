@@ -1,16 +1,24 @@
 # C# Preview3 Native Bridge Adoption
 
 - [ ] Consume the frozen Rust-to-C# bridge contract for preview3.
+  - [x] Bind and load the frozen preview3 runtime delegate table and request/event structs behind `Nnrp.NativeBridge`.
+  - [x] Add a native-backed client/session facade for connect, bootstrap, open-session, submit, cancel, control, event polling, and close.
+  - [ ] Replace managed runtime calls with the bound native entrypoints.
 - [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
 - [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
 - [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
 - [x] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
 - [x] Reject ABI/protocol mismatches with deterministic managed exceptions and actionable diagnostic text.
-- [ ] Wrap stable native handles for connection, session, operation, schema, and buffer views.
-- [x] Wrap the currently frozen Rust FFI value handles for connection, session, operation, event pump, and buffer views.
+- [x] Wrap connection, session, operation, event pump, and buffer value handles exposed by the frozen Rust FFI.
+- [ ] Wrap schema and stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
 - [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
+  - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
+- [ ] Define borrowed-buffer rules for future zero-copy result/body views.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
+  - [x] Return managed poll/event snapshots from the native connection facade instead of raw FFI structs.
+  - [x] Guard native session operations after explicit close on the managed facade.
+  - [ ] Add connection-level lifetime guards once native connection close/dispose is exposed.
 - [x] Map stable Rust error codes into managed exception and result surfaces.
 - [ ] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.

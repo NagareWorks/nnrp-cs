@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nnrp.NativeBridge
 {
@@ -203,7 +206,7 @@ namespace Nnrp.NativeBridge
             ushort sdkMajor,
             ushort sdkMinor,
             ushort sdkPatch,
-            ushort sdkPreview,
+            ushort sdkChannel,
             ushort sdkRevision,
             uint transportSlots,
             ulong featureFlags)
@@ -217,7 +220,7 @@ namespace Nnrp.NativeBridge
             SdkMajor = sdkMajor;
             SdkMinor = sdkMinor;
             SdkPatch = sdkPatch;
-            SdkPreview = sdkPreview;
+            SdkChannel = sdkChannel;
             SdkRevision = sdkRevision;
             TransportSlots = transportSlots;
             FeatureFlags = featureFlags;
@@ -241,7 +244,7 @@ namespace Nnrp.NativeBridge
 
         public ushort SdkPatch { get; }
 
-        public ushort SdkPreview { get; }
+        public ushort SdkChannel { get; }
 
         public ushort SdkRevision { get; }
 
@@ -275,7 +278,7 @@ namespace Nnrp.NativeBridge
             ushort sdkMajor,
             ushort sdkMinor,
             ushort sdkPatch,
-            ushort sdkPreview,
+            ushort sdkChannel,
             ushort sdkRevision,
             uint transportSlots,
             ulong featureFlags)
@@ -288,7 +291,7 @@ namespace Nnrp.NativeBridge
             SdkMajor = sdkMajor;
             SdkMinor = sdkMinor;
             SdkPatch = sdkPatch;
-            SdkPreview = sdkPreview;
+            SdkChannel = sdkChannel;
             SdkRevision = sdkRevision;
             Reserved1 = 0;
             TransportSlots = transportSlots;
@@ -311,7 +314,7 @@ namespace Nnrp.NativeBridge
 
         public readonly ushort SdkPatch;
 
-        public readonly ushort SdkPreview;
+        public readonly ushort SdkChannel;
 
         public readonly ushort SdkRevision;
 
@@ -704,6 +707,1151 @@ namespace Nnrp.NativeBridge
         public static NnrpMutableBufferView Empty => new NnrpMutableBufferView(IntPtr.Zero, UIntPtr.Zero);
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpFfiDiagnostic
+    {
+        public NnrpFfiDiagnostic(
+            NnrpFfiStatus status,
+            ulong relatedConnectionId = 0,
+            uint relatedSessionId = 0,
+            ulong relatedOperationId = 0,
+            uint relatedFrameId = 0)
+        {
+            Status = status;
+            RelatedConnectionId = relatedConnectionId;
+            RelatedSessionId = relatedSessionId;
+            RelatedOperationId = relatedOperationId;
+            RelatedFrameId = relatedFrameId;
+        }
+
+        public readonly NnrpFfiStatus Status;
+
+        public readonly ulong RelatedConnectionId;
+
+        public readonly uint RelatedSessionId;
+
+        public readonly ulong RelatedOperationId;
+
+        public readonly uint RelatedFrameId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpEvent
+    {
+        public NnrpEvent(
+            uint kind,
+            NnrpHandle connection,
+            NnrpHandle session,
+            NnrpHandle operation,
+            uint frameId,
+            NnrpBufferView payload,
+            NnrpFfiDiagnostic diagnostic)
+        {
+            Kind = kind;
+            Connection = connection;
+            Session = session;
+            Operation = operation;
+            FrameId = frameId;
+            Payload = payload;
+            Diagnostic = diagnostic;
+        }
+
+        public readonly uint Kind;
+
+        public readonly NnrpHandle Connection;
+
+        public readonly NnrpHandle Session;
+
+        public readonly NnrpHandle Operation;
+
+        public readonly uint FrameId;
+
+        public readonly NnrpBufferView Payload;
+
+        public readonly NnrpFfiDiagnostic Diagnostic;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpCallbackSink
+    {
+        public NnrpCallbackSink(IntPtr userData, IntPtr onEvent)
+        {
+            UserData = userData;
+            OnEvent = onEvent;
+        }
+
+        public readonly IntPtr UserData;
+
+        public readonly IntPtr OnEvent;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpPollResult
+    {
+        public NnrpPollResult(NnrpFfiStatus status, byte hasEvent, NnrpEvent @event)
+        {
+            Status = status;
+            HasEvent = hasEvent;
+            Event = @event;
+        }
+
+        public readonly NnrpFfiStatus Status;
+
+        public readonly byte HasEvent;
+
+        public readonly NnrpEvent Event;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpConnectionBootstrap
+    {
+        public NnrpConnectionBootstrap(ulong connectionId, uint generation, uint transportId)
+        {
+            ConnectionId = connectionId;
+            Generation = generation;
+            TransportId = transportId;
+        }
+
+        public readonly ulong ConnectionId;
+
+        public readonly uint Generation;
+
+        public readonly uint TransportId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpClientConnectRequest
+    {
+        public NnrpClientConnectRequest(ulong connectionId, uint generation, uint transportId)
+        {
+            ConnectionId = connectionId;
+            Generation = generation;
+            TransportId = transportId;
+        }
+
+        public readonly ulong ConnectionId;
+
+        public readonly uint Generation;
+
+        public readonly uint TransportId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerBindRequest
+    {
+        public NnrpServerBindRequest(ulong serverId, uint generation, uint transportId)
+        {
+            ServerId = serverId;
+            Generation = generation;
+            TransportId = transportId;
+        }
+
+        public readonly ulong ServerId;
+
+        public readonly uint Generation;
+
+        public readonly uint TransportId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpSessionOpenRequest
+    {
+        public NnrpSessionOpenRequest(
+            NnrpHandle connection,
+            uint requestedSessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion)
+        {
+            Connection = connection;
+            RequestedSessionId = requestedSessionId;
+            Generation = generation;
+            ProfileId = profileId;
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+        }
+
+        public readonly NnrpHandle Connection;
+
+        public readonly uint RequestedSessionId;
+
+        public readonly uint Generation;
+
+        public readonly ushort ProfileId;
+
+        public readonly uint SchemaId;
+
+        public readonly uint SchemaVersion;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpFfiSubmitRequest
+    {
+        public NnrpFfiSubmitRequest(NnrpHandle session, ulong operationId, uint frameId, NnrpBufferView payload)
+        {
+            Session = session;
+            OperationId = operationId;
+            FrameId = frameId;
+            Payload = payload;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly ulong OperationId;
+
+        public readonly uint FrameId;
+
+        public readonly NnrpBufferView Payload;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpClientCancelRequest
+    {
+        public NnrpClientCancelRequest(NnrpHandle session, uint frameId)
+        {
+            Session = session;
+            FrameId = frameId;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly uint FrameId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerAcceptRequest
+    {
+        public NnrpServerAcceptRequest(
+            NnrpHandle server,
+            uint sessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion)
+        {
+            Server = server;
+            SessionId = sessionId;
+            Generation = generation;
+            ProfileId = profileId;
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+        }
+
+        public readonly NnrpHandle Server;
+
+        public readonly uint SessionId;
+
+        public readonly uint Generation;
+
+        public readonly ushort ProfileId;
+
+        public readonly uint SchemaId;
+
+        public readonly uint SchemaVersion;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerReceiveSubmitRequest
+    {
+        public NnrpServerReceiveSubmitRequest(NnrpHandle session, ulong operationId, uint frameId, NnrpBufferView payload)
+        {
+            Session = session;
+            OperationId = operationId;
+            FrameId = frameId;
+            Payload = payload;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly ulong OperationId;
+
+        public readonly uint FrameId;
+
+        public readonly NnrpBufferView Payload;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerSendResultRequest
+    {
+        public NnrpServerSendResultRequest(NnrpHandle operation, NnrpBufferView payload)
+        {
+            Operation = operation;
+            Payload = payload;
+        }
+
+        public readonly NnrpHandle Operation;
+
+        public readonly NnrpBufferView Payload;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerFlowUpdateRequest
+    {
+        public NnrpServerFlowUpdateRequest(NnrpHandle session, uint frameId)
+        {
+            Session = session;
+            FrameId = frameId;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly uint FrameId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpControlRequest
+    {
+        public NnrpControlRequest(NnrpHandle handle, uint controlCode, NnrpBufferView payload)
+        {
+            Handle = handle;
+            ControlCode = controlCode;
+            Payload = payload;
+        }
+
+        public readonly NnrpHandle Handle;
+
+        public readonly uint ControlCode;
+
+        public readonly NnrpBufferView Payload;
+    }
+
+    public sealed class NnrpNativeRuntimeEntrypoints : IDisposable
+    {
+        public NnrpNativeRuntimeEntrypoints(
+            CurrentProtocolVersionInvoker currentProtocolVersion,
+            NnrpNativeArtifact.RuntimeCapabilitiesInvoker runtimeCapabilities,
+            ConnectionBootstrapInvoker connectionBootstrap,
+            ClientConnectInvoker clientConnect,
+            SessionOpenInvoker sessionOpen,
+            SessionOpenInvoker clientOpenSession,
+            SubmitInvoker submit,
+            SubmitInvoker clientSubmit,
+            HandleStatusInvoker sessionClose,
+            HandleStatusInvoker clientClose,
+            ClientCancelInvoker clientCancel,
+            AwaitEventInvoker clientAwaitEvent,
+            ServerBindInvoker serverBind,
+            ServerAcceptInvoker serverAccept,
+            ServerReceiveSubmitInvoker serverReceiveSubmit,
+            ServerSendResultInvoker serverSendResult,
+            ServerFlowUpdateInvoker serverSendFlowUpdate,
+            HandleStatusInvoker serverClose,
+            ControlInvoker control,
+            PollEmptyInvoker pollEmpty,
+            DispatchEventInvoker dispatchEvent)
+            : this(
+                IntPtr.Zero,
+                currentProtocolVersion,
+                runtimeCapabilities,
+                connectionBootstrap,
+                clientConnect,
+                sessionOpen,
+                clientOpenSession,
+                submit,
+                clientSubmit,
+                sessionClose,
+                clientClose,
+                clientCancel,
+                clientAwaitEvent,
+                serverBind,
+                serverAccept,
+                serverReceiveSubmit,
+                serverSendResult,
+                serverSendFlowUpdate,
+                serverClose,
+                control,
+                pollEmpty,
+                dispatchEvent)
+        {
+        }
+
+        private NnrpNativeRuntimeEntrypoints(
+            IntPtr libraryHandle,
+            CurrentProtocolVersionInvoker currentProtocolVersion,
+            NnrpNativeArtifact.RuntimeCapabilitiesInvoker runtimeCapabilities,
+            ConnectionBootstrapInvoker connectionBootstrap,
+            ClientConnectInvoker clientConnect,
+            SessionOpenInvoker sessionOpen,
+            SessionOpenInvoker clientOpenSession,
+            SubmitInvoker submit,
+            SubmitInvoker clientSubmit,
+            HandleStatusInvoker sessionClose,
+            HandleStatusInvoker clientClose,
+            ClientCancelInvoker clientCancel,
+            AwaitEventInvoker clientAwaitEvent,
+            ServerBindInvoker serverBind,
+            ServerAcceptInvoker serverAccept,
+            ServerReceiveSubmitInvoker serverReceiveSubmit,
+            ServerSendResultInvoker serverSendResult,
+            ServerFlowUpdateInvoker serverSendFlowUpdate,
+            HandleStatusInvoker serverClose,
+            ControlInvoker control,
+            PollEmptyInvoker pollEmpty,
+            DispatchEventInvoker dispatchEvent)
+        {
+            _libraryHandle = libraryHandle;
+            CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
+            RuntimeCapabilities = runtimeCapabilities ?? throw new ArgumentNullException(nameof(runtimeCapabilities));
+            ConnectionBootstrap = connectionBootstrap ?? throw new ArgumentNullException(nameof(connectionBootstrap));
+            ClientConnect = clientConnect ?? throw new ArgumentNullException(nameof(clientConnect));
+            SessionOpen = sessionOpen ?? throw new ArgumentNullException(nameof(sessionOpen));
+            ClientOpenSession = clientOpenSession ?? throw new ArgumentNullException(nameof(clientOpenSession));
+            Submit = submit ?? throw new ArgumentNullException(nameof(submit));
+            ClientSubmit = clientSubmit ?? throw new ArgumentNullException(nameof(clientSubmit));
+            SessionClose = sessionClose ?? throw new ArgumentNullException(nameof(sessionClose));
+            ClientClose = clientClose ?? throw new ArgumentNullException(nameof(clientClose));
+            ClientCancel = clientCancel ?? throw new ArgumentNullException(nameof(clientCancel));
+            ClientAwaitEvent = clientAwaitEvent ?? throw new ArgumentNullException(nameof(clientAwaitEvent));
+            ServerBind = serverBind ?? throw new ArgumentNullException(nameof(serverBind));
+            ServerAccept = serverAccept ?? throw new ArgumentNullException(nameof(serverAccept));
+            ServerReceiveSubmit = serverReceiveSubmit ?? throw new ArgumentNullException(nameof(serverReceiveSubmit));
+            ServerSendResult = serverSendResult ?? throw new ArgumentNullException(nameof(serverSendResult));
+            ServerSendFlowUpdate = serverSendFlowUpdate ?? throw new ArgumentNullException(nameof(serverSendFlowUpdate));
+            ServerClose = serverClose ?? throw new ArgumentNullException(nameof(serverClose));
+            Control = control ?? throw new ArgumentNullException(nameof(control));
+            PollEmpty = pollEmpty ?? throw new ArgumentNullException(nameof(pollEmpty));
+            DispatchEvent = dispatchEvent ?? throw new ArgumentNullException(nameof(dispatchEvent));
+        }
+
+        private IntPtr _libraryHandle;
+
+        [ExcludeFromCodeCoverage]
+        public static NnrpNativeRuntimeEntrypoints Load(
+            string? artifactPath = null,
+            string? artifactRoot = null,
+            NnrpNativePlatform? platform = null)
+        {
+            string resolvedPath = string.IsNullOrWhiteSpace(artifactPath)
+                ? NnrpNativeArtifact.Resolve(artifactRoot, platform)
+                : artifactPath!;
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = NativeDynamicLibrary.Load(resolvedPath);
+                var runtimeCapabilities = Bind<NnrpNativeArtifact.RuntimeCapabilitiesInvoker>(handle, "nnrp_runtime_capabilities");
+                NnrpNativeArtifact.Probe(resolvedPath, runtimeCapabilities: runtimeCapabilities);
+                return new NnrpNativeRuntimeEntrypoints(
+                    handle,
+                    Bind<CurrentProtocolVersionInvoker>(handle, "nnrp_current_protocol_version"),
+                    runtimeCapabilities,
+                    Bind<ConnectionBootstrapInvoker>(handle, "nnrp_connection_bootstrap"),
+                    Bind<ClientConnectInvoker>(handle, "nnrp_client_connect"),
+                    Bind<SessionOpenInvoker>(handle, "nnrp_session_open"),
+                    Bind<SessionOpenInvoker>(handle, "nnrp_client_open_session"),
+                    Bind<SubmitInvoker>(handle, "nnrp_submit"),
+                    Bind<SubmitInvoker>(handle, "nnrp_client_submit"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_session_close"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close"),
+                    Bind<ClientCancelInvoker>(handle, "nnrp_client_cancel"),
+                    Bind<AwaitEventInvoker>(handle, "nnrp_client_await_event"),
+                    Bind<ServerBindInvoker>(handle, "nnrp_server_bind"),
+                    Bind<ServerAcceptInvoker>(handle, "nnrp_server_accept"),
+                    Bind<ServerReceiveSubmitInvoker>(handle, "nnrp_server_receive_submit"),
+                    Bind<ServerSendResultInvoker>(handle, "nnrp_server_send_result"),
+                    Bind<ServerFlowUpdateInvoker>(handle, "nnrp_server_send_flow_update"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_server_close"),
+                    Bind<ControlInvoker>(handle, "nnrp_control"),
+                    Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
+                    Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"));
+            }
+            catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
+            {
+                if (handle != IntPtr.Zero)
+                {
+                    NativeDynamicLibrary.Free(handle);
+                }
+
+                throw new NnrpNativeArtifactException("Failed to load native runtime entrypoints from " + resolvedPath + ": " + error.Message, error);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_libraryHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            NativeDynamicLibrary.Free(_libraryHandle);
+            _libraryHandle = IntPtr.Zero;
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static T Bind<T>(IntPtr handle, string name)
+            where T : Delegate
+        {
+            IntPtr symbol = NativeDynamicLibrary.GetSymbol(handle, name);
+            return Marshal.GetDelegateForFunctionPointer<T>(symbol);
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpProtocolVersion CurrentProtocolVersionInvoker();
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ConnectionBootstrapInvoker(NnrpConnectionBootstrap request, out NnrpHandle connection);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ClientConnectInvoker(NnrpClientConnectRequest request, out NnrpHandle connection);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SessionOpenInvoker(NnrpSessionOpenRequest request, out NnrpHandle session);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SubmitInvoker(NnrpFfiSubmitRequest request, out NnrpHandle operation);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus HandleStatusInvoker(NnrpHandle handle);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ClientCancelInvoker(NnrpClientCancelRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus AwaitEventInvoker(NnrpHandle connection, out NnrpPollResult result);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerBindInvoker(NnrpServerBindRequest request, out NnrpHandle server);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerAcceptInvoker(NnrpServerAcceptRequest request, out NnrpHandle session);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerReceiveSubmitInvoker(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerSendResultInvoker(NnrpServerSendResultRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerFlowUpdateInvoker(NnrpServerFlowUpdateRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ControlInvoker(NnrpControlRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus PollEmptyInvoker(out NnrpPollResult result);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus DispatchEventInvoker(NnrpCallbackSink sink, ref NnrpEvent @event);
+
+        public CurrentProtocolVersionInvoker CurrentProtocolVersion { get; }
+
+        public NnrpNativeArtifact.RuntimeCapabilitiesInvoker RuntimeCapabilities { get; }
+
+        public ConnectionBootstrapInvoker ConnectionBootstrap { get; }
+
+        public ClientConnectInvoker ClientConnect { get; }
+
+        public SessionOpenInvoker SessionOpen { get; }
+
+        public SessionOpenInvoker ClientOpenSession { get; }
+
+        public SubmitInvoker Submit { get; }
+
+        public SubmitInvoker ClientSubmit { get; }
+
+        public HandleStatusInvoker SessionClose { get; }
+
+        public HandleStatusInvoker ClientClose { get; }
+
+        public ClientCancelInvoker ClientCancel { get; }
+
+        public AwaitEventInvoker ClientAwaitEvent { get; }
+
+        public ServerBindInvoker ServerBind { get; }
+
+        public ServerAcceptInvoker ServerAccept { get; }
+
+        public ServerReceiveSubmitInvoker ServerReceiveSubmit { get; }
+
+        public ServerSendResultInvoker ServerSendResult { get; }
+
+        public ServerFlowUpdateInvoker ServerSendFlowUpdate { get; }
+
+        public HandleStatusInvoker ServerClose { get; }
+
+        public ControlInvoker Control { get; }
+
+        public PollEmptyInvoker PollEmpty { get; }
+
+        public DispatchEventInvoker DispatchEvent { get; }
+    }
+
+    public readonly struct NnrpNativeRuntimeDiagnostic
+    {
+        public NnrpNativeRuntimeDiagnostic(
+            NnrpFfiStatus status,
+            ulong relatedConnectionId,
+            uint relatedSessionId,
+            ulong relatedOperationId,
+            uint relatedFrameId)
+        {
+            Status = status;
+            RelatedConnectionId = relatedConnectionId;
+            RelatedSessionId = relatedSessionId;
+            RelatedOperationId = relatedOperationId;
+            RelatedFrameId = relatedFrameId;
+        }
+
+        public NnrpFfiStatus Status { get; }
+
+        public ulong RelatedConnectionId { get; }
+
+        public uint RelatedSessionId { get; }
+
+        public ulong RelatedOperationId { get; }
+
+        public uint RelatedFrameId { get; }
+
+        public static NnrpNativeRuntimeDiagnostic FromFfi(NnrpFfiDiagnostic diagnostic)
+        {
+            return new NnrpNativeRuntimeDiagnostic(
+                diagnostic.Status,
+                diagnostic.RelatedConnectionId,
+                diagnostic.RelatedSessionId,
+                diagnostic.RelatedOperationId,
+                diagnostic.RelatedFrameId);
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeEvent
+    {
+        public NnrpNativeRuntimeEvent(
+            uint kind,
+            NnrpHandle connection,
+            NnrpHandle session,
+            NnrpHandle operation,
+            uint frameId,
+            byte[] payload,
+            NnrpNativeRuntimeDiagnostic diagnostic)
+        {
+            Kind = kind;
+            Connection = connection;
+            Session = session;
+            Operation = operation;
+            FrameId = frameId;
+            Payload = payload ?? throw new ArgumentNullException(nameof(payload));
+            Diagnostic = diagnostic;
+        }
+
+        public uint Kind { get; }
+
+        public NnrpHandle Connection { get; }
+
+        public NnrpHandle Session { get; }
+
+        public NnrpHandle Operation { get; }
+
+        public uint FrameId { get; }
+
+        public byte[] Payload { get; }
+
+        public NnrpNativeRuntimeDiagnostic Diagnostic { get; }
+
+        public static NnrpNativeRuntimeEvent FromFfi(NnrpEvent @event)
+        {
+            return new NnrpNativeRuntimeEvent(
+                @event.Kind,
+                @event.Connection,
+                @event.Session,
+                @event.Operation,
+                @event.FrameId,
+                CopyPayload(@event.Payload),
+                NnrpNativeRuntimeDiagnostic.FromFfi(@event.Diagnostic));
+        }
+
+        private static byte[] CopyPayload(NnrpBufferView payload)
+        {
+            if (payload.Length == UIntPtr.Zero)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (payload.Pointer == IntPtr.Zero)
+            {
+                throw new ArgumentException("Native event payload has non-empty null pointer.", nameof(payload));
+            }
+
+            var bytes = new byte[checked((int)payload.Length.ToUInt64())];
+            Marshal.Copy(payload.Pointer, bytes, 0, bytes.Length);
+            return bytes;
+        }
+    }
+
+    public enum NnrpNativeOperationLifecycle
+    {
+        Completed = 0,
+        Partial = 1,
+        Degraded = 2,
+        StaleReuse = 3,
+        Cancelled = 4,
+        Failed = 5,
+    }
+
+    public sealed class NnrpNativeRuntimeResult
+    {
+        public NnrpNativeRuntimeResult(
+            NnrpNativeOperationLifecycle state,
+            ulong operationId,
+            uint frameId,
+            byte[] payload,
+            NnrpNativeRuntimeEvent @event)
+        {
+            State = state;
+            OperationId = operationId;
+            FrameId = frameId;
+            Payload = payload ?? throw new ArgumentNullException(nameof(payload));
+            Event = @event ?? throw new ArgumentNullException(nameof(@event));
+        }
+
+        public NnrpNativeOperationLifecycle State { get; }
+
+        public ulong OperationId { get; }
+
+        public uint FrameId { get; }
+
+        public byte[] Payload { get; }
+
+        public NnrpNativeRuntimeEvent Event { get; }
+
+        public static NnrpNativeRuntimeResult FromEvent(
+            NnrpNativeRuntimeEvent @event,
+            NnrpNativeOperationLifecycle? state = null)
+        {
+            return new NnrpNativeRuntimeResult(
+                state ?? InferLifecycle(@event),
+                @event.Operation.Id,
+                @event.FrameId,
+                @event.Payload,
+                @event);
+        }
+
+        private static NnrpNativeOperationLifecycle InferLifecycle(NnrpNativeRuntimeEvent @event)
+        {
+            if (!@event.Diagnostic.Status.Succeeded || @event.Kind == 10)
+            {
+                return NnrpNativeOperationLifecycle.Failed;
+            }
+
+            if (@event.Kind == 7)
+            {
+                return NnrpNativeOperationLifecycle.Cancelled;
+            }
+
+            return NnrpNativeOperationLifecycle.Completed;
+        }
+    }
+
+    public readonly struct NnrpNativeRuntimePollResult
+    {
+        public NnrpNativeRuntimePollResult(NnrpFfiStatus status, NnrpNativeRuntimeEvent? @event)
+        {
+            Status = status;
+            Event = @event;
+        }
+
+        public NnrpFfiStatus Status { get; }
+
+        public NnrpNativeRuntimeEvent? Event { get; }
+
+        public static NnrpNativeRuntimePollResult FromFfi(NnrpPollResult result)
+        {
+            return new NnrpNativeRuntimePollResult(
+                result.Status,
+                result.HasEvent != 0 ? NnrpNativeRuntimeEvent.FromFfi(result.Event) : null);
+        }
+    }
+
+    public interface INnrpNativeRuntimeBackend
+    {
+        NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId);
+
+        NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId);
+    }
+
+    public static class NnrpNativeRuntimeBackendSelector
+    {
+        public static INnrpNativeRuntimeBackend Select(
+            string? artifactPath = null,
+            string? artifactRoot = null,
+            NnrpNativePlatform? platform = null,
+            INnrpNativeRuntimeBackend? fallback = null,
+            bool requireNative = false)
+        {
+            try
+            {
+                return new NnrpNativeRuntimeClient(
+                    NnrpNativeRuntimeEntrypoints.Load(artifactPath, artifactRoot, platform));
+            }
+            catch (NnrpNativeArtifactException)
+            {
+                if (fallback == null || requireNative)
+                {
+                    throw;
+                }
+
+                return fallback;
+            }
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeClient : INnrpNativeRuntimeBackend
+    {
+        public NnrpNativeRuntimeClient(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId)
+        {
+            NnrpHandle connection;
+            var status = Entrypoints.ClientConnect(
+                new NnrpClientConnectRequest(connectionId, generation, transportId),
+                out connection);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeConnection(Entrypoints, new NnrpConnectionHandle(connection));
+        }
+
+        public NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId)
+        {
+            NnrpHandle connection;
+            var status = Entrypoints.ConnectionBootstrap(
+                new NnrpConnectionBootstrap(connectionId, generation, transportId),
+                out connection);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeConnection(Entrypoints, new NnrpConnectionHandle(connection));
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeConnection
+    {
+        public NnrpNativeRuntimeConnection(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Handle = handle;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpConnectionHandle Handle { get; }
+
+        public NnrpNativeRuntimeSession OpenSession(
+            uint requestedSessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion)
+        {
+            NnrpHandle session;
+            var status = Entrypoints.ClientOpenSession(
+                new NnrpSessionOpenRequest(
+                    Handle.Handle,
+                    requestedSessionId,
+                    generation,
+                    profileId,
+                    schemaId,
+                    schemaVersion),
+                out session);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeSession(Entrypoints, Handle, new NnrpSessionHandle(session));
+        }
+
+        public NnrpNativeRuntimePollResult AwaitEvent()
+        {
+            NnrpPollResult result;
+            var status = Entrypoints.ClientAwaitEvent(Handle.Handle, out result);
+            status.ThrowIfError();
+            result.Status.ThrowIfError();
+            return NnrpNativeRuntimePollResult.FromFfi(result);
+        }
+
+        public NnrpNativeRuntimeEvent? PollEvent()
+        {
+            return AwaitEvent().Event;
+        }
+
+        public IReadOnlyList<NnrpNativeRuntimeEvent> PollAvailableEvents(int maxEvents = 0)
+        {
+            if (maxEvents < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxEvents), "maxEvents must be non-negative.");
+            }
+
+            var events = new List<NnrpNativeRuntimeEvent>();
+            while (maxEvents == 0 || events.Count < maxEvents)
+            {
+                var @event = PollEvent();
+                if (@event == null)
+                {
+                    break;
+                }
+
+                events.Add(@event);
+            }
+
+            return events;
+        }
+
+        public void Control(uint controlCode, byte[]? payload = null)
+        {
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeSession
+    {
+        public NnrpNativeRuntimeSession(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpConnectionHandle connection,
+            NnrpSessionHandle handle)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Connection = connection;
+            Handle = handle;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpConnectionHandle Connection { get; }
+
+        public NnrpSessionHandle Handle { get; }
+
+        public bool IsClosed { get; private set; }
+
+        public NnrpOperationHandle Submit(ulong operationId, uint frameId, byte[]? payload = null)
+        {
+            EnsureOpen();
+            return SubmitOperation(operationId, frameId, payload).Handle;
+        }
+
+        public NnrpNativeRuntimeOperation SubmitOperation(
+            ulong operationId,
+            uint frameId,
+            byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            EnsureOpen();
+            GCHandle payloadHandle = default(GCHandle);
+            try
+            {
+                var payloadView = NnrpBufferView.Empty;
+                if (payload != null && payload.Length > 0)
+                {
+                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
+                }
+
+                NnrpHandle operation;
+                var status = Entrypoints.ClientSubmit(
+                    new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
+                    out operation);
+                status.ThrowIfError();
+                return new NnrpNativeRuntimeOperation(
+                    Entrypoints,
+                    Handle,
+                    new NnrpOperationHandle(operation),
+                    operationId,
+                    frameId,
+                    parentOperationId,
+                    operationGroupId);
+            }
+            finally
+            {
+                if (payloadHandle.IsAllocated)
+                {
+                    payloadHandle.Free();
+                }
+            }
+        }
+
+        public Task<NnrpNativeRuntimeOperation> SubmitOperationAsync(
+            ulong operationId,
+            uint frameId,
+            byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+            EnsureOpen();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Cancel(frameId);
+                return Task.FromCanceled<NnrpNativeRuntimeOperation>(cancellationToken);
+            }
+
+            using (cancellationToken.Register(() => Cancel(frameId)))
+            {
+                var operation = SubmitOperation(
+                    operationId,
+                    frameId,
+                    payload,
+                    parentOperationId,
+                    operationGroupId);
+                return Task.FromResult(operation);
+            }
+        }
+
+        public NnrpNativeRuntimeResult PollResult(
+            NnrpNativeRuntimeOperation operation,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            EnsureOpen();
+            if (maxEvents < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxEvents), "maxEvents must be non-negative.");
+            }
+
+            var seenEvents = 0;
+            while (maxEvents == 0 || seenEvents < maxEvents)
+            {
+                NnrpPollResult result;
+                var status = Entrypoints.ClientAwaitEvent(Connection.Handle, out result);
+                status.ThrowIfError();
+                result.Status.ThrowIfError();
+
+                var snapshot = NnrpNativeRuntimePollResult.FromFfi(result);
+                var @event = snapshot.Event;
+                if (@event == null)
+                {
+                    break;
+                }
+
+                seenEvents++;
+                if (EventMatchesOperation(@event, operation))
+                {
+                    return NnrpNativeRuntimeResult.FromEvent(@event, state);
+                }
+            }
+
+            throw new NnrpNativeWouldBlockException(new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock));
+        }
+
+        public NnrpNativeRuntimeResult SubmitAndPollResult(
+            ulong operationId,
+            uint frameId,
+            byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            var operation = SubmitOperation(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId);
+            return PollResult(operation, state, maxEvents);
+        }
+
+        public void Close()
+        {
+            EnsureOpen();
+            Entrypoints.ClientClose(Handle.Handle).ThrowIfError();
+            IsClosed = true;
+        }
+
+        public void Cancel(uint frameId)
+        {
+            EnsureOpen();
+            Entrypoints.ClientCancel(new NnrpClientCancelRequest(Handle.Handle, frameId)).ThrowIfError();
+        }
+
+        public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        internal static void SendControl(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpHandle handle,
+            uint controlCode,
+            byte[]? payload)
+        {
+            GCHandle payloadHandle = default(GCHandle);
+            try
+            {
+                var payloadView = NnrpBufferView.Empty;
+                if (payload != null && payload.Length > 0)
+                {
+                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
+                }
+
+                entrypoints.Control(new NnrpControlRequest(handle, controlCode, payloadView)).ThrowIfError();
+            }
+            finally
+            {
+                if (payloadHandle.IsAllocated)
+                {
+                    payloadHandle.Free();
+                }
+            }
+        }
+
+        private static bool EventMatchesOperation(
+            NnrpNativeRuntimeEvent @event,
+            NnrpNativeRuntimeOperation operation)
+        {
+            return @event.Session == operation.Session.Handle
+                && (@event.Operation.Id == operation.Handle.Handle.Id
+                || @event.Operation.Id == operation.OperationId
+                || @event.FrameId == operation.FrameId);
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsClosed)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeOperation
+    {
+        public NnrpNativeRuntimeOperation(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpSessionHandle session,
+            NnrpOperationHandle handle,
+            ulong operationId,
+            uint frameId,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Session = session;
+            Handle = handle;
+            OperationId = operationId;
+            FrameId = frameId;
+            ParentOperationId = parentOperationId;
+            OperationGroupId = operationGroupId;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpSessionHandle Session { get; }
+
+        public NnrpOperationHandle Handle { get; }
+
+        public ulong OperationId { get; }
+
+        public uint FrameId { get; }
+
+        public ulong? ParentOperationId { get; }
+
+        public ulong? OperationGroupId { get; }
+
+        public void Cancel()
+        {
+            Entrypoints.ClientCancel(new NnrpClientCancelRequest(Session.Handle, FrameId)).ThrowIfError();
+        }
+    }
+
     public static class NnrpNativeArtifact
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
@@ -806,7 +1954,7 @@ namespace Nnrp.NativeBridge
                 capabilities.SdkMajor,
                 capabilities.SdkMinor,
                 capabilities.SdkPatch,
-                capabilities.SdkPreview,
+                capabilities.SdkChannel,
                 capabilities.SdkRevision,
                 capabilities.TransportSlots,
                 capabilities.FeatureFlags);
@@ -887,122 +2035,123 @@ namespace Nnrp.NativeBridge
             }
         }
 
-        [ExcludeFromCodeCoverage]
-        private static class NativeDynamicLibrary
+    }
+
+    [ExcludeFromCodeCoverage]
+    internal static class NativeDynamicLibrary
+    {
+        public static IntPtr Load(string path)
         {
-            public static IntPtr Load(string path)
+            IntPtr handle;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                IntPtr handle;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    handle = LoadLibraryW(path);
-                }
-                else
-                {
-                    handle = Dlopen(path, 2);
-                }
-
-                if (handle == IntPtr.Zero)
-                {
-                    throw new DllNotFoundException(path);
-                }
-
-                return handle;
+                handle = LoadLibraryW(path);
+            }
+            else
+            {
+                handle = Dlopen(path, 2);
             }
 
-            public static IntPtr GetSymbol(IntPtr handle, string name)
+            if (handle == IntPtr.Zero)
             {
-                IntPtr symbol;
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    symbol = GetProcAddress(handle, name);
-                }
-                else
-                {
-                    symbol = Dlsym(handle, name);
-                }
-
-                if (symbol == IntPtr.Zero)
-                {
-                    throw new EntryPointNotFoundException(name);
-                }
-
-                return symbol;
+                throw new DllNotFoundException(path);
             }
 
-            public static void Free(IntPtr handle)
-            {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                {
-                    FreeLibrary(handle);
-                    return;
-                }
-
-                Dlclose(handle);
-            }
-
-            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
-            private static extern IntPtr LoadLibraryW(string path);
-
-            [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
-            private static extern IntPtr GetProcAddress(IntPtr module, string name);
-
-            [DllImport("kernel32", SetLastError = true)]
-            private static extern bool FreeLibrary(IntPtr module);
-
-            [DllImport("libdl")]
-            private static extern IntPtr dlopen(string path, int flags);
-
-            [DllImport("libdl")]
-            private static extern IntPtr dlsym(IntPtr handle, string symbol);
-
-            [DllImport("libdl")]
-            private static extern int dlclose(IntPtr handle);
-
-            private static IntPtr Dlopen(string path, int flags)
-            {
-                try
-                {
-                    return dlopen(path, flags);
-                }
-                catch (DllNotFoundException)
-                {
-                    return dlopen2(path, flags);
-                }
-            }
-
-            private static IntPtr Dlsym(IntPtr handle, string symbol)
-            {
-                try
-                {
-                    return dlsym(handle, symbol);
-                }
-                catch (DllNotFoundException)
-                {
-                    return dlsym2(handle, symbol);
-                }
-            }
-
-            private static void Dlclose(IntPtr handle)
-            {
-                try
-                {
-                    dlclose(handle);
-                }
-                catch (DllNotFoundException)
-                {
-                    dlclose2(handle);
-                }
-            }
-
-            [DllImport("libdl.so.2", EntryPoint = "dlopen")]
-            private static extern IntPtr dlopen2(string path, int flags);
-
-            [DllImport("libdl.so.2", EntryPoint = "dlsym")]
-            private static extern IntPtr dlsym2(IntPtr handle, string symbol);
-
-            [DllImport("libdl.so.2", EntryPoint = "dlclose")]
-            private static extern int dlclose2(IntPtr handle);
+            return handle;
         }
+
+        public static IntPtr GetSymbol(IntPtr handle, string name)
+        {
+            IntPtr symbol;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                symbol = GetProcAddress(handle, name);
+            }
+            else
+            {
+                symbol = Dlsym(handle, name);
+            }
+
+            if (symbol == IntPtr.Zero)
+            {
+                throw new EntryPointNotFoundException(name);
+            }
+
+            return symbol;
+        }
+
+        public static void Free(IntPtr handle)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                FreeLibrary(handle);
+                return;
+            }
+
+            Dlclose(handle);
+        }
+
+        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibraryW(string path);
+
+        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
+        private static extern IntPtr GetProcAddress(IntPtr module, string name);
+
+        [DllImport("kernel32", SetLastError = true)]
+        private static extern bool FreeLibrary(IntPtr module);
+
+        [DllImport("libdl")]
+        private static extern IntPtr dlopen(string path, int flags);
+
+        [DllImport("libdl")]
+        private static extern IntPtr dlsym(IntPtr handle, string symbol);
+
+        [DllImport("libdl")]
+        private static extern int dlclose(IntPtr handle);
+
+        private static IntPtr Dlopen(string path, int flags)
+        {
+            try
+            {
+                return dlopen(path, flags);
+            }
+            catch (DllNotFoundException)
+            {
+                return dlopen2(path, flags);
+            }
+        }
+
+        private static IntPtr Dlsym(IntPtr handle, string symbol)
+        {
+            try
+            {
+                return dlsym(handle, symbol);
+            }
+            catch (DllNotFoundException)
+            {
+                return dlsym2(handle, symbol);
+            }
+        }
+
+        private static void Dlclose(IntPtr handle)
+        {
+            try
+            {
+                dlclose(handle);
+            }
+            catch (DllNotFoundException)
+            {
+                dlclose2(handle);
+            }
+        }
+
+        [DllImport("libdl.so.2", EntryPoint = "dlopen")]
+        private static extern IntPtr dlopen2(string path, int flags);
+
+        [DllImport("libdl.so.2", EntryPoint = "dlsym")]
+        private static extern IntPtr dlsym2(IntPtr handle, string symbol);
+
+        [DllImport("libdl.so.2", EntryPoint = "dlclose")]
+        private static extern int dlclose2(IntPtr handle);
     }
 }

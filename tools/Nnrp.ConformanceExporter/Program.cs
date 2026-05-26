@@ -111,7 +111,7 @@ internal static class Program
 
     private static ConformanceVectorManifest BuildManifest(string protocolVersion, string recipeManifestPath)
     {
-        if (!string.Equals(protocolVersion, "nnrp-1-preview2", StringComparison.Ordinal))
+        if (!string.Equals(protocolVersion, "nnrp-1-preview3", StringComparison.Ordinal))
         {
             throw new ArgumentException($"Unsupported protocol version for C# conformance export: {protocolVersion}");
         }
