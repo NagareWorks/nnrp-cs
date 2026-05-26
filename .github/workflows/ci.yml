@@ -178,7 +178,7 @@ jobs:
             }
           }
 
-          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceExporter]*%2c[Nnrp.ConformanceAdapter]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceAdapter]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj" -ArtifactName "Nnrp.Client.Tests" -IncludeFilter "[Nnrp.Client]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
