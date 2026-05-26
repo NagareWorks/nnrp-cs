@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Nnrp.NativeBridge;
 using Xunit;
 
@@ -155,7 +157,7 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(1, result.SdkMajor);
             Assert.Equal(0, result.SdkMinor);
             Assert.Equal(0, result.SdkPatch);
-            Assert.Equal(3, result.SdkPreview);
+            Assert.Equal(3, result.SdkChannel);
             Assert.Equal(1, result.SdkRevision);
             Assert.Equal(NnrpNativeArtifact.TransportSlotTcp, result.TransportSlots);
             Assert.Equal(NnrpNativeArtifact.RequiredRuntimeFeatures, result.FeatureFlags);
@@ -393,6 +395,464 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<NnrpNativeInternalException>(() => status.ThrowIfError());
         }
 
+        [Fact]
+        public void NativeRuntimeEntrypointsKeepFrozenDelegateTable()
+        {
+            var entrypoints = CreateEntrypoints();
+
+            Assert.Equal(1, entrypoints.CurrentProtocolVersion().Major);
+            Assert.Equal(1, entrypoints.RuntimeCapabilities().AbiMajor);
+
+            NnrpHandle handle;
+            Assert.True(entrypoints.ConnectionBootstrap(new NnrpConnectionBootstrap(1, 1, 2), out handle).Succeeded);
+            Assert.Equal(NnrpHandleKind.Connection, handle.Kind);
+
+            Assert.True(entrypoints.ClientConnect(new NnrpClientConnectRequest(2, 1, 2), out handle).Succeeded);
+            Assert.True(entrypoints.SessionOpen(MatchingSessionOpenRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.ClientOpenSession(MatchingSessionOpenRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.Submit(MatchingSubmitRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.ClientSubmit(MatchingSubmitRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.SessionClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
+            Assert.True(entrypoints.ClientClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
+            Assert.True(entrypoints.ClientCancel(new NnrpClientCancelRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 7)).Succeeded);
+
+            NnrpPollResult pollResult;
+            Assert.True(entrypoints.ClientAwaitEvent(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), out pollResult).Succeeded);
+            Assert.Equal((byte)0, pollResult.HasEvent);
+
+            Assert.True(entrypoints.ServerBind(new NnrpServerBindRequest(4, 1, 2), out handle).Succeeded);
+            Assert.True(entrypoints.ServerAccept(MatchingServerAcceptRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.ServerReceiveSubmit(MatchingServerReceiveSubmitRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.ServerSendResult(new NnrpServerSendResultRequest(new NnrpHandle(NnrpHandleKind.Operation, 5, 1), NnrpBufferView.Empty)).Succeeded);
+            Assert.True(entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 7)).Succeeded);
+            Assert.True(entrypoints.ServerClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
+            Assert.True(entrypoints.Control(new NnrpControlRequest(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), 9, NnrpBufferView.Empty)).Succeeded);
+            Assert.True(entrypoints.PollEmpty(out pollResult).Succeeded);
+
+            var eventValue = new NnrpEvent(
+                0,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                0,
+                NnrpBufferView.Empty,
+                new NnrpFfiDiagnostic(NnrpFfiStatus.Ok));
+            Assert.True(entrypoints.DispatchEvent(new NnrpCallbackSink(IntPtr.Zero, IntPtr.Zero), ref eventValue).Succeeded);
+
+            entrypoints.Dispose();
+            entrypoints.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeEntrypointsRejectMissingDelegate()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                new NnrpNativeRuntimeEntrypoints(
+                    null!,
+                    () => MatchingCapabilities(),
+                    ConnectionBootstrap,
+                    ClientConnect,
+                    SessionOpen,
+                    SessionOpen,
+                    Submit,
+                    Submit,
+                    HandleStatus,
+                    HandleStatus,
+                    ClientCancel,
+                    AwaitEvent,
+                    ServerBind,
+                    ServerAccept,
+                    ServerReceiveSubmit,
+                    ServerSendResult,
+                    ServerFlowUpdate,
+                    HandleStatus,
+                    Control,
+                    PollEmpty,
+                    DispatchEvent));
+        }
+
+        [Fact]
+        public void NativeRuntimeClientRunsConnectionSessionSubmitCloseRoundtrip()
+        {
+            var client = new NnrpNativeRuntimeClient(CreateEntrypoints());
+
+            var connection = client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var session = connection.OpenSession(41, 3, 4, 5, 6);
+            var operation = session.Submit(99, 7, new byte[] { 1, 2, 3 });
+            var operationScope = session.SubmitOperation(100, 8, new byte[] { 1, 2, 3 }, parentOperationId: 99, operationGroupId: 1234);
+            connection.Control(10, new byte[] { 4, 5 });
+            operationScope.Cancel();
+            session.Cancel(7);
+            session.Control(11, new byte[] { 6, 7, 8 });
+            session.Close();
+
+            Assert.Equal((ulong)11, connection.Handle.Handle.Id);
+            Assert.Equal((uint)2, connection.Handle.Handle.Generation);
+            Assert.Equal((ulong)11, session.Connection.Handle.Id);
+            Assert.Equal((ulong)41, session.Handle.Handle.Id);
+            Assert.Equal((uint)3, session.Handle.Handle.Generation);
+            Assert.Equal((ulong)99, operation.Handle.Id);
+            Assert.Equal((ulong)100, operationScope.OperationId);
+            Assert.Equal((uint)8, operationScope.FrameId);
+            Assert.Equal((ulong)99, operationScope.ParentOperationId);
+            Assert.Equal((ulong)1234, operationScope.OperationGroupId);
+        }
+
+        [Fact]
+        public void NativeRuntimeConnectionCanOpenMultipleSessions()
+        {
+            var client = new NnrpNativeRuntimeClient(CreateEntrypoints());
+
+            var connection = client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var firstSession = connection.OpenSession(41, 3, 4, 5, 6);
+            var secondSession = connection.OpenSession(42, 4, 4, 5, 6);
+            var firstOperation = firstSession.SubmitOperation(99, 7);
+            var secondOperation = secondSession.SubmitOperation(100, 8);
+
+            Assert.Equal(connection.Handle.Handle, firstSession.Connection.Handle);
+            Assert.Equal(connection.Handle.Handle, secondSession.Connection.Handle);
+            Assert.Equal((ulong)41, firstSession.Handle.Handle.Id);
+            Assert.Equal((ulong)42, secondSession.Handle.Handle.Id);
+            Assert.Equal(firstSession.Handle, firstOperation.Session);
+            Assert.Equal(secondSession.Handle, secondOperation.Session);
+        }
+
+        [Fact]
+        public void NativeRuntimeClientBootstrapsAndAwaitsEmptyEvent()
+        {
+            var client = new NnrpNativeRuntimeClient(CreateEntrypoints());
+
+            var connection = client.BootstrapConnection(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var result = connection.AwaitEvent();
+
+            Assert.Equal((ulong)12, connection.Handle.Handle.Id);
+            Assert.Null(result.Event);
+        }
+
+        [Fact]
+        public void NativeRuntimeEventSnapshotCopiesPayload()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+
+            var result = connection.AwaitEvent();
+
+            Assert.NotNull(result.Event);
+            Assert.Equal(6u, result.Event!.Kind);
+            Assert.Equal(new byte[] { 1, 2, 3 }, result.Event.Payload);
+            Assert.Equal((ulong)12, result.Event.Connection.Id);
+            Assert.Equal((ulong)41, result.Event.Session.Id);
+            Assert.Equal((ulong)99, result.Event.Operation.Id);
+            Assert.True(result.Event.Diagnostic.Status.Succeeded);
+        }
+
+        [Fact]
+        public void NativeRuntimeResultPreservesLifecycleSurface()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var @event = connection.PollEvent();
+
+            Assert.NotNull(@event);
+            var completed = NnrpNativeRuntimeResult.FromEvent(@event!);
+            var partial = NnrpNativeRuntimeResult.FromEvent(@event!, NnrpNativeOperationLifecycle.Partial);
+            var degraded = NnrpNativeRuntimeResult.FromEvent(@event!, NnrpNativeOperationLifecycle.Degraded);
+            var stale = NnrpNativeRuntimeResult.FromEvent(@event!, NnrpNativeOperationLifecycle.StaleReuse);
+
+            Assert.Equal(NnrpNativeOperationLifecycle.Completed, completed.State);
+            Assert.Equal((ulong)99, completed.OperationId);
+            Assert.Equal((uint)7, completed.FrameId);
+            Assert.Equal(new byte[] { 1, 2, 3 }, completed.Payload);
+            Assert.Equal(NnrpNativeOperationLifecycle.Partial, partial.State);
+            Assert.Equal(NnrpNativeOperationLifecycle.Degraded, degraded.State);
+            Assert.Equal(NnrpNativeOperationLifecycle.StaleReuse, stale.State);
+        }
+
+        [Fact]
+        public void NativeRuntimeResultMapsErrorAndDropEvents()
+        {
+            var errorEvent = new NnrpNativeRuntimeEvent(
+                10,
+                new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
+                new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                7,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(new NnrpFfiStatus(NnrpFfiStatusCode.InternalError), 12, 41, 99, 7));
+            var dropEvent = new NnrpNativeRuntimeEvent(
+                7,
+                new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
+                new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                7,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 12, 41, 99, 7));
+
+            Assert.Equal(NnrpNativeOperationLifecycle.Failed, NnrpNativeRuntimeResult.FromEvent(errorEvent).State);
+            Assert.Equal(NnrpNativeOperationLifecycle.Cancelled, NnrpNativeRuntimeResult.FromEvent(dropEvent).State);
+        }
+
+        [Fact]
+        public async Task NativeRuntimeAsyncSubmitCancelsNativeFrameWhenTokenIsCancelled()
+        {
+            var session = new NnrpNativeRuntimeClient(CreateEntrypoints())
+                .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
+                .OpenSession(41, 3, 4, 5, 6);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            await Assert.ThrowsAsync<TaskCanceledException>(() =>
+                session.SubmitOperationAsync(101, 9, new byte[] { 1, 2, 3 }, cancellationToken: cancellation.Token));
+        }
+
+        [Fact]
+        public void NativeRuntimeConnectionPollsEventDeliveryModel()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+
+            var @event = connection.PollEvent();
+            var events = connection.PollAvailableEvents(1);
+
+            Assert.NotNull(@event);
+            Assert.Equal(new byte[] { 1, 2, 3 }, @event!.Payload);
+            Assert.Single(events);
+            Assert.Equal(new byte[] { 1, 2, 3 }, events[0].Payload);
+            Assert.Throws<ArgumentOutOfRangeException>(() => connection.PollAvailableEvents(-1));
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionSubmitsAndPollsResult()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var session = new NnrpNativeRuntimeClient(entrypoints)
+                .Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp)
+                .OpenSession(41, 3, 4, 5, 6);
+
+            var result = session.SubmitAndPollResult(
+                99,
+                7,
+                new byte[] { 1, 2, 3 },
+                state: NnrpNativeOperationLifecycle.Partial,
+                maxEvents: 1);
+
+            Assert.Equal(NnrpNativeOperationLifecycle.Partial, result.State);
+            Assert.Equal((ulong)99, result.OperationId);
+            Assert.Equal((uint)7, result.FrameId);
+            Assert.Equal(new byte[] { 1, 2, 3 }, result.Payload);
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionRaisesWhenResultIsNotAvailable()
+        {
+            var session = new NnrpNativeRuntimeClient(CreateEntrypoints())
+                .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
+                .OpenSession(41, 3, 4, 5, 6);
+
+            Assert.Throws<NnrpNativeWouldBlockException>(() =>
+                session.SubmitAndPollResult(99, 7, new byte[] { 1, 2, 3 }, maxEvents: 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                session.PollResult(session.SubmitOperation(99, 7), maxEvents: -1));
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionIgnoresResultForDifferentSession()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var session = new NnrpNativeRuntimeClient(entrypoints)
+                .Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp)
+                .OpenSession(42, 4, 4, 5, 6);
+            var operation = session.SubmitOperation(99, 7);
+
+            Assert.Throws<NnrpNativeWouldBlockException>(() => session.PollResult(operation, maxEvents: 1));
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionRejectsUseAfterClose()
+        {
+            var session = new NnrpNativeRuntimeClient(CreateEntrypoints())
+                .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
+                .OpenSession(41, 3, 4, 5, 6);
+            var operation = session.SubmitOperation(99, 7);
+
+            session.Close();
+
+            Assert.True(session.IsClosed);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Submit(100, 8));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.PollResult(operation, maxEvents: 1));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Cancel(7));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Control(11));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Close());
+        }
+
+        [Fact]
+        public void NativeRuntimeClientRaisesMappedStatusErrors()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                FailingClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var client = new NnrpNativeRuntimeClient(entrypoints);
+
+            Assert.Throws<NnrpNativeInvalidStateException>(() => client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp));
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeRuntimeClient(null!));
+        }
+
+        [Fact]
+        public void NativeRuntimeBackendSelectorFallsBackWhenNativeArtifactIsUnavailable()
+        {
+            var fallback = new FakeRuntimeBackend();
+
+            var selected = NnrpNativeRuntimeBackendSelector.Select(
+                artifactPath: "missing-native-artifact.dll",
+                fallback: fallback);
+
+            Assert.Same(fallback, selected);
+        }
+
+        [Fact]
+        public void NativeRuntimeBackendSelectorCanRequireNativeArtifact()
+        {
+            Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeRuntimeBackendSelector.Select(
+                    artifactPath: "missing-native-artifact.dll",
+                    fallback: new FakeRuntimeBackend(),
+                    requireNative: true));
+        }
+
+        [Fact]
+        public void NativeRuntimeClientImplementsBackendInterface()
+        {
+            INnrpNativeRuntimeBackend backend = new NnrpNativeRuntimeClient(CreateEntrypoints());
+
+            var connection = backend.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.Equal((ulong)11, connection.Handle.Handle.Id);
+        }
+
         private static string CreateTempDirectory()
         {
             string path = Path.Combine(Path.GetTempPath(), "nnrp-native-artifact-" + Guid.NewGuid().ToString("N"));
@@ -421,6 +881,196 @@ namespace Nnrp.NativeBridge.Tests
                 1,
                 transportSlots,
                 featureFlags);
+        }
+
+        private static NnrpNativeRuntimeEntrypoints CreateEntrypoints()
+        {
+            return new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+        }
+
+        private static NnrpProtocolVersion CurrentProtocolVersion()
+        {
+            return new NnrpProtocolVersion(1, 0);
+        }
+
+        private static NnrpFfiStatus ConnectionBootstrap(NnrpConnectionBootstrap request, out NnrpHandle connection)
+        {
+            connection = new NnrpHandle(NnrpHandleKind.Connection, request.ConnectionId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ClientConnect(NnrpClientConnectRequest request, out NnrpHandle connection)
+        {
+            connection = new NnrpHandle(NnrpHandleKind.Connection, request.ConnectionId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus FailingClientConnect(NnrpClientConnectRequest request, out NnrpHandle connection)
+        {
+            connection = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState);
+        }
+
+        private static NnrpSessionOpenRequest MatchingSessionOpenRequest()
+        {
+            return new NnrpSessionOpenRequest(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), 3, 1, 1, 10, 1);
+        }
+
+        private static NnrpFfiStatus SessionOpen(NnrpSessionOpenRequest request, out NnrpHandle session)
+        {
+            session = new NnrpHandle(NnrpHandleKind.Session, request.RequestedSessionId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiSubmitRequest MatchingSubmitRequest()
+        {
+            return new NnrpFfiSubmitRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 5, 7, NnrpBufferView.Empty);
+        }
+
+        private static NnrpFfiStatus Submit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+        {
+            operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus HandleStatus(NnrpHandle handle)
+        {
+            return handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus ClientCancel(NnrpClientCancelRequest request)
+        {
+            return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus AwaitEvent(NnrpHandle connection, out NnrpPollResult result)
+        {
+            result = EmptyPollResult();
+            return connection.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus AwaitEventWithPayload(NnrpHandle connection, out NnrpPollResult result)
+        {
+            result = new NnrpPollResult(
+                NnrpFfiStatus.Ok,
+                1,
+                new NnrpEvent(
+                    6,
+                    connection,
+                    new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                    new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                    7,
+                    new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length)),
+                    new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ServerBind(NnrpServerBindRequest request, out NnrpHandle server)
+        {
+            server = new NnrpHandle(NnrpHandleKind.Connection, request.ServerId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpServerAcceptRequest MatchingServerAcceptRequest()
+        {
+            return new NnrpServerAcceptRequest(new NnrpHandle(NnrpHandleKind.Connection, 4, 1), 3, 1, 1, 10, 1);
+        }
+
+        private static NnrpFfiStatus ServerAccept(NnrpServerAcceptRequest request, out NnrpHandle session)
+        {
+            session = new NnrpHandle(NnrpHandleKind.Session, request.SessionId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpServerReceiveSubmitRequest MatchingServerReceiveSubmitRequest()
+        {
+            return new NnrpServerReceiveSubmitRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 5, 7, NnrpBufferView.Empty);
+        }
+
+        private static NnrpFfiStatus ServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+        {
+            operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ServerSendResult(NnrpServerSendResultRequest request)
+        {
+            return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus ServerFlowUpdate(NnrpServerFlowUpdateRequest request)
+        {
+            return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus Control(NnrpControlRequest request)
+        {
+            return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus PollEmpty(out NnrpPollResult result)
+        {
+            result = EmptyPollResult();
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus DispatchEvent(NnrpCallbackSink sink, ref NnrpEvent @event)
+        {
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpPollResult EmptyPollResult()
+        {
+            return new NnrpPollResult(
+                NnrpFfiStatus.Ok,
+                0,
+                new NnrpEvent(
+                    0,
+                    NnrpHandle.Invalid,
+                    NnrpHandle.Invalid,
+                    NnrpHandle.Invalid,
+                    0,
+                    NnrpBufferView.Empty,
+                    new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
+        }
+
+        private static readonly byte[] EventPayload = new byte[] { 1, 2, 3 };
+
+        private static readonly System.Runtime.InteropServices.GCHandle EventPayloadHandle =
+            System.Runtime.InteropServices.GCHandle.Alloc(EventPayload, System.Runtime.InteropServices.GCHandleType.Pinned);
+
+        private sealed class FakeRuntimeBackend : INnrpNativeRuntimeBackend
+        {
+            public NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId)
+            {
+                throw new NotSupportedException("fixture connect");
+            }
+
+            public NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId)
+            {
+                throw new NotSupportedException("fixture bootstrap");
+            }
         }
     }
 }

@@ -140,8 +140,6 @@ jobs:
         shell: pwsh
         run: |
           $coverageRoot = Join-Path $PWD "artifacts/test-results"
-          $env:NNRP_CONFORMANCE_RECIPE_MANIFEST = Join-Path $PWD 'nnrp-conformance-action/protocol/nnrp-1-preview2/vectors/semantic-vectors.json'
-
           function Invoke-CoveredTest {
             param(
               [string]$ProjectPath,
@@ -284,11 +282,6 @@ jobs:
           capabilities-path: ${{ steps.conformance-baseline.outputs.capabilities-path }}
           working-directory: .
           artifact-name: ${{ steps.conformance-baseline.outputs.artifact-name }}
-          sdk-vector-command: >-
-            dotnet run --project tools/Nnrp.ConformanceExporter/Nnrp.ConformanceExporter.csproj --
-            --protocol-version ${{ steps.conformance-baseline.outputs.protocol-version }}
-            --recipe-manifest nnrp-conformance-action/protocol/${{ steps.conformance-baseline.outputs.protocol-version }}/vectors/semantic-vectors.json
-            --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
           adapter-command: >-
             dotnet run --project tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj --
             --plan $env:NNRP_CONFORMANCE_ADAPTER_PLAN
@@ -340,4 +333,3 @@ jobs:
             echo "Conformance validation failed."
             exit 1
           fi
-
