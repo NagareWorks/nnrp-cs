@@ -5,6 +5,7 @@
     "handshake.basic",
     "session.open_close",
     "frame_submit.tensor.inline",
-    "result_push.basic"
+    "result_push.basic",
+    "flow_update"
   ]
 }
