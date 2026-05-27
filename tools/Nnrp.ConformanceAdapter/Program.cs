@@ -181,6 +181,25 @@ public static class Program
                 case "l2.result_push.basic.event_pump.single_terminal.validation":
                     RunSingleTerminalEventDelivery();
                     return Pass(caseId, "RESULT_PUSH single terminal delivery validation passed.");
+                case "l0.flow_update.packet.golden":
+                case "l1.flow_update.session.scope.validation":
+                    RunSessionFlowUpdate();
+                    return Pass(caseId, "FLOW_UPDATE session-scope validation passed.");
+                case "l0.flow_update.connection.packet.golden":
+                case "l1.flow_update.connection.scope.validation":
+                    RunConnectionFlowUpdate();
+                    return Pass(caseId, "FLOW_UPDATE connection-scope validation passed.");
+                case "l0.flow_update.operation.packet.golden":
+                case "l1.flow_update.operation.scope.validation":
+                    RunOperationFlowUpdate();
+                    return Pass(caseId, "FLOW_UPDATE operation-scope validation passed.");
+                case "l0.flow_update.reserved_flags.reject":
+                    RunFlowUpdateReservedFlagsReject();
+                    return Pass(caseId, "FLOW_UPDATE reserved flags were rejected.");
+                case "l1.flow_update.credit_epoch.monotonicity.validation":
+                case string flowCase when flowCase == string.Concat("l1.flow_update.", "pre", "view3"):
+                    RunFlowUpdateCreditEpochValidation();
+                    return Pass(caseId, "FLOW_UPDATE credit epoch validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -615,6 +634,74 @@ public static class Program
         AssertTrue(terminalCount == 1, "Basic result delivery did not produce exactly one terminal result.");
     }
 
+    private static void RunSessionFlowUpdate()
+    {
+        var message = CreateSessionFlowUpdate();
+        AssertFlowUpdateRoundtrip(message);
+        AssertTrue(message.Header.SessionId == 42, "Session-scope FLOW_UPDATE did not target the session header.");
+        AssertTrue(message.Header.FrameId == 0, "Session-scope FLOW_UPDATE unexpectedly targeted an operation header.");
+        AssertTrue(message.Metadata.ScopeKind == FlowUpdateScopeKind.Session, "Session-scope FLOW_UPDATE changed scope.");
+        AssertTrue(message.Metadata.ConnectionCredit == 0, "Session-scope FLOW_UPDATE carried connection credit.");
+        AssertTrue(message.Metadata.SessionCredit == 2, "Session-scope FLOW_UPDATE did not preserve session credit.");
+        AssertTrue(message.Metadata.OperationCredit == 0, "Session-scope FLOW_UPDATE carried operation credit.");
+        AssertTrue(message.Metadata.OperationId == 0, "Session-scope FLOW_UPDATE carried operation id.");
+        AssertTrue(message.Metadata.BackpressureLevel == FlowUpdateBackpressureLevel.Hard, "Session-scope FLOW_UPDATE did not preserve hard backpressure.");
+        AssertTrue(message.Metadata.RetryAfterMilliseconds == 120, "Session-scope FLOW_UPDATE did not preserve retry-after.");
+        AssertTrue(message.Metadata.CreditEpoch == 7, "Session-scope FLOW_UPDATE did not preserve credit epoch.");
+    }
+
+    private static void RunConnectionFlowUpdate()
+    {
+        var message = CreateConnectionFlowUpdate(creditEpoch: 11);
+        AssertFlowUpdateRoundtrip(message);
+        AssertTrue(message.Header.SessionId == 0, "Connection-scope FLOW_UPDATE carried a session header.");
+        AssertTrue(message.Header.FrameId == 0, "Connection-scope FLOW_UPDATE unexpectedly targeted an operation header.");
+        AssertTrue(message.Metadata.ScopeKind == FlowUpdateScopeKind.Connection, "Connection-scope FLOW_UPDATE changed scope.");
+        AssertTrue(message.Metadata.ConnectionCredit == 6, "Connection-scope FLOW_UPDATE did not preserve connection credit.");
+        AssertTrue(message.Metadata.SessionCredit == 0, "Connection-scope FLOW_UPDATE carried session credit.");
+        AssertTrue(message.Metadata.OperationCredit == 0, "Connection-scope FLOW_UPDATE carried operation credit.");
+        AssertTrue(message.Metadata.OperationId == 0, "Connection-scope FLOW_UPDATE carried operation id.");
+        AssertTrue(message.Metadata.BackpressureLevel == FlowUpdateBackpressureLevel.Soft, "Connection-scope FLOW_UPDATE did not preserve soft backpressure.");
+    }
+
+    private static void RunOperationFlowUpdate()
+    {
+        var message = CreateOperationFlowUpdate(creditEpoch: 12);
+        AssertFlowUpdateRoundtrip(message);
+        AssertTrue(message.Header.SessionId == 42, "Operation-scope FLOW_UPDATE did not target the session header.");
+        AssertTrue(message.Header.FrameId == 0, "Operation-scope FLOW_UPDATE used the operation metadata as a header frame id.");
+        AssertTrue(message.Metadata.ScopeKind == FlowUpdateScopeKind.Operation, "Operation-scope FLOW_UPDATE changed scope.");
+        AssertTrue(message.Metadata.ConnectionCredit == 0, "Operation-scope FLOW_UPDATE carried connection credit.");
+        AssertTrue(message.Metadata.SessionCredit == 0, "Operation-scope FLOW_UPDATE carried session credit.");
+        AssertTrue(message.Metadata.OperationCredit == 1, "Operation-scope FLOW_UPDATE did not preserve operation credit.");
+        AssertTrue(message.Metadata.OperationId == 4660, "Operation-scope FLOW_UPDATE did not preserve operation id.");
+        AssertTrue(message.Metadata.RetryAfterMilliseconds == 250, "Operation-scope FLOW_UPDATE did not preserve retry-after.");
+        AssertTrue((message.Metadata.Flags & FlowUpdateFlags.DrainInFlightOnly) != 0, "Operation-scope FLOW_UPDATE did not preserve drain-only flag.");
+    }
+
+    private static void RunFlowUpdateReservedFlagsReject()
+    {
+        var packet = CreateSessionFlowUpdate().ToArray();
+        packet[NnrpHeader.HeaderLength + 28] = 0x10;
+
+        AssertTrue(
+            !FlowUpdateMessage.TryParse(packet, out _, out var error)
+                && error == NnrpParseError.InvalidMessageLayout,
+            $"FLOW_UPDATE reserved flags were not rejected as InvalidMessageLayout: {error}.");
+    }
+
+    private static void RunFlowUpdateCreditEpochValidation()
+    {
+        var tracker = new Dictionary<string, uint>(StringComparer.Ordinal);
+        var first = CreateConnectionFlowUpdate(creditEpoch: 11);
+        var newer = CreateConnectionFlowUpdate(creditEpoch: 12);
+        var stale = CreateConnectionFlowUpdate(creditEpoch: 10);
+
+        AssertTrue(TryAcceptCreditEpoch(first, tracker), "Initial FLOW_UPDATE epoch was rejected.");
+        AssertTrue(TryAcceptCreditEpoch(newer, tracker), "Newer FLOW_UPDATE epoch was rejected.");
+        AssertTrue(!TryAcceptCreditEpoch(stale, tracker), "Stale FLOW_UPDATE epoch was accepted.");
+    }
+
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
     {
         var section = CreateResultSection(submit.Metadata.TileCount);
@@ -680,6 +767,99 @@ public static class Program
             Array.Empty<byte>(),
             lengthTable,
             payload);
+    }
+
+    private static FlowUpdateMessage CreateSessionFlowUpdate()
+    {
+        return CreateFlowUpdate(
+            sessionId: 42,
+            routeId: 9,
+            traceId: 0x1122334455667788,
+            new FlowUpdateMetadata(
+                scopeKind: FlowUpdateScopeKind.Session,
+                updateReason: FlowUpdateReason.Congestion,
+                backpressureLevel: FlowUpdateBackpressureLevel.Hard,
+                connectionCredit: 0,
+                sessionCredit: 2,
+                operationCredit: 0,
+                operationId: 0,
+                retryAfterMilliseconds: 120,
+                creditEpoch: 7,
+                flags: FlowUpdateFlags.CreditValid | FlowUpdateFlags.RetryAfterValid));
+    }
+
+    private static FlowUpdateMessage CreateConnectionFlowUpdate(uint creditEpoch)
+    {
+        return CreateFlowUpdate(
+            sessionId: 0,
+            routeId: 3,
+            traceId: 0x0102030405060708,
+            new FlowUpdateMetadata(
+                scopeKind: FlowUpdateScopeKind.Connection,
+                updateReason: FlowUpdateReason.Grant,
+                backpressureLevel: FlowUpdateBackpressureLevel.Soft,
+                connectionCredit: 6,
+                sessionCredit: 0,
+                operationCredit: 0,
+                operationId: 0,
+                retryAfterMilliseconds: 0,
+                creditEpoch: creditEpoch,
+                flags: FlowUpdateFlags.CreditValid));
+    }
+
+    private static FlowUpdateMessage CreateOperationFlowUpdate(uint creditEpoch)
+    {
+        return CreateFlowUpdate(
+            sessionId: 42,
+            routeId: 9,
+            traceId: 0x8877665544332211,
+            new FlowUpdateMetadata(
+                scopeKind: FlowUpdateScopeKind.Operation,
+                updateReason: FlowUpdateReason.Pause,
+                backpressureLevel: FlowUpdateBackpressureLevel.Hard,
+                connectionCredit: 0,
+                sessionCredit: 0,
+                operationCredit: 1,
+                operationId: 4660,
+                retryAfterMilliseconds: 250,
+                creditEpoch: creditEpoch,
+                flags: FlowUpdateFlags.CreditValid | FlowUpdateFlags.RetryAfterValid | FlowUpdateFlags.DrainInFlightOnly));
+    }
+
+    private static FlowUpdateMessage CreateFlowUpdate(uint sessionId, ushort routeId, ulong traceId, FlowUpdateMetadata metadata)
+    {
+        return new FlowUpdateMessage(
+            new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.FlowUpdate,
+                flags: HeaderFlags.None,
+                metaLength: FlowUpdateMetadata.MetadataLength,
+                bodyLength: 0,
+                sessionId: sessionId,
+                frameId: 0,
+                viewId: 0,
+                routeId: routeId,
+                traceId: traceId),
+            metadata);
+    }
+
+    private static void AssertFlowUpdateRoundtrip(FlowUpdateMessage message)
+    {
+        AssertTrue(FlowUpdateMessage.TryParse(message.ToArray(), out var parsed, out var error), $"FLOW_UPDATE parse failed: {error}.");
+        AssertTrue(parsed.Header.Equals(message.Header), "FLOW_UPDATE header roundtrip changed.");
+        AssertTrue(parsed.Metadata.Equals(message.Metadata), "FLOW_UPDATE metadata roundtrip changed.");
+    }
+
+    private static bool TryAcceptCreditEpoch(FlowUpdateMessage message, Dictionary<string, uint> currentEpochs)
+    {
+        var key = $"{message.Metadata.ScopeKind}:{message.Header.SessionId}:{message.Metadata.OperationId}";
+        if (currentEpochs.TryGetValue(key, out var currentEpoch) && message.Metadata.CreditEpoch <= currentEpoch)
+        {
+            return false;
+        }
+
+        currentEpochs[key] = message.Metadata.CreditEpoch;
+        return true;
     }
 
     private static SessionOpenMetadata GoldenSessionOpenMetadata()

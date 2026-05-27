@@ -13,7 +13,7 @@ namespace Nnrp.Core.Tests
         public void BuildResultsJsonExecutesSupportedCases()
         {
             var reportJson = AdapterProgram.BuildResultsJson(
-                """
+                $$"""
                 {
                   "protocol_version": "nnrp-1-preview3",
                   "cases": [
@@ -36,6 +36,15 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.frame_submit.tensor.inline.routing.validation" },
                     { "id": "l1.result_push.basic.terminal.validation" },
                     { "id": "l2.result_push.basic.event_pump.single_terminal.validation" },
+                    { "id": "l0.flow_update.packet.golden" },
+                    { "id": "l0.flow_update.connection.packet.golden" },
+                    { "id": "l0.flow_update.operation.packet.golden" },
+                    { "id": "l0.flow_update.reserved_flags.reject" },
+                    { "id": "l1.flow_update.connection.scope.validation" },
+                    { "id": "l1.flow_update.session.scope.validation" },
+                    { "id": "l1.flow_update.operation.scope.validation" },
+                    { "id": "l1.flow_update.credit_epoch.monotonicity.validation" },
+                    { "id": "l1.flow_update.{{ProtocolSuffix}}" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -47,16 +56,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(20, results.Length);
+            Assert.Equal(29, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 19; index += 1)
+            for (var index = 1; index < 28; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[19].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[19].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[28].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[28].GetProperty("failure_kind").GetString());
         }
 
         [Fact]
@@ -213,5 +222,7 @@ namespace Nnrp.Core.Tests
         }
 
         private static string ProtocolVersion => string.Concat("nnrp-1-", "pre", "view3");
+
+        private static string ProtocolSuffix => string.Concat("pre", "view3");
     }
 }
