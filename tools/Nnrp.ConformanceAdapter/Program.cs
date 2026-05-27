@@ -218,6 +218,9 @@ public static class Program
                 case "l1.operation.lifecycle.terminal_resolution.validation":
                     RunOperationLifecycleTerminalResolution();
                     return Pass(caseId, "Operation lifecycle terminal resolution validation passed.");
+                case "l1.operation.cancel_scope.validation":
+                    RunOperationCancelScope();
+                    return Pass(caseId, "Operation cancel scope validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -809,6 +812,46 @@ public static class Program
         AssertTrue(!completed.TryFail(out _), "Completed operation accepted a later terminal transition.");
     }
 
+    private static void RunOperationCancelScope()
+    {
+        var operationScope = CreateOperationCancelRegistry();
+        AssertTrue(
+            operationScope.TryCancel(NnrpOperationCancelScope.Operation, 10, out var operationCancelled, out var operationFailure),
+            $"Operation-scope cancel failed: {operationFailure.Message}");
+        AssertTrue(operationCancelled.SequenceEqual(new uint[] { 10 }), "Operation-scope cancel touched non-target operations.");
+        AssertOperationState(operationScope, 11, NnrpOperationState.Running, "Operation-scope cancel leaked into child operation.");
+
+        var subtreeScope = CreateOperationCancelRegistry();
+        AssertTrue(
+            subtreeScope.TryCancel(NnrpOperationCancelScope.Subtree, 10, out var subtreeCancelled, out var subtreeFailure),
+            $"Subtree-scope cancel failed: {subtreeFailure.Message}");
+        AssertTrue(subtreeCancelled.SequenceEqual(new uint[] { 10, 11, 12 }), "Subtree-scope cancel did not match target and descendants.");
+        AssertOperationState(subtreeScope, 20, NnrpOperationState.Running, "Subtree-scope cancel leaked into sibling operation.");
+
+        var groupScope = CreateOperationCancelRegistry();
+        AssertTrue(
+            groupScope.TryCancel(NnrpOperationCancelScope.Group, 10, out var groupCancelled, out var groupFailure),
+            $"Group-scope cancel failed: {groupFailure.Message}");
+        AssertTrue(groupCancelled.SequenceEqual(new uint[] { 10, 11, 12, 30 }), "Group-scope cancel did not match operation_group_id.");
+        AssertOperationState(groupScope, 20, NnrpOperationState.Running, "Group-scope cancel leaked into another group.");
+
+        var ungroupedScope = new NnrpOperationCancellationRegistry();
+        RegisterOperation(ungroupedScope, 100, 0, 0);
+        RegisterOperation(ungroupedScope, 101, 0, 0);
+        AssertTrue(
+            !ungroupedScope.TryCancel(NnrpOperationCancelScope.Group, 100, out var ungroupedCancelled, out _),
+            "Group-scope cancel accepted an ungrouped target.");
+        AssertTrue(!ungroupedCancelled.Any(), "Rejected ungrouped group-scope cancel reported cancelled operations.");
+        AssertOperationState(ungroupedScope, 100, NnrpOperationState.Running, "Rejected ungrouped group-scope cancel changed target state.");
+        AssertOperationState(ungroupedScope, 101, NnrpOperationState.Running, "Rejected ungrouped group-scope cancel leaked to another operation.");
+
+        var sessionScope = CreateOperationCancelRegistry();
+        AssertTrue(
+            sessionScope.TryCancel(NnrpOperationCancelScope.Session, 10, out var sessionCancelled, out var sessionFailure),
+            $"Session-scope cancel failed: {sessionFailure.Message}");
+        AssertTrue(sessionCancelled.SequenceEqual(new uint[] { 10, 11, 12, 20, 30 }), "Session-scope cancel did not cover all live operations.");
+    }
+
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
     {
         var section = CreateResultSection(submit.Metadata.TileCount);
@@ -967,6 +1010,39 @@ public static class Program
 
         currentEpochs[key] = message.Metadata.CreditEpoch;
         return true;
+    }
+
+    private static NnrpOperationCancellationRegistry CreateOperationCancelRegistry()
+    {
+        var registry = new NnrpOperationCancellationRegistry();
+        RegisterOperation(registry, 10, 0, 7);
+        RegisterOperation(registry, 11, 10, 7);
+        RegisterOperation(registry, 12, 11, 7);
+        RegisterOperation(registry, 20, 0, 8);
+        RegisterOperation(registry, 30, 0, 7);
+        return registry;
+    }
+
+    private static void RegisterOperation(
+        NnrpOperationCancellationRegistry registry,
+        uint operationId,
+        uint parentOperationId,
+        uint operationGroupId)
+    {
+        var operation = new NnrpOperationLifecycle(operationId);
+        AssertTrue(operation.TryStart(out _), $"Operation {operationId} did not start.");
+        AssertTrue(
+            registry.TryRegister(operation, parentOperationId, operationGroupId, out var failure),
+            $"Operation {operationId} registration failed: {failure.Message}");
+    }
+
+    private static void AssertOperationState(
+        NnrpOperationCancellationRegistry registry,
+        uint operationId,
+        NnrpOperationState expectedState,
+        string message)
+    {
+        AssertTrue(registry.TryGetState(operationId, out var state) && state == expectedState, message);
     }
 
     private static SessionOpenMetadata GoldenSessionOpenMetadata()
