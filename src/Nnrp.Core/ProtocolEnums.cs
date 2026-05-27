@@ -534,6 +534,9 @@ namespace Nnrp.Core
     [Flags]
     public enum PayloadKind : uint
     {
+        /// <summary>No payload kind is inferred, encoded as <c>0x00000000</c>.</summary>
+        None = 0x00000000,
+
         /// <summary>Tensor payload, encoded as <c>0x00000001</c>.</summary>
         Tensor = 0x00000001,
 

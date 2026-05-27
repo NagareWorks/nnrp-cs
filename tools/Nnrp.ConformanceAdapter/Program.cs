@@ -221,6 +221,18 @@ public static class Program
                 case "l1.operation.cancel_scope.validation":
                     RunOperationCancelScope();
                     return Pass(caseId, "Operation cancel scope validation passed.");
+                case "l0.typed_payload.descriptor.golden":
+                    RunTypedPayloadDescriptorGolden();
+                    return Pass(caseId, "Typed payload descriptor golden vector matched.");
+                case "l1.typed_payload.descriptor.validation":
+                    RunTypedPayloadDescriptorValidation();
+                    return Pass(caseId, "Typed payload descriptor validation passed.");
+                case "l2.payload.typed.buffer_ownership.relative_region.validation":
+                    RunTypedPayloadBufferOwnership();
+                    return Pass(caseId, "Typed payload frame region ownership validation passed.");
+                case "l2.payload.typed.callback_polling.descriptor_consistency.validation":
+                    RunTypedPayloadDescriptorConsistency();
+                    return Pass(caseId, "Typed payload descriptor consistency validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -850,6 +862,190 @@ public static class Program
             sessionScope.TryCancel(NnrpOperationCancelScope.Session, 10, out var sessionCancelled, out var sessionFailure),
             $"Session-scope cancel failed: {sessionFailure.Message}");
         AssertTrue(sessionCancelled.SequenceEqual(new uint[] { 10, 11, 12, 20, 30 }), "Session-scope cancel did not cover all live operations.");
+    }
+
+    private static void RunTypedPayloadDescriptorGolden()
+    {
+        var descriptor = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0002,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 24);
+
+        var expected = new byte[]
+        {
+            0x02, 0x00,
+            0x02, 0x00,
+            0x01, 0x10, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00,
+            0x02, 0x00,
+            0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x18, 0x00, 0x00, 0x00,
+        };
+
+        AssertTrue(descriptor.ToArray().SequenceEqual(expected), "Typed payload descriptor bytes did not match the 24-byte layout.");
+        AssertTrue(TypedPayloadDescriptor.TryParse(expected, strict: true, out var parsed, out var error), $"Typed payload descriptor parse failed: {error}.");
+        AssertTrue(parsed.Equals(descriptor), "Typed payload descriptor did not round-trip the golden vector.");
+
+        expected[3] = 0x10;
+        AssertTrue(
+            !TypedPayloadDescriptor.TryParse(expected, strict: true, out _, out error)
+            && error == NnrpParseError.NonZeroReservedField,
+            "Typed payload descriptor accepted unknown descriptor flag bits.");
+    }
+
+    private static void RunTypedPayloadDescriptorValidation()
+    {
+        var descriptor0 = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0002,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 3);
+        var descriptor1 = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0001,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 3,
+            payloadLength: 2);
+
+        var descriptorRegion = new byte[TypedPayloadDescriptor.DescriptorLength * 2];
+        descriptor0.Write(descriptorRegion.AsSpan(0, TypedPayloadDescriptor.DescriptorLength));
+        descriptor1.Write(descriptorRegion.AsSpan(TypedPayloadDescriptor.DescriptorLength, TypedPayloadDescriptor.DescriptorLength));
+        var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45 };
+
+        AssertTrue(
+            TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
+                PayloadKind.TokenChunk,
+                payloadFrameCount: 2,
+                descriptorRegion,
+                payloadRegion,
+                out var descriptors,
+                out var error),
+            $"Typed payload descriptor region validation failed: {error}.");
+        AssertTrue(descriptors.Length == 2, "Typed payload descriptor validation returned the wrong descriptor count.");
+        AssertTrue(descriptors[0].SchemaId == TypedPayloadDescriptor.TokenDeltaSchemaId, "Typed payload descriptor lost schema_id.");
+        AssertTrue(descriptors[1].DescriptorFlags == 0x0001, "Typed payload descriptor lost terminal flag.");
+
+        var badDescriptor = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileTensor,
+            descriptorFlags: 0,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 1);
+        AssertTrue(
+            !TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
+                PayloadKind.TokenChunk,
+                payloadFrameCount: 1,
+                badDescriptor.ToArray(),
+                new byte[] { 0x01 },
+                out _,
+                out error)
+            && error == NnrpParseError.InvalidMessageLayout,
+            "Token-only typed payload descriptors accepted a tensor profile.");
+    }
+
+    private static void RunTypedPayloadBufferOwnership()
+    {
+        var first = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0002,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 2);
+        var second = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0001,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 2,
+            payloadLength: 3);
+        var payloadRegion = new byte[] { 0x10, 0x20, 0x30, 0x40, 0x50 };
+
+        AssertTrue(
+            TypedPayloadRegionValidator.TryProjectTypedPayloadFrames(
+                PayloadKind.TokenChunk,
+                payloadFrameCount: 2,
+                new[] { first, second },
+                payloadRegion,
+                out var frames,
+                out var error),
+            $"Typed payload frame projection failed: {error}.");
+        AssertTrue(frames[0].Payload.ToArray().SequenceEqual(new byte[] { 0x10, 0x20 }), "First typed payload slice was not relative to the frame region.");
+        AssertTrue(frames[1].Payload.ToArray().SequenceEqual(new byte[] { 0x30, 0x40, 0x50 }), "Second typed payload slice was not relative to the frame region.");
+    }
+
+    private static void RunTypedPayloadDescriptorConsistency()
+    {
+        var descriptor = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: 0x0002,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 3);
+        var payload = new byte[] { 0x61, 0x62, 0x63 };
+        var metadata = new ResultPushMetadata(
+            statusCode: ResultStatusCode.Success,
+            resultFlags: ResultFlags.Partial,
+            sectionCount: 0,
+            tileCount: 0,
+            activeProfileId: TypedPayloadDescriptor.ProfileToken,
+            inferenceMilliseconds: 1,
+            queueMilliseconds: 0,
+            serverTotalMilliseconds: 1,
+            tileBaseId: 0,
+            tileIndexBytes: 0,
+            resultClass: ResultClass.Partial,
+            payloadKindBitmap: PayloadKind.TokenChunk,
+            payloadFrameCount: 1);
+        var callbackMessage = new ResultPushMessage(
+            new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                wireFormat: NnrpHeader.CurrentWireFormat,
+                messageType: MessageType.ResultPush,
+                flags: HeaderFlags.None,
+                metaLength: ResultPushMetadata.CurrentMetadataLength,
+                bodyLength: 0,
+                sessionId: 42,
+                frameId: 7,
+                viewId: 0,
+                routeId: 0,
+                traceId: 99),
+            metadata,
+            Array.Empty<ushort>(),
+            Array.Empty<TensorSectionBlock>(),
+            new[] { descriptor },
+            payload);
+
+        AssertTrue(ResultPushMessage.TryParse(callbackMessage.ToArray(), out var pollingMessage, out var parseError), $"Polling result parse failed: {parseError}.");
+        var callbackDescriptor = callbackMessage.TypedPayloadDescriptors.Span[0];
+        var pollingDescriptor = pollingMessage.TypedPayloadDescriptors.Span[0];
+        AssertTrue(callbackDescriptor.Equals(pollingDescriptor), "Callback and polling descriptor views disagreed.");
+        AssertTrue(pollingDescriptor.SchemaVersion == TypedPayloadDescriptor.TokenDeltaSchemaVersion, "Descriptor consistency lost schema version.");
+        AssertTrue(pollingDescriptor.StreamSemantics == TypedPayloadDescriptor.StreamSemanticsAppend, "Descriptor consistency lost stream semantics.");
+        AssertTrue(pollingMessage.TypedPayloadFrames.Span[0].Payload.ToArray().SequenceEqual(payload), "Polling descriptor projection lost payload bytes.");
     }
 
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
