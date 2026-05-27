@@ -32,6 +32,10 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.session.open_ack.fixed_metadata.validation" },
                     { "id": "l1.session.close.state_machine.validation" },
                     { "id": "l1.session.open_close" },
+                    { "id": "l1.frame_submit.tensor.inline" },
+                    { "id": "l1.frame_submit.tensor.inline.routing.validation" },
+                    { "id": "l1.result_push.basic.terminal.validation" },
+                    { "id": "l2.result_push.basic.event_pump.single_terminal.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -43,16 +47,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(16, results.Length);
+            Assert.Equal(20, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 15; index += 1)
+            for (var index = 1; index < 19; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[15].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[15].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[19].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[19].GetProperty("failure_kind").GetString());
         }
 
         [Fact]

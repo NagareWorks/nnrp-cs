@@ -171,6 +171,16 @@ public static class Program
                 case "l1.session.open_close":
                     RunSessionOpenClose();
                     return Pass(caseId, "SESSION_OPEN to SESSION_CLOSE roundtrip passed.");
+                case "l1.frame_submit.tensor.inline":
+                case "l1.frame_submit.tensor.inline.routing.validation":
+                    RunInlineTensorSubmit();
+                    return Pass(caseId, "FRAME_SUBMIT inline tensor routing validation passed.");
+                case "l1.result_push.basic.terminal.validation":
+                    RunBasicResultPush();
+                    return Pass(caseId, "RESULT_PUSH terminal validation passed.");
+                case "l2.result_push.basic.event_pump.single_terminal.validation":
+                    RunSingleTerminalEventDelivery();
+                    return Pass(caseId, "RESULT_PUSH single terminal delivery validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -551,6 +561,125 @@ public static class Program
             closeAckMetadata);
         AssertTrue(SessionCloseAckMessage.TryParse(closeAck.ToArray(), out var parsedCloseAck, out var closeAckError), $"SESSION_CLOSE_ACK message parse failed: {closeAckError}.");
         AssertTrue(parsedCloseAck.Metadata.Equals(closeAckMetadata), "SESSION_CLOSE_ACK message metadata changed.");
+    }
+
+    private static void RunInlineTensorSubmit()
+    {
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 42, frameId: 303, viewId: 2, traceId: 0x1122334455667788);
+        AssertTrue(FrameSubmitMessage.TryParse(submit.ToArray(), out var parsed, out var error), $"FRAME_SUBMIT parse failed: {error}.");
+        AssertTrue(parsed.Header.SessionId == 42, "FRAME_SUBMIT did not preserve session routing.");
+        AssertTrue(parsed.Header.FrameId == 303, "FRAME_SUBMIT did not preserve operation routing.");
+        AssertTrue(parsed.Header.ViewId == 2, "FRAME_SUBMIT did not preserve view routing.");
+        AssertTrue(parsed.Metadata.SubmitMode == SubmitMode.Inline, "FRAME_SUBMIT was not inline mode.");
+        AssertTrue(parsed.Metadata.ObjectRefMask == 0, "FRAME_SUBMIT carried object references.");
+        AssertTrue(parsed.Metadata.PayloadKindBitmap == PayloadKind.Tensor, "FRAME_SUBMIT was not tensor-only.");
+        AssertTrue(parsed.Metadata.PayloadFrameCount == 0, "FRAME_SUBMIT unexpectedly carried typed payload frames.");
+        AssertTrue(parsed.TileIds.Length == parsed.Metadata.TileCount, "FRAME_SUBMIT tile ids did not match metadata.");
+        AssertTrue(parsed.Sections.Length == parsed.Metadata.SectionCount, "FRAME_SUBMIT sections did not match metadata.");
+        AssertTrue(parsed.CameraBlock.Length == parsed.Metadata.CameraBytes, "FRAME_SUBMIT camera block length did not match metadata.");
+    }
+
+    private static void RunBasicResultPush()
+    {
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 42, frameId: 303, viewId: 2, traceId: 0x1122334455667788);
+        var result = CreateBasicResultPush(submit);
+        AssertTrue(ResultPushMessage.TryParse(result.ToArray(), out var parsed, out var error), $"RESULT_PUSH parse failed: {error}.");
+        AssertTrue(parsed.Header.SessionId == submit.Header.SessionId, "RESULT_PUSH did not preserve session routing.");
+        AssertTrue(parsed.Header.FrameId == submit.Header.FrameId, "RESULT_PUSH did not preserve operation routing.");
+        AssertTrue(parsed.Header.ViewId == submit.Header.ViewId, "RESULT_PUSH did not preserve view routing.");
+        AssertTrue(parsed.Metadata.StatusCode == ResultStatusCode.Success, "RESULT_PUSH did not report success.");
+        AssertTrue(parsed.Metadata.ResultClass == ResultClass.Complete, "RESULT_PUSH did not report a terminal complete result.");
+        AssertTrue((parsed.Metadata.ResultFlags & ResultFlags.Partial) == 0, "RESULT_PUSH was marked partial.");
+        AssertTrue(parsed.Metadata.CoveredTileCount == parsed.Metadata.TileCount, "RESULT_PUSH did not cover every submitted tile.");
+        AssertTrue(parsed.Metadata.DroppedTileCount == 0, "RESULT_PUSH dropped tiles on the basic path.");
+        AssertTrue(parsed.TileIds.Span.SequenceEqual(submit.TileIds.Span), "RESULT_PUSH tile ids did not match submit routing.");
+    }
+
+    private static void RunSingleTerminalEventDelivery()
+    {
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 42, frameId: 303, viewId: 2, traceId: 0x1122334455667788);
+        var result = CreateBasicResultPush(submit);
+        var events = new[] { SubmitOutcome.FromResultPush(result) };
+        var terminalCount = 0;
+
+        foreach (var outcome in events)
+        {
+            AssertTrue(!outcome.IsResultDrop, "Basic result delivery unexpectedly produced RESULT_DROP.");
+            AssertTrue(outcome.ResultPush.Header.FrameId == submit.Header.FrameId, "Result event operation id changed.");
+            if (outcome.ResultPush.Metadata.ResultClass == ResultClass.Complete)
+            {
+                terminalCount++;
+            }
+        }
+
+        AssertTrue(terminalCount == 1, "Basic result delivery did not produce exactly one terminal result.");
+    }
+
+    private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
+    {
+        var section = CreateResultSection(submit.Metadata.TileCount);
+        var tileIndexBytes = TileIndexBlockCodec.GetEncodedLength(submit.TileIds.Span, TileIndexMode.RawUInt16);
+        var metadata = new ResultPushMetadata(
+            statusCode: ResultStatusCode.Success,
+            resultFlags: ResultFlags.None,
+            sectionCount: 1,
+            tileCount: submit.Metadata.TileCount,
+            activeProfileId: 0,
+            inferenceMilliseconds: 4,
+            queueMilliseconds: 1,
+            serverTotalMilliseconds: 5,
+            tileBaseId: submit.Metadata.TileBaseId,
+            tileIndexBytes: (uint)tileIndexBytes,
+            resultClass: ResultClass.Complete,
+            appliedBudgetPolicy: BudgetPolicy.None,
+            reusedFrameId: 0,
+            coveredTileCount: submit.Metadata.TileCount,
+            droppedTileCount: 0,
+            payloadKindBitmap: PayloadKind.Tensor,
+            payloadFrameCount: 0);
+        return new ResultPushMessage(
+            new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.ResultPush,
+                flags: HeaderFlags.None,
+                metaLength: ResultPushMetadata.MetadataLength,
+                bodyLength: 0,
+                sessionId: submit.Header.SessionId,
+                frameId: submit.Header.FrameId,
+                viewId: submit.Header.ViewId,
+                routeId: submit.Header.RouteId,
+                traceId: submit.Header.TraceId),
+            metadata,
+            submit.TileIds,
+            new[] { section });
+    }
+
+    private static TensorSectionBlock CreateResultSection(ushort tileCount)
+    {
+        var lengthTable = new byte[sizeof(uint) * tileCount];
+        var payload = new byte[tileCount];
+        for (var index = 0; index < tileCount; index += 1)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(lengthTable.AsSpan(index * sizeof(uint), sizeof(uint)), 1);
+            payload[index] = (byte)(0x40 + index);
+        }
+
+        return new TensorSectionBlock(
+            new TensorSectionDescriptor(
+                role: TensorRole.SrResidual,
+                codec: CodecId.Raw,
+                dtype: DTypeId.UInt8,
+                layout: TensorLayoutId.Nhwc,
+                scalePolicy: ScalePolicy.None,
+                flags: 0,
+                elementCountPerTile: 1,
+                codecTableBytes: 0,
+                lengthTableBytes: (uint)lengthTable.Length,
+                payloadBytes: (uint)payload.Length,
+                payloadStrideBytes: 0),
+            Array.Empty<byte>(),
+            lengthTable,
+            payload);
     }
 
     private static SessionOpenMetadata GoldenSessionOpenMetadata()
