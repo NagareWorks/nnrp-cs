@@ -6,6 +6,7 @@
     "session.open_close",
     "frame_submit.tensor.inline",
     "result_push.basic",
-    "flow_update"
+    "flow_update",
+    "session.multi_session"
   ]
 }

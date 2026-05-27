@@ -200,6 +200,15 @@ public static class Program
                 case string flowCase when flowCase == string.Concat("l1.flow_update.", "pre", "view3"):
                     RunFlowUpdateCreditEpochValidation();
                     return Pass(caseId, "FLOW_UPDATE credit epoch validation passed.");
+                case "l1.connection.session_container.parallel_open.validation":
+                    RunParallelSessionOpen();
+                    return Pass(caseId, "Connection session container parallel open validation passed.");
+                case "l1.session.close.sibling_survival.validation":
+                    RunSessionCloseSiblingSurvival();
+                    return Pass(caseId, "Session close sibling survival validation passed.");
+                case "l1.connection.close.session_cascade.validation":
+                    RunConnectionCloseSessionCascade();
+                    return Pass(caseId, "Connection close session cascade validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -700,6 +709,45 @@ public static class Program
         AssertTrue(TryAcceptCreditEpoch(first, tracker), "Initial FLOW_UPDATE epoch was rejected.");
         AssertTrue(TryAcceptCreditEpoch(newer, tracker), "Newer FLOW_UPDATE epoch was rejected.");
         AssertTrue(!TryAcceptCreditEpoch(stale, tracker), "Stale FLOW_UPDATE epoch was accepted.");
+    }
+
+    private static void RunParallelSessionOpen()
+    {
+        var container = new NnrpSessionContainer();
+        AssertTrue(container.TryOpenSession(42, out var firstFailure), $"First session open failed: {firstFailure.Message}");
+        AssertTrue(container.TryOpenSession(43, out var secondFailure), $"Second session open failed: {secondFailure.Message}");
+        AssertTrue(container.SessionCount == 2, "Connection container did not retain both opened sessions.");
+        AssertTrue(container.TryAcceptFrameSubmit(42, out var firstSubmitFailure), $"First session submit route failed: {firstSubmitFailure.Message}");
+        AssertTrue(container.TryAcceptFrameSubmit(43, out var secondSubmitFailure), $"Second session submit route failed: {secondSubmitFailure.Message}");
+        AssertTrue(container.TryGetSessionState(42, out var firstState) && firstState == NnrpSessionState.Active, "First session was not active.");
+        AssertTrue(container.TryGetSessionState(43, out var secondState) && secondState == NnrpSessionState.Active, "Second session was not active.");
+    }
+
+    private static void RunSessionCloseSiblingSurvival()
+    {
+        var container = new NnrpSessionContainer();
+        AssertTrue(container.TryOpenSession(42, out _), "First session open failed.");
+        AssertTrue(container.TryOpenSession(43, out _), "Second session open failed.");
+        AssertTrue(container.TryCloseSession(42, out var closeFailure), $"Session close failed: {closeFailure.Message}");
+        AssertTrue(!container.TryAcceptFrameSubmit(42, out _), "Closed session accepted a submit.");
+        AssertTrue(container.TryAcceptFrameSubmit(43, out var siblingFailure), $"Sibling session submit route failed: {siblingFailure.Message}");
+        AssertTrue(container.TryGetSessionState(43, out var siblingState) && siblingState == NnrpSessionState.Active, "Sibling session did not survive close.");
+    }
+
+    private static void RunConnectionCloseSessionCascade()
+    {
+        var container = new NnrpSessionContainer();
+        AssertTrue(container.TryOpenSession(42, out _), "First session open failed.");
+        AssertTrue(container.TryOpenSession(43, out _), "Second session open failed.");
+
+        var closed = container.CloseConnection();
+
+        AssertTrue(closed.Count == 2, "Connection close did not cascade to every live session.");
+        AssertTrue(container.IsConnectionClosed, "Connection container did not enter closed state.");
+        AssertTrue(container.TryGetSessionState(42, out var firstState) && firstState == NnrpSessionState.Closed, "First session did not close.");
+        AssertTrue(container.TryGetSessionState(43, out var secondState) && secondState == NnrpSessionState.Closed, "Second session did not close.");
+        AssertTrue(!container.TryAcceptFrameSubmit(42, out _), "Connection accepted submit after close.");
+        AssertTrue(!container.TryOpenSession(44, out _), "Connection accepted a new session after close.");
     }
 
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
