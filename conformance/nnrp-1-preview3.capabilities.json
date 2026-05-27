@@ -9,6 +9,7 @@
     "flow_update",
     "session.multi_session",
     "operation.lifecycle",
-    "operation.cancel_scope"
+    "operation.cancel_scope",
+    "payload.typed"
   ]
 }

@@ -121,7 +121,7 @@ namespace Nnrp.Client.Tests
                     payloadLength: 3,
                     reserved: 0),
                 new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
+                    PayloadKind.ToolDelta,
                     descriptorFlags: 0,
                     profileId: 5,
                     payloadOffset: 5,
@@ -135,7 +135,7 @@ namespace Nnrp.Client.Tests
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.StructuredEvent,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
                     payloadFrameCount: 3,
                     typedPayloadDescriptors: descriptors,
                     typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
@@ -144,7 +144,7 @@ namespace Nnrp.Client.Tests
 
             var result = await client.SubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
 
-            Assert.Equal(PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.StructuredEvent, result.PayloadKindBitmap);
+            Assert.Equal(PayloadKind.Tensor | PayloadKind.ToolDelta, result.PayloadKindBitmap);
             Assert.Equal<ushort>(3, result.PayloadFrameCount);
             Assert.Equal(3, result.TypedPayloadFrames.Length);
 
@@ -153,9 +153,10 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames[1].Payload.ToArray());
 
-            var structuredEventFrames = result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5);
-            Assert.Single(structuredEventFrames);
-            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, structuredEventFrames[0].Payload.ToArray());
+            var alternateToolFrames = result.GetTypedPayloadFrames(PayloadKind.ToolDelta, 5);
+            Assert.Single(alternateToolFrames);
+            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, alternateToolFrames[0].Payload.ToArray());
+            Assert.Empty(result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5));
         }
 
         [Fact]
@@ -176,26 +177,38 @@ namespace Nnrp.Client.Tests
                     profileId: 9,
                     payloadOffset: 2,
                     payloadLength: 3,
-                    reserved: 0),
+                    reserved: 0)
+            };
+            var opaqueDescriptors = new[]
+            {
                 new TypedPayloadDescriptor(
                     PayloadKind.OpaqueBytes,
                     descriptorFlags: 0,
                     profileId: 12,
-                    payloadOffset: 5,
+                    payloadOffset: 0,
                     payloadLength: 4,
                     reserved: 0)
             };
-            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45, 0x90, 0x91, 0x92, 0x93 };
+            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45 };
+            var opaquePayloadRegion = new byte[] { 0x90, 0x91, 0x92, 0x93 };
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
                 CreateResultPush(
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.OpaqueBytes,
-                    payloadFrameCount: 3,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
+                    payloadFrameCount: 2,
                     typedPayloadDescriptors: descriptors,
-                    typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
+                    typedPayloadFrameRegion: payloadRegion).ToFramedMessage(),
+                CreateResultPush(
+                    sessionId: 41,
+                    frameId: 304,
+                    wireFormat: NnrpHeader.CurrentWireFormat,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.OpaqueBytes,
+                    payloadFrameCount: 1,
+                    typedPayloadDescriptors: opaqueDescriptors,
+                    typedPayloadFrameRegion: opaquePayloadRegion).ToFramedMessage());
             var client = new NnrpClient(new ClientProfile(), transport);
             await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
 
@@ -209,7 +222,9 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames.Frames.Span[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames.Frames.Span[1].Payload.ToArray());
 
-            var opaqueFrames = result.GetOpaqueBytesFrames(12);
+            var opaqueResult = await client.SubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var opaqueFrames = opaqueResult.GetOpaqueBytesFrames(12);
             Assert.Equal(PayloadKind.OpaqueBytes, opaqueFrames.PayloadKind);
             Assert.Equal((ushort)12, opaqueFrames.ProfileId);
             Assert.Equal(1, opaqueFrames.FrameCount);
@@ -218,48 +233,47 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
-        public async Task SubmitAsyncPreservesTokenAndMultimodalTypedPayloadFrames()
+        public async Task SubmitAsyncPreservesTokenTypedPayloadFrames()
         {
             var descriptors = new[]
             {
                 new TypedPayloadDescriptor(
                     PayloadKind.TokenChunk,
-                    descriptorFlags: 0,
-                    profileId: 3,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 0,
-                    payloadLength: 2,
-                    reserved: 0),
+                    payloadLength: 2),
                 new TypedPayloadDescriptor(
-                    PayloadKind.AudioChunk,
-                    descriptorFlags: 0,
-                    profileId: 4,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 2,
-                    payloadLength: 3,
-                    reserved: 0),
+                    payloadLength: 3),
                 new TypedPayloadDescriptor(
-                    PayloadKind.VideoChunk,
-                    descriptorFlags: 0,
-                    profileId: 5,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0001,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 5,
-                    payloadLength: 2,
-                    reserved: 0),
-                new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
-                    descriptorFlags: 0,
-                    profileId: 6,
-                    payloadOffset: 7,
-                    payloadLength: 4,
-                    reserved: 0)
+                    payloadLength: 4)
             };
-            var payloadRegion = new byte[] { 0x31, 0x32, 0x41, 0x42, 0x43, 0x51, 0x52, 0x61, 0x62, 0x63, 0x64 };
+            var payloadRegion = new byte[] { 0x31, 0x32, 0x41, 0x42, 0x43, 0x61, 0x62, 0x63, 0x64 };
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
                 CreateResultPush(
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk | PayloadKind.AudioChunk | PayloadKind.VideoChunk | PayloadKind.StructuredEvent,
-                    payloadFrameCount: 4,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk,
+                    payloadFrameCount: 3,
                     typedPayloadDescriptors: descriptors,
                     typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
             var client = new NnrpClient(new ClientProfile(), transport);
@@ -267,33 +281,16 @@ namespace Nnrp.Client.Tests
 
             var result = await client.SubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
 
-            Assert.Equal(PayloadKind.Tensor | PayloadKind.TokenChunk | PayloadKind.AudioChunk | PayloadKind.VideoChunk | PayloadKind.StructuredEvent, result.PayloadKindBitmap);
-            Assert.Equal<ushort>(4, result.PayloadFrameCount);
-            Assert.Equal(4, result.TypedPayloadFrames.Length);
-            Assert.Equal(new byte[] { 0x31, 0x32 }, result.GetTypedPayloadFrames(PayloadKind.TokenChunk, 3)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, result.GetTypedPayloadFrames(PayloadKind.AudioChunk, 4)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x51, 0x52 }, result.GetTypedPayloadFrames(PayloadKind.VideoChunk, 5)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 6)[0].Payload.ToArray());
+            Assert.Equal(PayloadKind.Tensor | PayloadKind.TokenChunk, result.PayloadKindBitmap);
+            Assert.Equal<ushort>(3, result.PayloadFrameCount);
+            Assert.Equal(3, result.TypedPayloadFrames.Length);
 
-            var tokenFrames = result.GetTokenChunkFrames(3);
-            Assert.Equal(1, tokenFrames.FrameCount);
-            Assert.Equal(2, tokenFrames.PayloadBytes);
+            var tokenFrames = result.GetTokenChunkFrames(TypedPayloadDescriptor.ProfileToken);
+            Assert.Equal(3, tokenFrames.FrameCount);
+            Assert.Equal(9, tokenFrames.PayloadBytes);
             Assert.Equal(new byte[] { 0x31, 0x32 }, tokenFrames.Frames.Span[0].Payload.ToArray());
-
-            var audioFrames = result.GetAudioChunkFrames(4);
-            Assert.Equal(1, audioFrames.FrameCount);
-            Assert.Equal(3, audioFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, audioFrames.Frames.Span[0].Payload.ToArray());
-
-            var videoFrames = result.GetVideoChunkFrames(5);
-            Assert.Equal(1, videoFrames.FrameCount);
-            Assert.Equal(2, videoFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x51, 0x52 }, videoFrames.Frames.Span[0].Payload.ToArray());
-
-            var eventFrames = result.GetStructuredEventFrames(6);
-            Assert.Equal(1, eventFrames.FrameCount);
-            Assert.Equal(4, eventFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, eventFrames.Frames.Span[0].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, tokenFrames.Frames.Span[1].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, tokenFrames.Frames.Span[2].Payload.ToArray());
         }
 
         [Fact]

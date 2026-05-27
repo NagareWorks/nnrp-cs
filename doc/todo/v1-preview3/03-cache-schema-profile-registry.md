@@ -10,6 +10,7 @@
 
 - [ ] Add managed wrappers for schema/profile installation, lookup, invalidation, and version mismatch handling.
 - [ ] Model schema descriptor common headers and typed payload descriptor views against the frozen 32B / 24B layouts plus the first-round standard registry assignments from `nnrp-doc`.
+  - [x] Align typed payload descriptor parsing, writing, and conformance coverage with the frozen 24B layout and token schema anchor.
 - [ ] Keep schema/profile interpretation native-core-owned; managed code should expose descriptors and safe wrappers only.
 
 ## Standard Profiles

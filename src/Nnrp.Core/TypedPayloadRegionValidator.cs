@@ -47,12 +47,19 @@ namespace Nnrp.Core
                     return false;
                 }
 
+                descriptor = descriptor.WithPayloadKind(ResolvePayloadKind(payloadKindBitmap, descriptor));
                 var rawPayloadKind = (uint)descriptor.PayloadKind;
                 if (rawPayloadKind == 0
                     || (rawPayloadKind & (rawPayloadKind - 1)) != 0
                     || (rawPayloadKind & ~(uint)payloadKindBitmap) != 0)
                 {
                     error = NnrpParseError.InvalidMessageLayout;
+                    descriptors = Array.Empty<TypedPayloadDescriptor>();
+                    return false;
+                }
+
+                if (!TryValidateDescriptorProfile(payloadKindBitmap, descriptor, out error))
+                {
                     descriptors = Array.Empty<TypedPayloadDescriptor>();
                     return false;
                 }
@@ -127,6 +134,11 @@ namespace Nnrp.Core
                     || (rawPayloadKind & ~(uint)payloadKindBitmap) != 0)
                 {
                     error = NnrpParseError.InvalidMessageLayout;
+                    return false;
+                }
+
+                if (!TryValidateDescriptorProfile(payloadKindBitmap, descriptor, out error))
+                {
                     return false;
                 }
 
@@ -355,6 +367,64 @@ namespace Nnrp.Core
 
             descriptors = parsedDescriptors;
             return true;
+        }
+
+        private static bool TryValidateDescriptorProfile(
+            PayloadKind payloadKindBitmap,
+            TypedPayloadDescriptor descriptor,
+            out NnrpParseError error)
+        {
+            var nonTensorPayloads = payloadKindBitmap & ~PayloadKind.Tensor;
+            if (nonTensorPayloads != 0 && descriptor.ProfileId == TypedPayloadDescriptor.ProfileTensor)
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
+            if (nonTensorPayloads == PayloadKind.TokenChunk && descriptor.ProfileId != TypedPayloadDescriptor.ProfileToken)
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
+            if (descriptor.ProfileId == TypedPayloadDescriptor.ProfileUnspecified
+                && (descriptor.SchemaId != 0 || descriptor.SchemaVersion != 0))
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
+            error = NnrpParseError.None;
+            return true;
+        }
+
+        private static PayloadKind ResolvePayloadKind(PayloadKind payloadKindBitmap, TypedPayloadDescriptor descriptor)
+        {
+            if (descriptor.ProfileId == TypedPayloadDescriptor.ProfileTensor)
+            {
+                return PayloadKind.Tensor;
+            }
+
+            if (payloadKindBitmap == PayloadKind.TokenChunk && descriptor.ProfileId == TypedPayloadDescriptor.ProfileToken)
+            {
+                return PayloadKind.TokenChunk;
+            }
+
+            var nonTensorPayloadKindBitmap = payloadKindBitmap & ~PayloadKind.Tensor;
+            var rawNonTensorPayloadKindBitmap = (uint)nonTensorPayloadKindBitmap;
+            if (rawNonTensorPayloadKindBitmap != 0
+                && (rawNonTensorPayloadKindBitmap & (rawNonTensorPayloadKindBitmap - 1)) == 0)
+            {
+                return nonTensorPayloadKindBitmap;
+            }
+
+            var rawPayloadKindBitmap = (uint)payloadKindBitmap;
+            if (rawPayloadKindBitmap != 0 && (rawPayloadKindBitmap & (rawPayloadKindBitmap - 1)) == 0)
+            {
+                return payloadKindBitmap;
+            }
+
+            return descriptor.PayloadKind;
         }
     }
 }
