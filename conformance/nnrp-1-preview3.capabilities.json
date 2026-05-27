@@ -8,6 +8,7 @@
     "result_push.basic",
     "flow_update",
     "session.multi_session",
-    "operation.lifecycle"
+    "operation.lifecycle",
+    "operation.cancel_scope"
   ]
 }
