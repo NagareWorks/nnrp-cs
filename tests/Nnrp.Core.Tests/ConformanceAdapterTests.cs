@@ -48,6 +48,9 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.connection.session_container.parallel_open.validation" },
                     { "id": "l1.session.close.sibling_survival.validation" },
                     { "id": "l1.connection.close.session_cascade.validation" },
+                    { "id": "l1.operation.lifecycle.progression.validation" },
+                    { "id": "l1.operation.lifecycle.waiting_tool.validation" },
+                    { "id": "l1.operation.lifecycle.terminal_resolution.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -59,16 +62,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(32, results.Length);
+            Assert.Equal(35, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 31; index += 1)
+            for (var index = 1; index < 34; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[31].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[31].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[34].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[34].GetProperty("failure_kind").GetString());
         }
 
         [Fact]

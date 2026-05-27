@@ -7,6 +7,7 @@
     "frame_submit.tensor.inline",
     "result_push.basic",
     "flow_update",
-    "session.multi_session"
+    "session.multi_session",
+    "operation.lifecycle"
   ]
 }

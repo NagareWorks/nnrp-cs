@@ -209,6 +209,15 @@ public static class Program
                 case "l1.connection.close.session_cascade.validation":
                     RunConnectionCloseSessionCascade();
                     return Pass(caseId, "Connection close session cascade validation passed.");
+                case "l1.operation.lifecycle.progression.validation":
+                    RunOperationLifecycleProgression();
+                    return Pass(caseId, "Operation lifecycle progression validation passed.");
+                case "l1.operation.lifecycle.waiting_tool.validation":
+                    RunOperationLifecycleWaitingTool();
+                    return Pass(caseId, "Operation lifecycle waiting tool validation passed.");
+                case "l1.operation.lifecycle.terminal_resolution.validation":
+                    RunOperationLifecycleTerminalResolution();
+                    return Pass(caseId, "Operation lifecycle terminal resolution validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -748,6 +757,56 @@ public static class Program
         AssertTrue(container.TryGetSessionState(43, out var secondState) && secondState == NnrpSessionState.Closed, "Second session did not close.");
         AssertTrue(!container.TryAcceptFrameSubmit(42, out _), "Connection accepted submit after close.");
         AssertTrue(!container.TryOpenSession(44, out _), "Connection accepted a new session after close.");
+    }
+
+    private static void RunOperationLifecycleProgression()
+    {
+        var submit = SmokePackets.CreateSmokeFrameSubmitMessage(sessionId: 42, frameId: 303, viewId: 2);
+        var lifecycle = new NnrpOperationLifecycle(submit.Header.FrameId);
+        AssertTrue(lifecycle.State == NnrpOperationState.Accepted, "Operation did not start as accepted.");
+        AssertTrue(lifecycle.TryStart(out _), "Operation did not move to running.");
+        AssertTrue(lifecycle.TryMarkPartial(out _), "Operation did not move to partial.");
+        AssertTrue(lifecycle.State == NnrpOperationState.Partial, "Operation did not preserve partial state.");
+
+        var result = CreateBasicResultPush(submit);
+        AssertTrue(lifecycle.TryApplyResult(result, out var resultFailure), $"Operation did not apply terminal result: {resultFailure.Message}");
+        AssertTrue(lifecycle.State == NnrpOperationState.Completed, "Operation did not complete from result.");
+    }
+
+    private static void RunOperationLifecycleWaitingTool()
+    {
+        var lifecycle = new NnrpOperationLifecycle(303);
+        AssertTrue(lifecycle.TryStart(out _), "Operation did not move to running.");
+        AssertTrue(lifecycle.TryWaitForTool(out _), "Operation did not move to waiting tool.");
+        AssertTrue(lifecycle.State == NnrpOperationState.WaitingTool, "Operation did not preserve waiting tool state.");
+        AssertTrue(!lifecycle.IsTerminal, "Waiting tool was treated as terminal.");
+        AssertTrue(lifecycle.TryResumeFromTool(out _), "Operation did not resume from waiting tool.");
+        AssertTrue(lifecycle.TryComplete(out _), "Operation did not complete after waiting tool resume.");
+    }
+
+    private static void RunOperationLifecycleTerminalResolution()
+    {
+        var cancelled = new NnrpOperationLifecycle(301);
+        AssertTrue(cancelled.TryStart(out _), "Cancelled operation did not start.");
+        AssertTrue(cancelled.TryCancel(out _), "Operation did not cancel.");
+
+        var failed = new NnrpOperationLifecycle(302);
+        AssertTrue(failed.TryStart(out _), "Failed operation did not start.");
+        AssertTrue(failed.TryFail(out _), "Operation did not fail.");
+
+        var superseded = new NnrpOperationLifecycle(303);
+        AssertTrue(superseded.TryStart(out _), "Superseded operation did not start.");
+        AssertTrue(superseded.TryApplyDrop(ResultDropMessage.Create(sessionId: 42, frameId: 303), out _), "Operation did not supersede from result drop.");
+
+        var completed = new NnrpOperationLifecycle(304);
+        AssertTrue(completed.TryStart(out _), "Completed operation did not start.");
+        AssertTrue(completed.TryComplete(out _), "Operation did not complete.");
+
+        AssertTrue(cancelled.State == NnrpOperationState.Cancelled, "Cancelled terminal state collapsed.");
+        AssertTrue(failed.State == NnrpOperationState.Failed, "Failed terminal state collapsed.");
+        AssertTrue(superseded.State == NnrpOperationState.Superseded, "Superseded terminal state collapsed.");
+        AssertTrue(completed.State == NnrpOperationState.Completed, "Completed terminal state collapsed.");
+        AssertTrue(!completed.TryFail(out _), "Completed operation accepted a later terminal transition.");
     }
 
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
