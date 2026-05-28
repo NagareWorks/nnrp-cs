@@ -143,6 +143,7 @@ namespace Nnrp.Client.Tests
             var flowUpdateEvent = NnrpSessionEvent.FromFlowUpdate(default);
             Assert.True(flowUpdateEvent.IsFlowUpdate);
             Assert.Equal(default(FlowUpdateMessage), flowUpdateEvent.GetFlowUpdate());
+            Assert.Equal(default(FlowCreditUpdate), flowUpdateEvent.GetFlowCreditUpdate());
 
             var resultHintEvent = NnrpSessionEvent.FromResultHint(default);
             Assert.True(resultHintEvent.IsResultHint);

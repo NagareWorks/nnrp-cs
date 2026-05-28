@@ -1154,6 +1154,31 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
+        public async Task TryDequeueFlowCreditUpdateReadsBufferedControlEvent()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateFlowUpdate(sessionId: 41).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.True(client.TryDequeueFlowCreditUpdate(out var creditUpdate));
+            Assert.Equal(FlowUpdateScopeKind.Session, creditUpdate.ScopeKind);
+            Assert.Equal(41u, creditUpdate.SessionId);
+            Assert.Equal(2, creditUpdate.Credit);
+            Assert.Equal(9u, creditUpdate.CreditEpoch);
+            Assert.True(creditUpdate.HasCredit);
+            Assert.True(creditUpdate.HasRetryAfter);
+            Assert.False(client.TryDequeueFlowCreditUpdate(out _));
+        }
+
+        [Fact]
         public async Task ReceiveNextEventAsyncYieldsBufferedDropBeforeLaterBufferedResult()
         {
             var transport = new QueueTransport(
