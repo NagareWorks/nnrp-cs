@@ -1540,6 +1540,9 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeConnection : IDisposable
     {
+        private readonly object eventGate = new object();
+        private readonly Queue<NnrpNativeRuntimeEvent> bufferedEvents = new Queue<NnrpNativeRuntimeEvent>();
+
         public NnrpNativeRuntimeConnection(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
@@ -1575,12 +1578,23 @@ namespace Nnrp.NativeBridge
                 Entrypoints,
                 Handle,
                 new NnrpSessionHandle(session),
-                () => IsClosed);
+                () => IsClosed,
+                this);
         }
 
         public NnrpNativeRuntimePollResult AwaitEvent()
         {
             EnsureOpen();
+            if (TryDequeueBufferedEvent(_ => true, out var bufferedEvent))
+            {
+                return new NnrpNativeRuntimePollResult(NnrpFfiStatus.Ok, bufferedEvent);
+            }
+
+            return AwaitNativeEvent();
+        }
+
+        private NnrpNativeRuntimePollResult AwaitNativeEvent()
+        {
             NnrpPollResult result;
             var status = Entrypoints.ClientAwaitEvent(Handle.Handle, out result);
             status.ThrowIfError();
@@ -1625,6 +1639,11 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             Entrypoints.ClientCloseConnection(Handle.Handle).ThrowIfError();
+            lock (eventGate)
+            {
+                bufferedEvents.Clear();
+            }
+
             IsClosed = true;
         }
 
@@ -1645,6 +1664,72 @@ namespace Nnrp.NativeBridge
                 throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
             }
         }
+
+        internal NnrpNativeRuntimeEvent? PollEvent(
+            Predicate<NnrpNativeRuntimeEvent> predicate,
+            int maxEvents)
+        {
+            EnsureOpen();
+            if (TryDequeueBufferedEvent(predicate, out var bufferedEvent))
+            {
+                return bufferedEvent;
+            }
+
+            var seenEvents = 0;
+            while (maxEvents == 0 || seenEvents < maxEvents)
+            {
+                var snapshot = AwaitNativeEvent();
+                var @event = snapshot.Event;
+                if (@event == null)
+                {
+                    break;
+                }
+
+                seenEvents++;
+                if (predicate(@event))
+                {
+                    return @event;
+                }
+
+                lock (eventGate)
+                {
+                    bufferedEvents.Enqueue(@event);
+                }
+            }
+
+            return null;
+        }
+
+        private bool TryDequeueBufferedEvent(
+            Predicate<NnrpNativeRuntimeEvent> predicate,
+            out NnrpNativeRuntimeEvent? @event)
+        {
+            lock (eventGate)
+            {
+                @event = default;
+                if (bufferedEvents.Count == 0)
+                {
+                    return false;
+                }
+
+                var found = false;
+                var remainingEventCount = bufferedEvents.Count;
+                for (var i = 0; i < remainingEventCount; i++)
+                {
+                    var candidate = bufferedEvents.Dequeue();
+                    if (!found && predicate(candidate))
+                    {
+                        @event = candidate;
+                        found = true;
+                        continue;
+                    }
+
+                    bufferedEvents.Enqueue(candidate);
+                }
+
+                return found;
+            }
+        }
     }
 
     public sealed class NnrpNativeRuntimeSession
@@ -1653,12 +1738,14 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle connection,
             NnrpSessionHandle handle,
-            Func<bool>? isConnectionClosed = null)
+            Func<bool>? isConnectionClosed = null,
+            NnrpNativeRuntimeConnection? runtimeConnection = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Connection = connection;
             Handle = handle;
             IsConnectionClosed = isConnectionClosed ?? (() => false);
+            RuntimeConnection = runtimeConnection;
         }
 
         public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
@@ -1670,6 +1757,8 @@ namespace Nnrp.NativeBridge
         public bool IsClosed { get; private set; }
 
         private Func<bool> IsConnectionClosed { get; }
+
+        private NnrpNativeRuntimeConnection? RuntimeConnection { get; }
 
         public NnrpOperationHandle Submit(ulong operationId, uint frameId, byte[]? payload = null)
         {
@@ -1754,6 +1843,17 @@ namespace Nnrp.NativeBridge
             if (maxEvents < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxEvents), "maxEvents must be non-negative.");
+            }
+
+            if (RuntimeConnection != null)
+            {
+                var routedEvent = RuntimeConnection.PollEvent(candidate => EventMatchesOperation(candidate, operation), maxEvents);
+                if (routedEvent != null)
+                {
+                    return NnrpNativeRuntimeResult.FromEvent(routedEvent, state);
+                }
+
+                throw new NnrpNativeWouldBlockException(new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock));
             }
 
             var seenEvents = 0;
