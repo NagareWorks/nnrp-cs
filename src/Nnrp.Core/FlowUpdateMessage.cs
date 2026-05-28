@@ -23,6 +23,8 @@ namespace Nnrp.Core
 
         public FlowCreditUpdate CreditUpdate => FlowCreditUpdate.FromMessage(this);
 
+        public FlowControlDiagnostic Diagnostic => CreditUpdate.Diagnostic;
+
         public NnrpFramedMessage ToFramedMessage()
         {
             return new NnrpFramedMessage(Header, Metadata.ToArray(), Array.Empty<byte>());

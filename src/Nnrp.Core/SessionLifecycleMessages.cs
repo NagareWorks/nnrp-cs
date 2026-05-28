@@ -85,6 +85,13 @@ namespace Nnrp.Core
 
         public ReadOnlyMemory<byte> Body { get; }
 
+        public SessionOpenDiagnostic Diagnostic => Metadata.Diagnostic;
+
+        public SessionOpenDiagnostic GetDiagnostic(SessionOpenMetadata request)
+        {
+            return Metadata.GetDiagnostic(request);
+        }
+
         public NnrpFramedMessage ToFramedMessage()
         {
             return new NnrpFramedMessage(Header, Metadata.ToArray(), Body);
