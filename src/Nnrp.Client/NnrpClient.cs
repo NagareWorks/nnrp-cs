@@ -514,6 +514,18 @@ namespace Nnrp.Client
             }
         }
 
+        public bool TryDequeueFlowCreditUpdate(out FlowCreditUpdate creditUpdate)
+        {
+            if (!TryDequeueFlowUpdate(out var flowUpdate))
+            {
+                creditUpdate = default;
+                return false;
+            }
+
+            creditUpdate = flowUpdate.CreditUpdate;
+            return true;
+        }
+
         public bool TryDequeueResultHint(out ResultHintMessage resultHint)
         {
             lock (gate)

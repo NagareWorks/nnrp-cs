@@ -87,6 +87,11 @@ namespace Nnrp.Client
             return FlowUpdate;
         }
 
+        public FlowCreditUpdate GetFlowCreditUpdate()
+        {
+            return GetFlowUpdate().CreditUpdate;
+        }
+
         public ResultHintMessage GetResultHint()
         {
             if (!IsResultHint)

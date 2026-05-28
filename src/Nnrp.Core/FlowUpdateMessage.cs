@@ -21,6 +21,8 @@ namespace Nnrp.Core
 
         public FlowUpdateMetadata Metadata { get; }
 
+        public FlowCreditUpdate CreditUpdate => FlowCreditUpdate.FromMessage(this);
+
         public NnrpFramedMessage ToFramedMessage()
         {
             return new NnrpFramedMessage(Header, Metadata.ToArray(), Array.Empty<byte>());
