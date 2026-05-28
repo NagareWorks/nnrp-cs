@@ -85,7 +85,14 @@ namespace Nnrp.Core
 
         public SessionAckFlags SessionFlagsAck { get; }
 
+        public SessionOpenDiagnostic Diagnostic => SessionOpenDiagnostic.FromAck(this);
+
         public uint BodyLength => checked(ResumeTokenBytes + SessionExtensionBytes);
+
+        public SessionOpenDiagnostic GetDiagnostic(SessionOpenMetadata request)
+        {
+            return SessionOpenDiagnostic.FromAck(request, this);
+        }
 
         public void Write(Span<byte> destination)
         {

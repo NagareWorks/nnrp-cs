@@ -79,6 +79,8 @@ namespace Nnrp.Core
 
         public bool IsDrainInFlightOnly => (Flags & FlowUpdateFlags.DrainInFlightOnly) != 0;
 
+        public FlowControlDiagnostic Diagnostic => FlowControlDiagnostic.FromCreditUpdate(this);
+
         public static FlowCreditUpdate FromMessage(FlowUpdateMessage message)
         {
             return FromMetadata(message.Header.SessionId, message.Metadata);
