@@ -1,6 +1,6 @@
 # C# Preview3 Scheduling, Credits, And Diagnostics
 
-- [ ] Add managed wrappers for session priority class and operation-scoped scheduling hints.
+- [x] Add managed wrappers for session priority class and operation-scoped scheduling hints.
 - [x] Add managed models for operation lifecycle state and cancel scope using upstream frozen enums.
   - [x] Add managed operation lifecycle transitions and conformance coverage for public operation states.
   - [x] Add managed cancel-scope routing and conformance coverage for operation, subtree, group, and session cancellation.
