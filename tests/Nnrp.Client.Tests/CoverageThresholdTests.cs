@@ -131,8 +131,14 @@ namespace Nnrp.Client.Tests
             Assert.True(resultPushEvent.IsResultPush);
             Assert.False(resultPushEvent.IsFlowUpdate);
             Assert.Equal(default(ResultPushMessage), resultPushEvent.GetResultPush());
+            Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetResultDrop());
             Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetFlowUpdate());
             Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetResultHint());
+
+            var resultDropEvent = NnrpSessionEvent.FromResultDrop(default);
+            Assert.True(resultDropEvent.IsResultDrop);
+            Assert.Equal(default(ResultDropMessage), resultDropEvent.GetResultDrop());
+            Assert.Throws<InvalidOperationException>(() => resultDropEvent.GetResultPush());
 
             var flowUpdateEvent = NnrpSessionEvent.FromFlowUpdate(default);
             Assert.True(flowUpdateEvent.IsFlowUpdate);

@@ -8,11 +8,13 @@ namespace Nnrp.Client
         private NnrpSessionEvent(
             MessageType messageType,
             ResultPushMessage resultPush,
+            ResultDropMessage resultDrop,
             FlowUpdateMessage flowUpdate,
             ResultHintMessage resultHint)
         {
             MessageType = messageType;
             ResultPush = resultPush;
+            ResultDrop = resultDrop;
             FlowUpdate = flowUpdate;
             ResultHint = resultHint;
         }
@@ -21,11 +23,15 @@ namespace Nnrp.Client
 
         public ResultPushMessage ResultPush { get; }
 
+        public ResultDropMessage ResultDrop { get; }
+
         public FlowUpdateMessage FlowUpdate { get; }
 
         public ResultHintMessage ResultHint { get; }
 
         public bool IsResultPush => MessageType == MessageType.ResultPush;
+
+        public bool IsResultDrop => MessageType == MessageType.ResultDrop;
 
         public bool IsFlowUpdate => MessageType == MessageType.FlowUpdate;
 
@@ -33,17 +39,22 @@ namespace Nnrp.Client
 
         public static NnrpSessionEvent FromResultPush(ResultPushMessage resultPush)
         {
-            return new NnrpSessionEvent(MessageType.ResultPush, resultPush, default, default);
+            return new NnrpSessionEvent(MessageType.ResultPush, resultPush, default, default, default);
+        }
+
+        public static NnrpSessionEvent FromResultDrop(ResultDropMessage resultDrop)
+        {
+            return new NnrpSessionEvent(MessageType.ResultDrop, default, resultDrop, default, default);
         }
 
         public static NnrpSessionEvent FromFlowUpdate(FlowUpdateMessage flowUpdate)
         {
-            return new NnrpSessionEvent(MessageType.FlowUpdate, default, flowUpdate, default);
+            return new NnrpSessionEvent(MessageType.FlowUpdate, default, default, flowUpdate, default);
         }
 
         public static NnrpSessionEvent FromResultHint(ResultHintMessage resultHint)
         {
-            return new NnrpSessionEvent(MessageType.ResultHint, default, default, resultHint);
+            return new NnrpSessionEvent(MessageType.ResultHint, default, default, default, resultHint);
         }
 
         public ResultPushMessage GetResultPush()
@@ -54,6 +65,16 @@ namespace Nnrp.Client
             }
 
             return ResultPush;
+        }
+
+        public ResultDropMessage GetResultDrop()
+        {
+            if (!IsResultDrop)
+            {
+                throw new InvalidOperationException($"Session event does not carry RESULT_DROP; actual message type is {MessageType}.");
+            }
+
+            return ResultDrop;
         }
 
         public FlowUpdateMessage GetFlowUpdate()
