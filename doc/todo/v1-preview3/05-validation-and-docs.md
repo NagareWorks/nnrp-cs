@@ -9,7 +9,7 @@
 - [ ] Extend adapter execution from SDK-local smoke coverage to full suite-selected case behavior.
 - [x] Keep conformance integration adapter-first: C# declares capabilities and executes suite-owned plans rather than maintaining an SDK vector exporter.
 - [x] Add native smoke coverage for multiple preview3 sessions on one live connection facade.
-- [ ] Add native smoke coverage for routed multi-session preview3 result delivery on one live connection.
+- [x] Add native smoke coverage for routed multi-session preview3 result delivery on one live connection.
 - [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
 - [ ] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
 - [ ] Add allocation-focused smoke checks so managed preview3 hot paths do not silently copy payloads by default.

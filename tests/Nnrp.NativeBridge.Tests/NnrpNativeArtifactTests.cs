@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -823,6 +824,111 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeConnectionRoutesBufferedMultiSessionResults()
+        {
+            var pendingEvents = new Queue<NnrpPollResult>();
+
+            NnrpFfiStatus AwaitRoutedEvent(NnrpHandle connection, out NnrpPollResult result)
+            {
+                result = pendingEvents.Count > 0 ? pendingEvents.Dequeue() : EmptyPollResult();
+                return connection.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitRoutedEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var firstSession = connection.OpenSession(41, 3, 4, 5, 6);
+            var secondSession = connection.OpenSession(42, 4, 4, 5, 6);
+            var firstOperation = firstSession.SubmitOperation(99, 7);
+            var secondOperation = secondSession.SubmitOperation(100, 8);
+
+            pendingEvents.Enqueue(CreatePollResult(connection.Handle.Handle, secondSession.Handle.Handle, secondOperation.Handle.Handle, 8));
+            pendingEvents.Enqueue(CreatePollResult(connection.Handle.Handle, firstSession.Handle.Handle, firstOperation.Handle.Handle, 7));
+
+            var firstResult = firstSession.PollResult(firstOperation, maxEvents: 2);
+            var secondResult = secondSession.PollResult(secondOperation, maxEvents: 1);
+
+            Assert.Equal((ulong)99, firstResult.OperationId);
+            Assert.Equal((uint)7, firstResult.FrameId);
+            Assert.Equal(firstSession.Handle.Handle, firstResult.Event.Session);
+            Assert.Equal((ulong)100, secondResult.OperationId);
+            Assert.Equal((uint)8, secondResult.FrameId);
+            Assert.Equal(secondSession.Handle.Handle, secondResult.Event.Session);
+            Assert.Empty(pendingEvents);
+        }
+
+        [Fact]
+        public void NativeRuntimeConnectionPollsBufferedSessionResult()
+        {
+            var pendingEvents = new Queue<NnrpPollResult>();
+
+            NnrpFfiStatus AwaitRoutedEvent(NnrpHandle connection, out NnrpPollResult result)
+            {
+                result = pendingEvents.Count > 0 ? pendingEvents.Dequeue() : EmptyPollResult();
+                return connection.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitRoutedEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var connection = new NnrpNativeRuntimeClient(entrypoints).Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var firstSession = connection.OpenSession(41, 3, 4, 5, 6);
+            var secondSession = connection.OpenSession(42, 4, 4, 5, 6);
+            var firstOperation = firstSession.SubmitOperation(99, 7);
+            var secondOperation = secondSession.SubmitOperation(100, 8);
+
+            pendingEvents.Enqueue(CreatePollResult(connection.Handle.Handle, secondSession.Handle.Handle, secondOperation.Handle.Handle, 8));
+
+            Assert.Throws<NnrpNativeWouldBlockException>(() => firstSession.PollResult(firstOperation, maxEvents: 1));
+
+            var buffered = connection.AwaitEvent();
+
+            Assert.NotNull(buffered.Event);
+            Assert.Equal(secondSession.Handle.Handle, buffered.Event!.Session);
+            Assert.Equal(secondOperation.Handle.Handle, buffered.Event.Operation);
+            Assert.Empty(pendingEvents);
+        }
+
+        [Fact]
         public void NativeRuntimeSessionRejectsUseAfterClose()
         {
             var session = new NnrpNativeRuntimeClient(CreateEntrypoints())
@@ -1101,6 +1207,25 @@ namespace Nnrp.NativeBridge.Tests
                     NnrpHandle.Invalid,
                     NnrpHandle.Invalid,
                     0,
+                    NnrpBufferView.Empty,
+                    new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
+        }
+
+        private static NnrpPollResult CreatePollResult(
+            NnrpHandle connection,
+            NnrpHandle session,
+            NnrpHandle operation,
+            uint frameId)
+        {
+            return new NnrpPollResult(
+                NnrpFfiStatus.Ok,
+                1,
+                new NnrpEvent(
+                    6,
+                    connection,
+                    session,
+                    operation,
+                    frameId,
                     NnrpBufferView.Empty,
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
         }
