@@ -3,12 +3,97 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - main
       - release/**
   pull_request:
   workflow_dispatch:
 
 jobs:
+  content-policy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject prohibited vendor/model references
+        id: content_policy
+        shell: bash
+        run: |
+          set +e
+          first_term="Anthro""pic"
+          second_term="Clau""de"
+          output="$(
+            set -euo pipefail
+            violations=0
+            for term in "$first_term" "$second_term"; do
+              matches="$(git grep -n -I -i -F -- "$term" -- . || true)"
+              if [ -n "$matches" ]; then
+                echo "Tracked file content contains prohibited keyword: $term"
+                echo "$matches"
+                violations=1
+              fi
+            done
+
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              base="${{ github.event.pull_request.base.sha }}"
+              head="${{ github.event.pull_request.head.sha }}"
+            else
+              base="${{ github.event.before }}"
+              head="${{ github.sha }}"
+            fi
+
+            if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+              messages="$(git log --format=%B "$base..$head")"
+            else
+              messages="$(git log --format=%B -n 1 "$head")"
+            fi
+
+            for term in "$first_term" "$second_term"; do
+              if grep -qiF -- "$term" <<< "$messages"; then
+                echo "Commit message contains prohibited keyword: $term"
+                violations=1
+              fi
+            done
+
+            exit "$violations"
+          )"
+          status="$?"
+          {
+            echo "output<<EOF"
+            echo "$output"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$output"
+          exit "$status"
+
+      - name: Close prohibited-content PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          POLICY_OUTPUT: ${{ steps.content_policy.outputs.output }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "This PR was closed automatically because it violates the repository content policy."
+            echo
+            echo "Prohibited vendor/model references are not accepted in code or commit messages."
+            echo
+            echo '```text'
+            printf '%s\n' "$POLICY_OUTPUT"
+            echo '```'
+          } > content-policy-comment.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file content-policy-comment.md
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -299,6 +384,7 @@ jobs:
 
   required-checks:
     needs:
+      - content-policy
       - changes
       - commit-policy
       - build-test
@@ -311,6 +397,11 @@ jobs:
       - name: Enforce required CI path
         shell: bash
         run: |
+          if [ "${{ needs.content-policy.result }}" != "success" ]; then
+            echo "Repository content policy validation failed."
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.commit-policy.result }}" != "success" ]; then
             echo "PR commit policy validation failed."
             exit 1
