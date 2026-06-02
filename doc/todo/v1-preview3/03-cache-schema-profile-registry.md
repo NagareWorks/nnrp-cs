@@ -22,5 +22,5 @@
 
 ## Payload Family Boundaries
 
-- [ ] Surface `structured_event` and `tool_delta` as protocol-visible payload families without hard-coding their bodies into managed fixed metadata models.
+- [x] Surface `structured_event` and `tool_delta` as protocol-visible payload families without hard-coding their bodies into managed fixed metadata models.
 - [ ] Keep profile-local payload interpretation outside C# public protocol enums unless promoted by the protocol doc.

@@ -16,6 +16,8 @@ namespace Nnrp.Core
 
         public PayloadKind PayloadKind => Descriptor.PayloadKind;
 
+        public PayloadFamily Family => PayloadFamily.FromPayloadKind(PayloadKind);
+
         public ushort ProfileId => Descriptor.ProfileId;
 
         public TypedPayloadProfileId Profile => Descriptor.Profile;
