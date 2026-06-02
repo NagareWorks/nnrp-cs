@@ -20,6 +20,8 @@ namespace Nnrp.Core
 
         public ushort ProfileId { get; }
 
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
+
         public ushort FrameCount { get; }
 
         public uint PayloadBytes { get; }

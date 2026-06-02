@@ -35,9 +35,19 @@ namespace Nnrp.Core
             PayloadBytes = payloadBytes;
         }
 
+        public TypedPayloadProfileFrames(
+            PayloadKind payloadKind,
+            TypedPayloadProfileId profile,
+            ReadOnlyMemory<TypedPayloadFrameView> frames)
+            : this(payloadKind, profile.Value, frames)
+        {
+        }
+
         public PayloadKind PayloadKind { get; }
 
         public ushort ProfileId { get; }
+
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
 
         public ReadOnlyMemory<TypedPayloadFrameView> Frames { get; }
 

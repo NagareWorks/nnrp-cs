@@ -28,6 +28,8 @@ namespace Nnrp.Core
 
         public ushort ProfileId { get; }
 
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
+
         public ushort Reserved0 { get; }
 
         public uint PayloadOffset { get; }

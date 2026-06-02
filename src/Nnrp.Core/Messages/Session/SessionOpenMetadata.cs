@@ -50,6 +50,8 @@ namespace Nnrp.Core
 
         public ushort ProfileId { get; }
 
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
+
         public SessionPriorityClass PriorityClass { get; }
 
         public SessionFlags SessionFlags { get; }

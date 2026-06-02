@@ -6,9 +6,9 @@ namespace Nnrp.Core
     {
         public const int DescriptorLength = 24;
         public const ushort KnownDescriptorFlagMask = 0x000F;
-        public const ushort ProfileUnspecified = 0;
-        public const ushort ProfileTensor = 1;
-        public const ushort ProfileToken = 2;
+        public const ushort ProfileUnspecified = TypedPayloadProfileId.UnspecifiedValue;
+        public const ushort ProfileTensor = TypedPayloadProfileId.TensorValue;
+        public const ushort ProfileToken = TypedPayloadProfileId.TokenValue;
         public const uint TokenDeltaSchemaId = 0x00001001;
         public const uint TokenDeltaSchemaVersion = 3;
         public const ushort StreamSemanticsDefault = 0;
@@ -60,11 +60,36 @@ namespace Nnrp.Core
             PayloadLength = payloadLength;
         }
 
+        public TypedPayloadDescriptor(
+            PayloadKind payloadKind,
+            TypedPayloadProfileId profile,
+            ushort descriptorFlags,
+            uint schemaId,
+            uint schemaVersion,
+            ushort streamSemantics,
+            uint payloadOffset,
+            uint payloadLength,
+            ushort reserved0 = 0)
+            : this(
+                  payloadKind,
+                  profile.Value,
+                  descriptorFlags,
+                  schemaId,
+                  schemaVersion,
+                  streamSemantics,
+                  payloadOffset,
+                  payloadLength,
+                  reserved0)
+        {
+        }
+
         public PayloadKind PayloadKind { get; }
 
         public ushort DescriptorFlags { get; }
 
         public ushort ProfileId { get; }
+
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
 
         public uint SchemaId { get; }
 
@@ -224,15 +249,7 @@ namespace Nnrp.Core
 
         private static PayloadKind InferPayloadKind(ushort profileId)
         {
-            switch (profileId)
-            {
-                case ProfileTensor:
-                    return PayloadKind.Tensor;
-                case ProfileToken:
-                    return PayloadKind.TokenChunk;
-                default:
-                    return PayloadKind.None;
-            }
+            return TypedPayloadProfileId.FromValue(profileId).PayloadKind;
         }
     }
 }
