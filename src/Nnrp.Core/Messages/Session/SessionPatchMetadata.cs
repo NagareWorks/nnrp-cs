@@ -31,6 +31,7 @@ namespace Nnrp.Core
         }
 
         public ushort ProfileId { get; }
+        public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
         public SessionPatchField PatchMask { get; }
         public uint TargetCadenceX100 { get; }
         public ushort QualityTier { get; }

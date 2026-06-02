@@ -44,6 +44,7 @@ namespace Nnrp.Core
         public SessionPatchField RejectedPatchMask { get; }
         public uint RetryAfterMilliseconds { get; }
         public ushort EffectiveProfileId { get; }
+        public TypedPayloadProfileId EffectiveProfile => TypedPayloadProfileId.FromValue(EffectiveProfileId);
         public uint EffectiveTargetCadenceX100 { get; }
         public ushort EffectiveQualityTier { get; }
         public ushort EffectiveDegradePolicy { get; }

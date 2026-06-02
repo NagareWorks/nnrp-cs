@@ -188,14 +188,34 @@ namespace Nnrp.Core
             return matches;
         }
 
+        public TypedPayloadFrameView[] GetTypedPayloadFrames(PayloadKind payloadKind, TypedPayloadProfileId profile)
+        {
+            return GetTypedPayloadFrames(payloadKind, profile.Value);
+        }
+
         public TypedPayloadProfileFrames GetPayloadFrames(PayloadKind payloadKind, ushort profileId)
         {
             return new TypedPayloadProfileFrames(payloadKind, profileId, GetTypedPayloadFrames(payloadKind, profileId));
         }
 
+        public TypedPayloadProfileFrames GetPayloadFrames(PayloadKind payloadKind, TypedPayloadProfileId profile)
+        {
+            return GetPayloadFrames(payloadKind, profile.Value);
+        }
+
         public TypedPayloadProfileFrames GetTokenChunkFrames(ushort profileId)
         {
             return GetPayloadFrames(PayloadKind.TokenChunk, profileId);
+        }
+
+        public TypedPayloadProfileFrames GetTokenChunkFrames()
+        {
+            return GetTokenChunkFrames(TypedPayloadProfileId.Token.Value);
+        }
+
+        public TypedPayloadProfileFrames GetTokenChunkFrames(TypedPayloadProfileId profile)
+        {
+            return GetPayloadFrames(PayloadKind.TokenChunk, profile);
         }
 
         public TypedPayloadProfileFrames GetAudioChunkFrames(ushort profileId)
@@ -244,6 +264,11 @@ namespace Nnrp.Core
 
             coverage = default;
             return false;
+        }
+
+        public bool TryGetPayloadCoverage(PayloadKind payloadKind, TypedPayloadProfileId profile, out TypedPayloadProfileCoverage coverage)
+        {
+            return TryGetPayloadCoverage(payloadKind, profile.Value, out coverage);
         }
 
         public NnrpFramedMessage ToFramedMessage()

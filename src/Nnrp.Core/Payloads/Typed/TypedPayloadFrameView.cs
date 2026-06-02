@@ -18,6 +18,8 @@ namespace Nnrp.Core
 
         public ushort ProfileId => Descriptor.ProfileId;
 
+        public TypedPayloadProfileId Profile => Descriptor.Profile;
+
         public bool Equals(TypedPayloadFrameView other)
         {
             return Descriptor.Equals(other.Descriptor)

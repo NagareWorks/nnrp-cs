@@ -184,6 +184,8 @@ namespace Nnrp.Core
 
         public ushort ActiveProfileId { get; }
 
+        public TypedPayloadProfileId ActiveProfile => TypedPayloadProfileId.FromValue(ActiveProfileId);
+
         public PayloadKind PayloadKind { get; }
 
         public byte Reserved0 { get; }
