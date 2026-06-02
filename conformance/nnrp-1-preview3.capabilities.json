@@ -10,6 +10,7 @@
     "session.multi_session",
     "operation.lifecycle",
     "operation.cancel_scope",
-    "payload.typed"
+    "payload.typed",
+    "profile.token"
   ]
 }

@@ -17,7 +17,7 @@
 
 - [x] Treat `tensor` and `token` as peer first-round standard profiles on the public C# surface.
 - [x] Treat `profile_id = 0` as `unspecified` on the public C# surface rather than an implicit tensor default.
-- [ ] Add host-facing token-profile wrappers against the frozen token minimum semantics and first-round registry assignments from `nnrp-doc`.
+- [x] Add host-facing token-profile wrappers against the frozen token minimum semantics and first-round registry assignments from `nnrp-doc`.
 - [ ] Do not keep preview3 public APIs tensor-privileged once the Rust/profile contract is frozen.
 
 ## Payload Family Boundaries

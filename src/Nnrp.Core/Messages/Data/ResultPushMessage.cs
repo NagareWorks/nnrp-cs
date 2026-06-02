@@ -218,6 +218,11 @@ namespace Nnrp.Core
             return GetPayloadFrames(PayloadKind.TokenChunk, profile);
         }
 
+        public TokenPayloadFrames GetTokenPayloadFrames()
+        {
+            return TokenPayloadFrames.FromTypedPayloadFrames(GetTokenChunkFrames());
+        }
+
         public TypedPayloadProfileFrames GetAudioChunkFrames(ushort profileId)
         {
             return GetPayloadFrames(PayloadKind.AudioChunk, profileId);

@@ -233,6 +233,12 @@ public static class Program
                 case "l2.payload.typed.callback_polling.descriptor_consistency.validation":
                     RunTypedPayloadDescriptorConsistency();
                     return Pass(caseId, "Typed payload descriptor consistency validation passed.");
+                case "l1.token_profile.partial.validation":
+                    RunTokenProfilePartialValidation();
+                    return Pass(caseId, "Token profile partial validation passed.");
+                case "l2.profile.token.partial.callback_polling.validation":
+                    RunTokenProfilePartialValidation();
+                    return Pass(caseId, "Token profile callback and polling validation passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -1046,6 +1052,79 @@ public static class Program
         AssertTrue(pollingDescriptor.SchemaVersion == TypedPayloadDescriptor.TokenDeltaSchemaVersion, "Descriptor consistency lost schema version.");
         AssertTrue(pollingDescriptor.StreamSemantics == TypedPayloadDescriptor.StreamSemanticsAppend, "Descriptor consistency lost stream semantics.");
         AssertTrue(pollingMessage.TypedPayloadFrames.Span[0].Payload.ToArray().SequenceEqual(payload), "Polling descriptor projection lost payload bytes.");
+    }
+
+    private static void RunTokenProfilePartialValidation()
+    {
+        var descriptors = new[]
+        {
+            TokenPayloadDescriptor.CreateDelta(0, 2, TypedPayloadDescriptorFlags.Partial).Descriptor,
+            TokenPayloadDescriptor.CreateDelta(2, 3, TypedPayloadDescriptorFlags.Partial | TypedPayloadDescriptorFlags.ProfileHintPresent).Descriptor,
+        };
+        var payload = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45 };
+        var metadata = new ResultPushMetadata(
+            statusCode: ResultStatusCode.Success,
+            resultFlags: ResultFlags.Partial,
+            sectionCount: 0,
+            tileCount: 0,
+            activeProfileId: TypedPayloadProfileId.Token.Value,
+            inferenceMilliseconds: 1,
+            queueMilliseconds: 0,
+            serverTotalMilliseconds: 1,
+            tileBaseId: 0,
+            tileIndexBytes: 0,
+            resultClass: ResultClass.Partial,
+            payloadKindBitmap: PayloadKind.TokenChunk,
+            payloadFrameCount: 2);
+        var callbackMessage = new ResultPushMessage(
+            new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                wireFormat: NnrpHeader.CurrentWireFormat,
+                messageType: MessageType.ResultPush,
+                flags: HeaderFlags.None,
+                metaLength: ResultPushMetadata.CurrentMetadataLength,
+                bodyLength: 0,
+                sessionId: 42,
+                frameId: 77,
+                viewId: 0,
+                routeId: 0,
+                traceId: 99),
+            metadata,
+            Array.Empty<ushort>(),
+            Array.Empty<TensorSectionBlock>(),
+            descriptors,
+            payload);
+
+        AssertTokenPartialFrames(callbackMessage.GetTokenPayloadFrames(), payload);
+        AssertTrue(ResultPushMessage.TryParse(callbackMessage.ToArray(), out var pollingMessage, out var parseError), $"Token polling result parse failed: {parseError}.");
+        AssertTokenPartialFrames(pollingMessage.GetTokenPayloadFrames(), payload);
+
+        var wrongProfile = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadProfileId.Tensor,
+            TypedPayloadDescriptorFlags.Partial,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 1);
+        AssertTrue(
+            !TokenPayloadDescriptor.TryFromDescriptor(wrongProfile, out _),
+            "Token profile wrapper accepted a tensor-profile descriptor.");
+    }
+
+    private static void AssertTokenPartialFrames(TokenPayloadFrames frames, byte[] payload)
+    {
+        AssertTrue(frames.FrameCount == 2, "Token partial delivery lost chunk count.");
+        AssertTrue(frames.PayloadBytes == payload.Length, "Token partial delivery lost payload byte coverage.");
+        AssertTrue(frames.Frames.Span[0].IsPartial, "First token chunk was not exposed as partial.");
+        AssertTrue(!frames.Frames.Span[0].IsTerminal, "First token chunk was exposed as terminal.");
+        AssertTrue(frames.Frames.Span[1].IsPartial, "Second token chunk was not exposed as partial.");
+        AssertTrue(!frames.Frames.Span[1].IsTerminal, "Second token chunk was exposed as terminal.");
+        AssertTrue(frames.Frames.Span[1].Descriptor.HasProfileHint, "Token profile hint visibility was not preserved.");
+        AssertTrue(frames.Frames.Span[0].Payload.ToArray().SequenceEqual(new byte[] { payload[0], payload[1] }), "First token chunk payload changed.");
+        AssertTrue(frames.Frames.Span[1].Payload.ToArray().SequenceEqual(new byte[] { payload[2], payload[3], payload[4] }), "Second token chunk payload changed.");
+        AssertTrue(frames.Frames.Span[0].Descriptor.IsStandardDeltaSchema, "Token delta schema binding was not preserved.");
     }
 
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
