@@ -5,7 +5,11 @@ namespace Nnrp.Core
     public readonly struct TypedPayloadDescriptor : IEquatable<TypedPayloadDescriptor>
     {
         public const int DescriptorLength = 24;
-        public const ushort KnownDescriptorFlagMask = 0x000F;
+        public const ushort KnownDescriptorFlagMask =
+            (ushort)(TypedPayloadDescriptorFlags.Terminal
+                | TypedPayloadDescriptorFlags.Partial
+                | TypedPayloadDescriptorFlags.SchemaOverride
+                | TypedPayloadDescriptorFlags.ProfileHintPresent);
         public const ushort ProfileUnspecified = TypedPayloadProfileId.UnspecifiedValue;
         public const ushort ProfileTensor = TypedPayloadProfileId.TensorValue;
         public const ushort ProfileToken = TypedPayloadProfileId.TokenValue;
@@ -83,9 +87,34 @@ namespace Nnrp.Core
         {
         }
 
+        public TypedPayloadDescriptor(
+            PayloadKind payloadKind,
+            TypedPayloadProfileId profile,
+            TypedPayloadDescriptorFlags flags,
+            uint schemaId,
+            uint schemaVersion,
+            ushort streamSemantics,
+            uint payloadOffset,
+            uint payloadLength,
+            ushort reserved0 = 0)
+            : this(
+                  payloadKind,
+                  profile,
+                  (ushort)flags,
+                  schemaId,
+                  schemaVersion,
+                  streamSemantics,
+                  payloadOffset,
+                  payloadLength,
+                  reserved0)
+        {
+        }
+
         public PayloadKind PayloadKind { get; }
 
         public ushort DescriptorFlags { get; }
+
+        public TypedPayloadDescriptorFlags Flags => (TypedPayloadDescriptorFlags)DescriptorFlags;
 
         public ushort ProfileId { get; }
 
@@ -251,5 +280,15 @@ namespace Nnrp.Core
         {
             return TypedPayloadProfileId.FromValue(profileId).PayloadKind;
         }
+    }
+
+    [Flags]
+    public enum TypedPayloadDescriptorFlags : ushort
+    {
+        None = 0x0000,
+        Terminal = 0x0001,
+        Partial = 0x0002,
+        SchemaOverride = 0x0004,
+        ProfileHintPresent = 0x0008,
     }
 }

@@ -56,6 +56,8 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.typed_payload.descriptor.validation" },
                     { "id": "l2.payload.typed.buffer_ownership.relative_region.validation" },
                     { "id": "l2.payload.typed.callback_polling.descriptor_consistency.validation" },
+                    { "id": "l1.token_profile.partial.validation" },
+                    { "id": "l2.profile.token.partial.callback_polling.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -67,16 +69,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(40, results.Length);
+            Assert.Equal(42, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 39; index += 1)
+            for (var index = 1; index < 41; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[39].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[39].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[41].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[41].GetProperty("failure_kind").GetString());
         }
 
         [Fact]
