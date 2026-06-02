@@ -23,5 +23,17 @@ namespace Nnrp.Core
                 && (raw & ~AllowedPayloadKindBits) == 0
                 && (raw & (raw - 1)) == 0;
         }
+
+        public static bool IsStandardProfileFamily(PayloadKind payloadKind)
+        {
+            return PayloadFamily.TryFromPayloadKind(payloadKind, out var family)
+                && family.IsStandardProfile;
+        }
+
+        public static bool IsRegistryBoundFamily(PayloadKind payloadKind)
+        {
+            return PayloadFamily.TryFromPayloadKind(payloadKind, out var family)
+                && family.IsRegistryBoundFamily;
+        }
     }
 }

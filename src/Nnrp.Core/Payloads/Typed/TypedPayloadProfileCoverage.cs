@@ -18,6 +18,8 @@ namespace Nnrp.Core
 
         public PayloadKind PayloadKind { get; }
 
+        public PayloadFamily Family => PayloadFamily.FromPayloadKind(PayloadKind);
+
         public ushort ProfileId { get; }
 
         public TypedPayloadProfileId Profile => TypedPayloadProfileId.FromValue(ProfileId);
