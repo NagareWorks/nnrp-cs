@@ -7,7 +7,13 @@ namespace Nnrp.Core
     public sealed class NnrpSessionContainer
     {
         private readonly Dictionary<uint, NnrpSessionStateMachine> sessions = new Dictionary<uint, NnrpSessionStateMachine>();
+        private readonly NnrpObservabilityHook? observabilityHook;
         private bool connectionClosed;
+
+        public NnrpSessionContainer(NnrpObservabilityHook? observabilityHook = null)
+        {
+            this.observabilityHook = observabilityHook;
+        }
 
         public int SessionCount => sessions.Count;
 
@@ -23,6 +29,7 @@ namespace Nnrp.Core
                     NnrpErrorScope.Connection,
                     "Cannot open a session after the connection has closed.",
                     isFatal: true);
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionOpen, sessionId, failure);
                 return false;
             }
 
@@ -31,6 +38,7 @@ namespace Nnrp.Core
                 failure = NnrpProtocolFailure.InvalidState(
                     NnrpErrorScope.Session,
                     "Session id must be non-zero.");
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionOpen, sessionId, failure);
                 return false;
             }
 
@@ -39,17 +47,20 @@ namespace Nnrp.Core
                 failure = NnrpProtocolFailure.InvalidState(
                     NnrpErrorScope.Session,
                     $"Session {sessionId} is already registered.");
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionOpen, sessionId, failure);
                 return false;
             }
 
             var session = new NnrpSessionStateMachine();
             if (!session.TryBeginNegotiation(out failure) || !session.TryActivate(out failure))
             {
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionOpen, sessionId, failure);
                 return false;
             }
 
             sessions.Add(sessionId, session);
             failure = NnrpProtocolFailure.None;
+            PublishRoute(NnrpObservabilityEventKind.SessionRouteOpened, MessageType.SessionOpen, sessionId, failure);
             return true;
         }
 
@@ -66,6 +77,27 @@ namespace Nnrp.Core
         }
 
         public bool TryAcceptFrameSubmit(uint sessionId, out NnrpProtocolFailure failure)
+        {
+            var accepted = TryAcceptFrameSubmitCore(sessionId, out failure);
+            PublishRoute(
+                accepted ? NnrpObservabilityEventKind.SessionRouteAccepted : NnrpObservabilityEventKind.SessionRouteRejected,
+                MessageType.FrameSubmit,
+                sessionId,
+                failure);
+            return accepted;
+        }
+
+        public bool TryAcceptFrameSubmit(FrameSubmitMessage message, out NnrpProtocolFailure failure)
+        {
+            var accepted = TryAcceptFrameSubmitCore(message.Header.SessionId, out failure);
+            PublishRoute(
+                accepted ? NnrpObservabilityEventKind.SessionRouteAccepted : NnrpObservabilityEventKind.SessionRouteRejected,
+                message.Header,
+                failure);
+            return accepted;
+        }
+
+        private bool TryAcceptFrameSubmitCore(uint sessionId, out NnrpProtocolFailure failure)
         {
             if (connectionClosed)
             {
@@ -94,6 +126,7 @@ namespace Nnrp.Core
                 failure = NnrpProtocolFailure.InvalidState(
                     NnrpErrorScope.Session,
                     $"Session {sessionId} is not registered.");
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionClose, sessionId, failure);
                 return false;
             }
 
@@ -102,10 +135,17 @@ namespace Nnrp.Core
                 failure = NnrpProtocolFailure.InvalidState(
                     NnrpErrorScope.Session,
                     $"Session {sessionId} is already closed.");
+                PublishRoute(NnrpObservabilityEventKind.SessionRouteRejected, MessageType.SessionClose, sessionId, failure);
                 return false;
             }
 
-            return TryCloseSession(session, out failure);
+            var closed = TryCloseSession(session, out failure);
+            PublishRoute(
+                closed ? NnrpObservabilityEventKind.SessionRouteClosed : NnrpObservabilityEventKind.SessionRouteRejected,
+                MessageType.SessionClose,
+                sessionId,
+                failure);
+            return closed;
         }
 
         public IReadOnlyList<uint> CloseConnection()
@@ -126,6 +166,7 @@ namespace Nnrp.Core
                 if (TryCloseSession(pair.Value, out _))
                 {
                     closedSessionIds.Add(pair.Key);
+                    PublishRoute(NnrpObservabilityEventKind.SessionRouteClosed, MessageType.Close, pair.Key, NnrpProtocolFailure.None);
                 }
             }
 
@@ -145,6 +186,52 @@ namespace Nnrp.Core
 
             failure = NnrpProtocolFailure.None;
             return true;
+        }
+
+        private void PublishRoute(
+            NnrpObservabilityEventKind kind,
+            MessageType messageType,
+            uint sessionId,
+            NnrpProtocolFailure failure)
+        {
+            if (observabilityHook == null)
+            {
+                return;
+            }
+
+            observabilityHook(new NnrpObservabilityEvent(
+                kind,
+                messageType,
+                sessionId,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0,
+                operationId: 0,
+                sessionDiagnostic: default,
+                flowDiagnostic: default,
+                failure: failure));
+        }
+
+        private void PublishRoute(NnrpObservabilityEventKind kind, NnrpHeader header, NnrpProtocolFailure failure)
+        {
+            if (observabilityHook == null)
+            {
+                return;
+            }
+
+            observabilityHook(new NnrpObservabilityEvent(
+                kind,
+                header.MessageType,
+                header.SessionId,
+                header.FrameId,
+                header.ViewId,
+                header.RouteId,
+                header.TraceId,
+                operationId: 0,
+                sessionDiagnostic: default,
+                flowDiagnostic: default,
+                failure: failure));
         }
     }
 }
