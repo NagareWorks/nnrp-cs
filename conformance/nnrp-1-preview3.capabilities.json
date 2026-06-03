@@ -11,6 +11,7 @@
     "operation.lifecycle",
     "operation.cancel_scope",
     "payload.typed",
-    "profile.token"
+    "profile.token",
+    "schema.registry"
   ]
 }
