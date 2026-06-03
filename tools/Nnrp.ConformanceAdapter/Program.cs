@@ -266,6 +266,9 @@ public static class Program
                 case "l1.cache.error_code.schema_mismatch.validation":
                     RunCacheSchemaMismatchErrorMapping();
                     return Pass(caseId, "Cache schema mismatch error mapping passed.");
+                case "l1.cache.host_helpers.validation":
+                    RunCacheHostHelpers();
+                    return Pass(caseId, "Cache host helper command projection passed.");
                 case "l0.schema.descriptor.header.golden":
                     RunSchemaDescriptorHeaderGolden();
                     return Pass(caseId, "Schema descriptor header golden vector matched.");
@@ -1460,6 +1463,54 @@ public static class Program
     private static void RunCacheSchemaMismatchErrorMapping()
     {
         AssertCacheFailure(CacheValidationFailure.SchemaMismatch, CacheErrorCode.SchemaMismatch, "schema_mismatch");
+    }
+
+    private static void RunCacheHostHelpers()
+    {
+        var lease = CreateCacheLease(CacheLeaseOwnerScope.Session);
+        var query = NnrpCacheHostCommand.Query(lease);
+        AssertTrue(query.MatchesLease(lease), "Cache query helper lost lease identity.");
+        AssertTrue(query.TryCreateObjectReference(0, out var reference), "Cache query helper did not create an object reference.");
+        AssertTrue(
+            reference.ObjectKind == lease.ObjectId.ObjectKind
+                && reference.CacheNamespace == lease.ObjectId.CacheNamespace
+                && reference.CacheKeyHigh == lease.ObjectId.CacheKeyHigh
+                && reference.CacheKeyLow == lease.ObjectId.CacheKeyLow,
+            "Cache query helper changed object reference identity.");
+
+        var touch = NnrpCacheHostCommand.Touch(lease, leaseTtlHintMilliseconds: 1000);
+        AssertTrue(
+            !touch.TryCreatePrefetchMetadata(out _)
+                && !touch.TryCreateReleaseMetadata(out _)
+                && !touch.TryCreateObjectReference(0, out _),
+            "Cache touch helper created wire metadata instead of preserving native command ownership.");
+
+        var prefetch = NnrpCacheHostCommand.Prefetch(
+            lease.ObjectId,
+            objectBytes: 32,
+            leaseTtlHintMilliseconds: 1000,
+            codecBitmap: 1,
+            putFlags: CachePutFlags.Reusable);
+        AssertTrue(prefetch.TryCreatePrefetchMetadata(out var metadata), "Cache prefetch helper did not create CACHE_PUT metadata.");
+        AssertTrue(
+            metadata.CacheNamespace == lease.ObjectId.CacheNamespace
+                && metadata.CacheKeyHigh == lease.ObjectId.CacheKeyHigh
+                && metadata.CacheKeyLow == lease.ObjectId.CacheKeyLow
+                && metadata.ObjectKind == lease.ObjectId.ObjectKind
+                && metadata.ObjectBytes == 32,
+            "Cache prefetch helper changed CACHE_PUT identity.");
+
+        var release = NnrpCacheHostCommand.Release(lease, reasonCode: 7);
+        AssertTrue(release.TryCreateReleaseMetadata(out var invalidate), "Cache release helper did not create CACHE_INVALIDATE metadata.");
+        AssertTrue(
+            invalidate.InvalidateScope == CacheInvalidateScope.ObjectKey
+                && lease.ObjectId.MatchesInvalidate(invalidate),
+            "Cache release helper did not target the object key.");
+
+        var accepted = NnrpCacheHostResult.Accepted(query, lease);
+        AssertTrue(accepted.HasLease && !accepted.IsFailure, "Cache helper accepted result lost native lease projection.");
+        var rejected = NnrpCacheHostResult.Rejected(query, CacheValidationFailure.Miss);
+        AssertTrue(rejected.IsFailure && rejected.ErrorCode == CacheErrorCode.CacheMiss, "Cache helper rejected result lost cache error mapping.");
     }
 
     private static void AssertCacheFailure(CacheValidationFailure failure, CacheErrorCode expectedCode, string name)

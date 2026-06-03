@@ -3,7 +3,7 @@
 ## Cache Lease Surface
 
 - [x] Add managed host models for cache lease, object version, expiry, renewal, and dependency invalidation backed by native results.
-- [ ] Add Unity/.NET-friendly cache query, touch, prefetch, and release helpers without re-implementing cache semantics in managed code.
+- [x] Add Unity/.NET-friendly cache query, touch, prefetch, and release helpers without re-implementing cache semantics in managed code.
 - [ ] Preserve native-core ownership of lease policy and dependency validation.
 
 ## Schema And Registry Surface
