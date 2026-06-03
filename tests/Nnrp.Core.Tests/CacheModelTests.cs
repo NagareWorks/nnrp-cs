@@ -340,6 +340,174 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void CacheHostQueryCreatesObjectReferenceWithoutPolicyDecisions()
+        {
+            var lease = CreateLease();
+            var query = NnrpCacheHostCommand.Query(lease);
+
+            Assert.Equal(NnrpCacheHostAction.Query, query.Action);
+            Assert.True(query.CarriesLeaseIdentity);
+            Assert.Equal(lease.ObjectVersion, query.ExpectedObjectVersion);
+            Assert.Equal(lease.LeaseId, query.LeaseId);
+            Assert.Equal(lease.OwnerScope, query.OwnerScope);
+            Assert.Equal(lease.OwnerId, query.OwnerId);
+            Assert.Equal(0u, query.LeaseTtlHintMilliseconds);
+            Assert.True(query.MatchesLease(lease));
+            Assert.False(query.MatchesLease(CreateLease(objectVersion: 8)));
+            Assert.False(query.MatchesLease(CreateLease(leaseId: 100)));
+
+            Assert.True(query.TryCreateObjectReference(referenceFlags: 7, out var block));
+            Assert.Equal(lease.ObjectId.ObjectKind, block.ObjectKind);
+            Assert.Equal(7, block.ReferenceFlags);
+            Assert.Equal(lease.ObjectId.CacheNamespace, block.CacheNamespace);
+            Assert.Equal(lease.ObjectId.CacheKeyHigh, block.CacheKeyHigh);
+            Assert.Equal(lease.ObjectId.CacheKeyLow, block.CacheKeyLow);
+            Assert.Equal(block, query.CreateObjectReference(referenceFlags: 7));
+
+            Assert.False(query.TryCreatePrefetchMetadata(out _));
+            Assert.False(query.TryCreateReleaseMetadata(out _));
+
+            var versionOnlyQuery = NnrpCacheHostCommand.Query(lease.ObjectId, expectedObjectVersion: lease.ObjectVersion);
+            Assert.True(versionOnlyQuery.CarriesLeaseIdentity);
+            Assert.True(versionOnlyQuery.MatchesLease(lease));
+            Assert.False(versionOnlyQuery.MatchesLease(CreateLease(objectVersion: 9)));
+
+            var sameQuery = NnrpCacheHostCommand.Query(lease);
+            var otherQuery = NnrpCacheHostCommand.Query(lease.ObjectId);
+            Assert.True(query == sameQuery);
+            Assert.False(query != sameQuery);
+            Assert.NotEqual(query, otherQuery);
+            Assert.True(query.Equals((object)sameQuery));
+            Assert.False(query.Equals((object)"query"));
+            Assert.Equal(query.GetHashCode(), sameQuery.GetHashCode());
+        }
+
+        [Fact]
+        public void CacheHostTouchPreservesLeaseIdentityWithoutWireMetadata()
+        {
+            var lease = CreateLease();
+            var touch = NnrpCacheHostCommand.Touch(lease, leaseTtlHintMilliseconds: 2000);
+
+            Assert.Equal(NnrpCacheHostAction.Touch, touch.Action);
+            Assert.True(touch.CarriesLeaseIdentity);
+            Assert.Equal(lease.ObjectId, touch.ObjectId);
+            Assert.Equal(lease.ObjectVersion, touch.ExpectedObjectVersion);
+            Assert.Equal(lease.LeaseId, touch.LeaseId);
+            Assert.Equal(CacheLeaseOwnerScope.Session, touch.OwnerScope);
+            Assert.Equal(42ul, touch.OwnerId);
+            Assert.Equal(2000u, touch.LeaseTtlHintMilliseconds);
+            Assert.True(touch.MatchesLease(lease));
+            Assert.False(touch.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(touch.TryCreatePrefetchMetadata(out _));
+            Assert.False(touch.TryCreateReleaseMetadata(out _));
+
+            Assert.Throws<InvalidOperationException>(() => touch.CreateObjectReference());
+            Assert.Throws<InvalidOperationException>(() => touch.CreatePrefetchMetadata());
+            Assert.Throws<InvalidOperationException>(() => touch.CreateReleaseMetadata());
+        }
+
+        [Fact]
+        public void CacheHostPrefetchAndReleaseCreateControlMetadata()
+        {
+            var objectId = new NnrpCacheObjectId(9, 10, 11, CacheObjectKind.PayloadLayoutTemplate);
+            var prefetch = NnrpCacheHostCommand.Prefetch(
+                objectId,
+                objectBytes: 64,
+                leaseTtlHintMilliseconds: 5000,
+                codecBitmap: 3,
+                putFlags: CachePutFlags.Pinned | CachePutFlags.Reusable);
+
+            Assert.Equal(NnrpCacheHostAction.Prefetch, prefetch.Action);
+            Assert.False(prefetch.CarriesLeaseIdentity);
+            Assert.False(prefetch.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(prefetch.TryCreateReleaseMetadata(out _));
+            Assert.True(prefetch.TryCreatePrefetchMetadata(out var putMetadata));
+            Assert.Equal(putMetadata, prefetch.CreatePrefetchMetadata());
+            Assert.Equal(objectId.CacheNamespace, putMetadata.CacheNamespace);
+            Assert.Equal(objectId.CacheKeyHigh, putMetadata.CacheKeyHigh);
+            Assert.Equal(objectId.CacheKeyLow, putMetadata.CacheKeyLow);
+            Assert.Equal(objectId.ObjectKind, putMetadata.ObjectKind);
+            Assert.Equal(5000u, putMetadata.TtlMilliseconds);
+            Assert.Equal(64u, putMetadata.ObjectBytes);
+            Assert.Equal(3u, putMetadata.CodecBitmap);
+            Assert.Equal(CachePutFlags.Pinned | CachePutFlags.Reusable, putMetadata.Flags);
+            Assert.Throws<InvalidOperationException>(() => prefetch.CreateReleaseMetadata());
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                NnrpCacheHostCommand.Prefetch(objectId, 1, 1, putFlags: (CachePutFlags)4));
+
+            var release = NnrpCacheHostCommand.Release(objectId, reasonCode: 77);
+            Assert.Equal(NnrpCacheHostAction.Release, release.Action);
+            Assert.False(release.CarriesLeaseIdentity);
+            Assert.False(release.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(release.TryCreatePrefetchMetadata(out _));
+            Assert.True(release.TryCreateReleaseMetadata(out var invalidateMetadata));
+            Assert.Equal(invalidateMetadata, release.CreateReleaseMetadata());
+            Assert.Equal(CacheInvalidateScope.ObjectKey, invalidateMetadata.InvalidateScope);
+            Assert.Equal(objectId.CacheNamespace, invalidateMetadata.CacheNamespace);
+            Assert.Equal(objectId.CacheKeyHigh, invalidateMetadata.CacheKeyHigh);
+            Assert.Equal(objectId.CacheKeyLow, invalidateMetadata.CacheKeyLow);
+            Assert.Equal(77u, invalidateMetadata.ReasonCode);
+
+            var leaseRelease = NnrpCacheHostCommand.Release(CreateLease(), reasonCode: 88);
+            Assert.True(leaseRelease.CarriesLeaseIdentity);
+            Assert.Equal(88u, leaseRelease.ReleaseReasonCode);
+        }
+
+        [Fact]
+        public void CacheHostResultProjectsNativeOutcomes()
+        {
+            var lease = CreateLease();
+            var query = NnrpCacheHostCommand.Query(lease);
+            var accepted = NnrpCacheHostResult.Accepted(query, lease, detailCode: 12);
+
+            Assert.Equal(NnrpCacheHostOutcome.Accepted, accepted.Outcome);
+            Assert.Equal(CacheValidationFailure.None, accepted.Failure);
+            Assert.Equal(CacheErrorCode.None, accepted.ErrorCode);
+            Assert.True(accepted.HasLease);
+            Assert.False(accepted.IsFailure);
+            Assert.Equal(lease, accepted.Lease.GetValueOrDefault());
+            Assert.Equal(12u, accepted.DetailCode);
+
+            Assert.Throws<ArgumentException>(() =>
+                NnrpCacheHostResult.Accepted(query, CreateLease(objectVersion: 8)));
+
+            var rejected = NnrpCacheHostResult.Rejected(
+                query,
+                CacheValidationFailure.LeaseExpired,
+                detailCode: (uint)CacheErrorCode.LeaseExpired);
+            Assert.Equal(NnrpCacheHostOutcome.Rejected, rejected.Outcome);
+            Assert.Equal(CacheErrorCode.LeaseExpired, rejected.ErrorCode);
+            Assert.True(rejected.IsFailure);
+            Assert.False(rejected.HasLease);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                NnrpCacheHostResult.Rejected(query, CacheValidationFailure.None));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                NnrpCacheHostResult.Rejected(query, (CacheValidationFailure)255));
+
+            var invalidated = NnrpCacheHostResult.Invalidated(
+                query,
+                new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, lease.ObjectId.CacheNamespace, 0, 0, 33));
+            Assert.Equal(NnrpCacheHostOutcome.Invalidated, invalidated.Outcome);
+            Assert.Equal(CacheValidationFailure.None, invalidated.Failure);
+            Assert.False(invalidated.HasLease);
+            Assert.False(invalidated.IsFailure);
+            Assert.Equal(33u, invalidated.DetailCode);
+
+            Assert.Throws<ArgumentException>(() =>
+                NnrpCacheHostResult.Invalidated(
+                    query,
+                    new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, lease.ObjectId.CacheNamespace + 1, 0, 0, 1)));
+
+            var sameAccepted = NnrpCacheHostResult.Accepted(query, lease, detailCode: 12);
+            Assert.True(accepted == sameAccepted);
+            Assert.False(accepted != sameAccepted);
+            Assert.NotEqual(accepted, rejected);
+            Assert.True(accepted.Equals((object)sameAccepted));
+            Assert.False(accepted.Equals((object)"result"));
+            Assert.Equal(accepted.GetHashCode(), sameAccepted.GetHashCode());
+        }
+
+        [Fact]
         public void CacheStoreClearAndEvictExpired()
         {
             var store = new NnrpCacheStore(maxEntries: 10);
@@ -495,6 +663,18 @@ namespace Nnrp.Core.Tests
             Assert.True(CacheAckMessage.TryParse(bytes, out var parsed, out var error));
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(CacheAckStatus.Accepted, parsed.Metadata.Status);
+        }
+
+        private static NnrpCacheLease CreateLease(ulong objectVersion = 7, ulong leaseId = 99)
+        {
+            return new NnrpCacheLease(
+                new NnrpCacheObjectId(1, 2, 3, CacheObjectKind.PromptSegment),
+                objectVersion,
+                leaseId,
+                CacheLeaseOwnerScope.Session,
+                ownerId: 42,
+                grantedAtMilliseconds: 1000,
+                ttlMilliseconds: 5000);
         }
     }
 }

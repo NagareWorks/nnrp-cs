@@ -67,6 +67,7 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.cache.error_code.version_mismatch.validation" },
                     { "id": "l1.cache.error_code.dependency_invalid.validation" },
                     { "id": "l1.cache.error_code.schema_mismatch.validation" },
+                    { "id": "l1.cache.host_helpers.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -78,16 +79,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(51, results.Length);
+            Assert.Equal(52, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 50; index += 1)
+            for (var index = 1; index < 51; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[50].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[50].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[51].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[51].GetProperty("failure_kind").GetString());
         }
 
         [Fact]
