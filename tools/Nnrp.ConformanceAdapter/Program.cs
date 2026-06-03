@@ -239,6 +239,33 @@ public static class Program
                 case "l2.profile.token.partial.callback_polling.validation":
                     RunTokenProfilePartialValidation();
                     return Pass(caseId, "Token profile callback and polling validation passed.");
+                case "l0.cache.error_code.family.golden":
+                    RunCacheErrorCodeFamilyGolden();
+                    return Pass(caseId, "Cache error code family values matched.");
+                case "l1.cache.lease_owner_scope.validation":
+                    RunCacheLeaseOwnerScope();
+                    return Pass(caseId, "Cache lease owner scope validation passed.");
+                case "l1.cache.object_version.monotonicity.validation":
+                    RunCacheObjectVersionMonotonicity();
+                    return Pass(caseId, "Cache object version monotonicity validation passed.");
+                case "l1.cache.dependency_invalidation.validation":
+                    RunCacheDependencyInvalidation();
+                    return Pass(caseId, "Cache dependency invalidation validation passed.");
+                case "l1.cache.error_code.cache_miss.validation":
+                    RunCacheMissErrorMapping();
+                    return Pass(caseId, "Cache miss error mapping passed.");
+                case "l1.cache.error_code.lease_expired.validation":
+                    RunCacheLeaseExpiredErrorMapping();
+                    return Pass(caseId, "Cache lease expired error mapping passed.");
+                case "l1.cache.error_code.version_mismatch.validation":
+                    RunCacheVersionMismatchErrorMapping();
+                    return Pass(caseId, "Cache version mismatch error mapping passed.");
+                case "l1.cache.error_code.dependency_invalid.validation":
+                    RunCacheDependencyInvalidErrorMapping();
+                    return Pass(caseId, "Cache dependency invalid error mapping passed.");
+                case "l1.cache.error_code.schema_mismatch.validation":
+                    RunCacheSchemaMismatchErrorMapping();
+                    return Pass(caseId, "Cache schema mismatch error mapping passed.");
                 case "l0.schema.descriptor.header.golden":
                     RunSchemaDescriptorHeaderGolden();
                     return Pass(caseId, "Schema descriptor header golden vector matched.");
@@ -1322,6 +1349,139 @@ public static class Program
             !registry.TryInstall(CreateSchemaDescriptor(0x6001, 1, 0xFFFF, 0, 0x62), out _, out errorCode)
             && errorCode == SchemaErrorCode.UpdateRejected,
             "Schema update rejected was not distinct from hash conflict.");
+    }
+
+    private static void RunCacheErrorCodeFamilyGolden()
+    {
+        AssertTrue((uint)CacheErrorCode.None == 0x00030000, "cache_error_code none changed.");
+        AssertTrue((uint)CacheErrorCode.CacheMiss == 0x00030001, "cache_error_code cache_miss changed.");
+        AssertTrue((uint)CacheErrorCode.LeaseExpired == 0x00030002, "cache_error_code lease_expired changed.");
+        AssertTrue((uint)CacheErrorCode.VersionMismatch == 0x00030003, "cache_error_code version_mismatch changed.");
+        AssertTrue((uint)CacheErrorCode.DependencyInvalid == 0x00030004, "cache_error_code dependency_invalid changed.");
+        AssertTrue((uint)CacheErrorCode.SchemaMismatch == 0x00030005, "cache_error_code schema_mismatch changed.");
+    }
+
+    private static void RunCacheLeaseOwnerScope()
+    {
+        AssertTrue((byte)CacheLeaseOwnerScope.Connection == 0, "Cache lease connection owner scope changed.");
+        AssertTrue((byte)CacheLeaseOwnerScope.Session == 1, "Cache lease session owner scope changed.");
+        AssertTrue((byte)CacheLeaseOwnerScope.Operation == 2, "Cache lease operation owner scope changed.");
+
+        var lease = CreateCacheLease(CacheLeaseOwnerScope.Session);
+        AssertTrue(lease.OwnerScope == CacheLeaseOwnerScope.Session, "Cache lease owner scope was not preserved.");
+        AssertTrue(lease.OwnerId == 42, "Cache lease owner id was not preserved.");
+    }
+
+    private static void RunCacheObjectVersionMonotonicity()
+    {
+        AssertTrue(
+            NnrpCacheLeaseValidation.TryValidateMonotonicVersion(3, 4, out var failure)
+            && failure == CacheValidationFailure.None,
+            "Cache object version update was not accepted.");
+        AssertTrue(
+            !NnrpCacheLeaseValidation.TryValidateMonotonicVersion(3, 3, out failure)
+            && failure == CacheValidationFailure.VersionMismatch,
+            "Cache object accepted an equal version update.");
+        AssertTrue(
+            !NnrpCacheLeaseValidation.TryValidateMonotonicVersion(4, 3, out failure)
+            && failure == CacheValidationFailure.VersionMismatch,
+            "Cache object accepted a stale version update.");
+    }
+
+    private static void RunCacheDependencyInvalidation()
+    {
+        var objectId = CreateCacheObjectId();
+        var dependency = new NnrpCacheDependency(objectId, requiredVersion: 3);
+        var validState = new NnrpCacheDependencyState(objectId, currentVersion: 3, invalidated: false);
+        AssertTrue(
+            NnrpCacheLeaseValidation.TryValidateDependencies(new[] { dependency }, new[] { validState }, out var failure)
+            && failure == CacheValidationFailure.None,
+            "Cache dependency validation rejected a current dependency.");
+
+        var invalidated = new NnrpCacheDependencyState(objectId, currentVersion: 3, invalidated: true);
+        AssertTrue(
+            !NnrpCacheLeaseValidation.TryValidateDependencies(new[] { dependency }, new[] { invalidated }, out failure)
+            && failure == CacheValidationFailure.DependencyInvalid,
+            "Cache dependency validation accepted an invalidated dependency.");
+
+        AssertTrue(
+            objectId.MatchesInvalidate(new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 7, 0, 0, 0)),
+            "Cache object did not match namespace invalidation.");
+        AssertTrue(
+            objectId.MatchesInvalidate(new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKind, 7, (uint)CacheObjectKind.PromptSegment, 0, 0)),
+            "Cache object did not match object-kind invalidation.");
+    }
+
+    private static void RunCacheMissErrorMapping()
+    {
+        AssertCacheFailure(CacheValidationFailure.Miss, CacheErrorCode.CacheMiss, "cache_miss");
+    }
+
+    private static void RunCacheLeaseExpiredErrorMapping()
+    {
+        var lease = CreateCacheLease(CacheLeaseOwnerScope.Session);
+        AssertTrue(
+            lease.TryValidateLiveAt(10499, out var failure)
+            && failure == CacheValidationFailure.None,
+            "Cache lease expired before its public TTL boundary.");
+        AssertTrue(
+            !lease.TryValidateLiveAt(10500, out failure)
+            && failure == CacheValidationFailure.LeaseExpired,
+            "Cache lease did not expire on its public TTL boundary.");
+        AssertCacheFailure(failure, CacheErrorCode.LeaseExpired, "lease_expired");
+    }
+
+    private static void RunCacheVersionMismatchErrorMapping()
+    {
+        var lease = CreateCacheLease(CacheLeaseOwnerScope.Session);
+        AssertTrue(
+            lease.TryValidateVersion(3, out var failure)
+            && failure == CacheValidationFailure.None,
+            "Cache lease rejected the current object version.");
+        AssertTrue(
+            !lease.TryValidateVersion(4, out failure)
+            && failure == CacheValidationFailure.VersionMismatch,
+            "Cache lease did not preserve object version mismatch.");
+        AssertCacheFailure(failure, CacheErrorCode.VersionMismatch, "version_mismatch");
+    }
+
+    private static void RunCacheDependencyInvalidErrorMapping()
+    {
+        var objectId = CreateCacheObjectId();
+        var dependency = new NnrpCacheDependency(objectId, requiredVersion: 3);
+        var wrongVersion = new NnrpCacheDependencyState(objectId, currentVersion: 4, invalidated: false);
+        AssertTrue(
+            !NnrpCacheLeaseValidation.TryValidateDependencies(new[] { dependency }, new[] { wrongVersion }, out var failure)
+            && failure == CacheValidationFailure.DependencyInvalid,
+            "Cache dependency validation did not preserve dependency_invalid.");
+        AssertCacheFailure(failure, CacheErrorCode.DependencyInvalid, "dependency_invalid");
+    }
+
+    private static void RunCacheSchemaMismatchErrorMapping()
+    {
+        AssertCacheFailure(CacheValidationFailure.SchemaMismatch, CacheErrorCode.SchemaMismatch, "schema_mismatch");
+    }
+
+    private static void AssertCacheFailure(CacheValidationFailure failure, CacheErrorCode expectedCode, string name)
+    {
+        AssertTrue(failure.ToCacheErrorCode() == expectedCode, $"Cache error mapping changed for {name}.");
+    }
+
+    private static NnrpCacheObjectId CreateCacheObjectId()
+    {
+        return new NnrpCacheObjectId(7, 0x11223344, 0x55667788, CacheObjectKind.PromptSegment);
+    }
+
+    private static NnrpCacheLease CreateCacheLease(CacheLeaseOwnerScope ownerScope)
+    {
+        return new NnrpCacheLease(
+            CreateCacheObjectId(),
+            objectVersion: 3,
+            leaseId: 99,
+            ownerScope: ownerScope,
+            ownerId: 42,
+            grantedAtMilliseconds: 10000,
+            ttlMilliseconds: 500);
     }
 
     private static void AssertTokenPartialFrames(TokenPayloadFrames frames, byte[] payload)
