@@ -205,6 +205,33 @@ namespace Nnrp.Core
     }
 
     /// <summary>
+    /// Schema registry error identifiers.
+    /// </summary>
+    public enum SchemaErrorCode : uint
+    {
+        /// <summary>No schema error, encoded as <c>0x00040000</c>.</summary>
+        None = 0x00040000,
+
+        /// <summary>The requested schema id is unknown, encoded as <c>0x00040001</c>.</summary>
+        Unknown = 0x00040001,
+
+        /// <summary>The requested schema version is unknown, encoded as <c>0x00040002</c>.</summary>
+        VersionUnknown = 0x00040002,
+
+        /// <summary>The requested schema identity conflicts with an existing hash, encoded as <c>0x00040003</c>.</summary>
+        HashConflict = 0x00040003,
+
+        /// <summary>The schema is incompatible with the current public binding, encoded as <c>0x00040004</c>.</summary>
+        Incompatible = 0x00040004,
+
+        /// <summary>A schema dependency is missing or unavailable, encoded as <c>0x00040005</c>.</summary>
+        DependencyMissing = 0x00040005,
+
+        /// <summary>A schema update or invalidation was rejected, encoded as <c>0x00040006</c>.</summary>
+        UpdateRejected = 0x00040006,
+    }
+
+    /// <summary>
     /// SESSION_CLOSE reason identifiers.
     /// </summary>
     public enum SessionCloseReason : ushort

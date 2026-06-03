@@ -239,6 +239,33 @@ public static class Program
                 case "l2.profile.token.partial.callback_polling.validation":
                     RunTokenProfilePartialValidation();
                     return Pass(caseId, "Token profile callback and polling validation passed.");
+                case "l0.schema.descriptor.header.golden":
+                    RunSchemaDescriptorHeaderGolden();
+                    return Pass(caseId, "Schema descriptor header golden vector matched.");
+                case "l0.schema.error_code.family.golden":
+                    RunSchemaErrorCodeFamilyGolden();
+                    return Pass(caseId, "Schema error code family values matched.");
+                case "l1.schema.descriptor.layout.validation":
+                    RunSchemaDescriptorHeaderGolden();
+                    return Pass(caseId, "Schema descriptor header layout validation passed.");
+                case "l1.schema.descriptor.flags.validation":
+                    RunSchemaDescriptorFlagsValidation();
+                    return Pass(caseId, "Schema descriptor flag validation passed.");
+                case "l1.schema.descriptor.default_stream.validation":
+                    RunSchemaDescriptorDefaultStreamValidation();
+                    return Pass(caseId, "Schema descriptor default stream validation passed.");
+                case "l1.schema.registry.install_update.validation":
+                    RunSchemaRegistryInstallUpdate();
+                    return Pass(caseId, "Schema registry install and update validation passed.");
+                case "l1.schema.registry.invalidate_conflict.validation":
+                    RunSchemaRegistryInvalidateConflict();
+                    return Pass(caseId, "Schema registry invalidate and conflict validation passed.");
+                case "l2.schema.registry.error_mapping.critical_unknown.validation":
+                    RunSchemaRegistryCriticalUnknownMapping();
+                    return Pass(caseId, "Schema registry critical unknown error mapping passed.");
+                case "l2.schema.registry.conflict_error_mapping.validation":
+                    RunSchemaRegistryConflictMapping();
+                    return Pass(caseId, "Schema registry conflict error mapping passed.");
                 default:
                     return new AdapterCaseResult
                     {
@@ -1113,6 +1140,190 @@ public static class Program
             "Token profile wrapper accepted a tensor-profile descriptor.");
     }
 
+    private static void RunSchemaDescriptorHeaderGolden()
+    {
+        var expected = Convert.FromHexString("011000000300000002000f000101000040000000020002008877665544332211");
+
+        AssertTrue(SchemaDescriptorHeader.TryParse(expected, out var header, out var error), $"Schema descriptor header parse failed: {error}.");
+        AssertTrue(header.SchemaId == SchemaDescriptorHeader.TokenDeltaSchemaId, "Schema descriptor lost schema_id.");
+        AssertTrue(header.SchemaVersion == SchemaDescriptorHeader.TokenDeltaSchemaVersion, "Schema descriptor lost schema_version.");
+        AssertTrue(header.ProfileId == SchemaDescriptorHeader.ProfileToken, "Schema descriptor lost profile_id.");
+        AssertTrue(header.SchemaFlags == SchemaDescriptorHeader.KnownSchemaFlagMask, "Schema descriptor lost schema_flags.");
+        AssertTrue(header.MinVersionMajor == 1 && header.MaxVersionMajor == 1, "Schema descriptor lost version applicability.");
+        AssertTrue(header.BodyBytes == 64, "Schema descriptor lost body length.");
+        AssertTrue(header.DependencyCount == 2, "Schema descriptor lost dependency count.");
+        AssertTrue(header.DefaultStreamSemantics == SchemaDescriptorHeader.TokenDeltaDefaultStreamSemantics, "Schema descriptor lost default stream semantics.");
+        AssertTrue(header.SchemaHash == 0x1122334455667788UL, "Schema descriptor lost schema_hash.");
+        AssertTrue(header.ToArray().SequenceEqual(expected), "Schema descriptor header did not re-emit the golden vector.");
+
+        expected[14] = 1;
+        AssertTrue(
+            !SchemaDescriptorHeader.TryParse(expected, out _, out error)
+            && error == NnrpParseError.NonZeroReservedField,
+            "Schema descriptor accepted non-zero reserved bytes.");
+    }
+
+    private static void RunSchemaErrorCodeFamilyGolden()
+    {
+        AssertTrue((uint)SchemaErrorCode.None == 0x00040000, "schema_error_code none changed.");
+        AssertTrue((uint)SchemaErrorCode.Unknown == 0x00040001, "schema_error_code unknown changed.");
+        AssertTrue((uint)SchemaErrorCode.VersionUnknown == 0x00040002, "schema_error_code version_unknown changed.");
+        AssertTrue((uint)SchemaErrorCode.HashConflict == 0x00040003, "schema_error_code hash_conflict changed.");
+        AssertTrue((uint)SchemaErrorCode.Incompatible == 0x00040004, "schema_error_code incompatible changed.");
+        AssertTrue((uint)SchemaErrorCode.DependencyMissing == 0x00040005, "schema_error_code dependency_missing changed.");
+        AssertTrue((uint)SchemaErrorCode.UpdateRejected == 0x00040006, "schema_error_code update_rejected changed.");
+    }
+
+    private static void RunSchemaDescriptorFlagsValidation()
+    {
+        var header = CreateSchemaDescriptor(
+            0x1001,
+            3,
+            SchemaDescriptorHeader.ProfileToken,
+            SchemaDescriptorHeader.SchemaFlagCacheable
+            | SchemaDescriptorHeader.SchemaFlagCritical
+            | SchemaDescriptorHeader.SchemaFlagDefaultBindable
+            | SchemaDescriptorHeader.SchemaFlagHashStable,
+            0x1122334455667788UL);
+
+        AssertTrue(header.IsCacheable, "Schema cacheable flag was not exposed.");
+        AssertTrue(header.IsCritical, "Schema critical flag was not exposed.");
+        AssertTrue(header.IsDefaultBindable, "Schema default_bindable flag was not exposed.");
+        AssertTrue(header.IsHashStable, "Schema hash_stable flag was not exposed.");
+
+        var bytes = header.ToArray();
+        bytes[10] = 0x10;
+        AssertTrue(
+            !SchemaDescriptorHeader.TryParse(bytes, out _, out var error)
+            && error == NnrpParseError.NonZeroReservedField,
+            "Schema descriptor accepted unknown schema flag bits.");
+
+        var invalid = CreateSchemaDescriptor(0x1001, 3, SchemaDescriptorHeader.ProfileToken, 0x0010, 0x01);
+        AssertTrue(!invalid.TryWrite(new byte[SchemaDescriptorHeader.HeaderLength], out _), "Schema descriptor wrote unknown schema flag bits.");
+        var registry = new SchemaRegistry();
+        AssertTrue(
+            !registry.TryInstall(invalid, out _, out var errorCode)
+            && errorCode == SchemaErrorCode.UpdateRejected,
+            "Schema registry accepted unknown schema flag bits.");
+    }
+
+    private static void RunSchemaDescriptorDefaultStreamValidation()
+    {
+        var registry = SchemaRegistry.WithStandardProfiles();
+        AssertTrue(
+            registry.TryGet(
+                SchemaDescriptorHeader.TokenDeltaSchemaId,
+                SchemaDescriptorHeader.TokenDeltaSchemaVersion,
+                out var header),
+            "Standard token schema descriptor was not registered.");
+        AssertTrue(
+            header.DefaultStreamSemantics == TypedPayloadDescriptor.StreamSemanticsAppend,
+            "Standard token schema default stream semantics was not append.");
+
+        var descriptor = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            SchemaDescriptorHeader.ProfileToken,
+            descriptorFlags: 0,
+            schemaId: SchemaDescriptorHeader.TokenDeltaSchemaId,
+            schemaVersion: SchemaDescriptorHeader.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
+            payloadOffset: 0,
+            payloadLength: 0);
+        AssertTrue(registry.TryValidateDescriptorBinding(descriptor, out var errorCode), $"Schema binding rejected a valid token descriptor: {errorCode}.");
+        AssertTrue(descriptor.StreamSemantics == TypedPayloadDescriptor.StreamSemanticsSnapshot, "Typed payload descriptor override semantics were rewritten.");
+    }
+
+    private static void RunSchemaRegistryInstallUpdate()
+    {
+        var registry = new SchemaRegistry();
+        var descriptor = CreateSchemaDescriptor(0x2000, 1, SchemaDescriptorHeader.ProfileTensor, 0, 0x20);
+
+        AssertTrue(registry.TryInstall(descriptor, out var action, out var errorCode), $"Schema install failed: {errorCode}.");
+        AssertTrue(action == SchemaRegistryAction.Installed, "Schema install did not report installed.");
+        AssertTrue(registry.TryGet(0x2000, 1, out var installed) && installed.Equals(descriptor), "Schema lookup did not return installed descriptor.");
+
+        AssertTrue(registry.TryInstall(descriptor, out action, out errorCode), $"Schema idempotent install failed: {errorCode}.");
+        AssertTrue(action == SchemaRegistryAction.AlreadyInstalled, "Schema idempotent install did not report already installed.");
+
+        var newer = CreateSchemaDescriptor(0x2000, 2, SchemaDescriptorHeader.ProfileTensor, 0, 0x21);
+        AssertTrue(registry.TryInstall(newer, out action, out errorCode), $"Schema update failed: {errorCode}.");
+        AssertTrue(action == SchemaRegistryAction.Updated, "Schema update did not report updated.");
+
+        var missing = CreateTypedDescriptor(SchemaDescriptorHeader.ProfileTensor, 0x2000, 99);
+        AssertTrue(
+            !registry.TryValidateDescriptorBinding(missing, out errorCode)
+            && errorCode == SchemaErrorCode.VersionUnknown,
+            "Schema registry did not preserve version_unknown for known schema ids.");
+    }
+
+    private static void RunSchemaRegistryInvalidateConflict()
+    {
+        var registry = new SchemaRegistry();
+        var descriptor = CreateSchemaDescriptor(0x3000, 1, SchemaDescriptorHeader.ProfileTensor, 0, 0x30);
+        AssertTrue(registry.TryInstall(descriptor, out _, out _), "Schema install failed before conflict validation.");
+
+        var conflict = CreateSchemaDescriptor(0x3000, 1, SchemaDescriptorHeader.ProfileTensor, 0, 0x31);
+        AssertTrue(
+            !registry.TryInstall(conflict, out var action, out var errorCode)
+            && action == SchemaRegistryAction.None
+            && errorCode == SchemaErrorCode.HashConflict,
+            "Schema registry did not preserve hash_conflict.");
+
+        AssertTrue(registry.TryInvalidate(0x3000, 1, out action, out errorCode), $"Schema invalidate failed: {errorCode}.");
+        AssertTrue(action == SchemaRegistryAction.Invalidated, "Schema invalidate did not report invalidated.");
+        AssertTrue(
+            !registry.TryInvalidate(0x3000, 1, out _, out errorCode)
+            && errorCode == SchemaErrorCode.VersionUnknown,
+            "Schema registry did not preserve version_unknown after invalidation.");
+
+        var unsupported = CreateSchemaDescriptor(0x4000, 1, 0xFFFF, 0, 0x40);
+        AssertTrue(
+            !registry.TryInstall(unsupported, out _, out errorCode)
+            && errorCode == SchemaErrorCode.UpdateRejected,
+            "Schema registry did not reject unsupported public profile assignments.");
+    }
+
+    private static void RunSchemaRegistryCriticalUnknownMapping()
+    {
+        var registry = new SchemaRegistry();
+        var critical = CreateSchemaDescriptor(
+            0x5000,
+            1,
+            SchemaDescriptorHeader.ProfileToken,
+            SchemaDescriptorHeader.SchemaFlagCritical,
+            0x50);
+
+        AssertTrue(critical.IsCritical, "Critical schema flag was not observable.");
+        var unknownSchema = CreateTypedDescriptor(SchemaDescriptorHeader.ProfileToken, 0x5000, 1);
+        AssertTrue(
+            !registry.TryValidateDescriptorBinding(unknownSchema, out var errorCode)
+            && errorCode == SchemaErrorCode.Unknown,
+            "Critical unknown schema did not surface schema_unknown.");
+
+        AssertTrue(registry.TryInstall(critical, out _, out _), "Critical schema install failed.");
+        var unknownVersion = CreateTypedDescriptor(SchemaDescriptorHeader.ProfileToken, 0x5000, 9);
+        AssertTrue(
+            !registry.TryValidateDescriptorBinding(unknownVersion, out errorCode)
+            && errorCode == SchemaErrorCode.VersionUnknown,
+            "Critical unknown schema version did not surface schema_version_unknown.");
+        AssertTrue((uint)SchemaErrorCode.DependencyMissing == 0x00040005, "schema_dependency_missing code was not stable.");
+    }
+
+    private static void RunSchemaRegistryConflictMapping()
+    {
+        var registry = new SchemaRegistry();
+        AssertTrue(registry.TryInstall(CreateSchemaDescriptor(0x6000, 1, SchemaDescriptorHeader.ProfileTensor, 0, 0x60), out _, out _), "Initial schema install failed.");
+
+        AssertTrue(
+            !registry.TryInstall(CreateSchemaDescriptor(0x6000, 1, SchemaDescriptorHeader.ProfileTensor, 0, 0x61), out _, out var errorCode)
+            && errorCode == SchemaErrorCode.HashConflict,
+            "Schema hash conflict was not preserved.");
+        AssertTrue(
+            !registry.TryInstall(CreateSchemaDescriptor(0x6001, 1, 0xFFFF, 0, 0x62), out _, out errorCode)
+            && errorCode == SchemaErrorCode.UpdateRejected,
+            "Schema update rejected was not distinct from hash conflict.");
+    }
+
     private static void AssertTokenPartialFrames(TokenPayloadFrames frames, byte[] payload)
     {
         AssertTrue(frames.FrameCount == 2, "Token partial delivery lost chunk count.");
@@ -1125,6 +1336,39 @@ public static class Program
         AssertTrue(frames.Frames.Span[0].Payload.ToArray().SequenceEqual(new byte[] { payload[0], payload[1] }), "First token chunk payload changed.");
         AssertTrue(frames.Frames.Span[1].Payload.ToArray().SequenceEqual(new byte[] { payload[2], payload[3], payload[4] }), "Second token chunk payload changed.");
         AssertTrue(frames.Frames.Span[0].Descriptor.IsStandardDeltaSchema, "Token delta schema binding was not preserved.");
+    }
+
+    private static SchemaDescriptorHeader CreateSchemaDescriptor(
+        uint schemaId,
+        uint schemaVersion,
+        ushort profileId,
+        ushort schemaFlags,
+        ulong schemaHash)
+    {
+        return new SchemaDescriptorHeader(
+            schemaId,
+            schemaVersion,
+            profileId,
+            schemaFlags,
+            minVersionMajor: 1,
+            maxVersionMajor: 1,
+            bodyBytes: 0,
+            dependencyCount: 0,
+            defaultStreamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
+            schemaHash);
+    }
+
+    private static TypedPayloadDescriptor CreateTypedDescriptor(ushort profileId, uint schemaId, uint schemaVersion)
+    {
+        return new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            profileId,
+            descriptorFlags: 0,
+            schemaId,
+            schemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 0,
+            payloadLength: 0);
     }
 
     private static ResultPushMessage CreateBasicResultPush(FrameSubmitMessage submit)
