@@ -205,6 +205,30 @@ namespace Nnrp.Core
     }
 
     /// <summary>
+    /// Cache lifecycle error identifiers.
+    /// </summary>
+    public enum CacheErrorCode : uint
+    {
+        /// <summary>No cache error, encoded as <c>0x00030000</c>.</summary>
+        None = 0x00030000,
+
+        /// <summary>The referenced cache object does not exist, encoded as <c>0x00030001</c>.</summary>
+        CacheMiss = 0x00030001,
+
+        /// <summary>The referenced lease has expired, encoded as <c>0x00030002</c>.</summary>
+        LeaseExpired = 0x00030002,
+
+        /// <summary>The requested object version does not match, encoded as <c>0x00030003</c>.</summary>
+        VersionMismatch = 0x00030003,
+
+        /// <summary>A dependent object or schema is invalid, encoded as <c>0x00030004</c>.</summary>
+        DependencyInvalid = 0x00030004,
+
+        /// <summary>The object is incompatible with the requested schema binding, encoded as <c>0x00030005</c>.</summary>
+        SchemaMismatch = 0x00030005,
+    }
+
+    /// <summary>
     /// Schema registry error identifiers.
     /// </summary>
     public enum SchemaErrorCode : uint

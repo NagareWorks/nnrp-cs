@@ -58,6 +58,15 @@ namespace Nnrp.Core.Tests
                     { "id": "l2.payload.typed.callback_polling.descriptor_consistency.validation" },
                     { "id": "l1.token_profile.partial.validation" },
                     { "id": "l2.profile.token.partial.callback_polling.validation" },
+                    { "id": "l0.cache.error_code.family.golden" },
+                    { "id": "l1.cache.lease_owner_scope.validation" },
+                    { "id": "l1.cache.object_version.monotonicity.validation" },
+                    { "id": "l1.cache.dependency_invalidation.validation" },
+                    { "id": "l1.cache.error_code.cache_miss.validation" },
+                    { "id": "l1.cache.error_code.lease_expired.validation" },
+                    { "id": "l1.cache.error_code.version_mismatch.validation" },
+                    { "id": "l1.cache.error_code.dependency_invalid.validation" },
+                    { "id": "l1.cache.error_code.schema_mismatch.validation" },
                     { "id": "l1.cache.unimplemented" }
                   ]
                 }
@@ -69,16 +78,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(42, results.Length);
+            Assert.Equal(51, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 41; index += 1)
+            for (var index = 1; index < 50; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[41].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[41].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[50].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[50].GetProperty("failure_kind").GetString());
         }
 
         [Fact]

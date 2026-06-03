@@ -10,6 +10,7 @@
     "session.multi_session",
     "operation.lifecycle",
     "operation.cancel_scope",
+    "cache.lifecycle",
     "payload.typed",
     "profile.token",
     "schema.registry"
