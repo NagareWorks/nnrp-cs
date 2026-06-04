@@ -215,6 +215,9 @@ jobs:
           --validate-tracked-metadata
           --repository-url https://github.com/${{ github.repository }}
 
+      - name: Test UPM package metadata generation
+        run: python -m unittest discover -s tests/Packaging.Tests -p "test_*.py"
+
       - name: Restore
         run: dotnet restore Nnrp.sln
 
