@@ -31,6 +31,10 @@ NATIVE_PLUGIN_SETTINGS = {
     "osx-arm64": ("OSX", "ARM64"),
 }
 
+UNITY_NATIVE_PLUGIN_RIDS_BY_PATH = {
+    relative_output.as_posix(): rid for rid, (_, relative_output) in NATIVE_LAYOUT.items()
+}
+
 PACKAGE_NAME = "com.nnrp.client"
 PACKAGE_DISPLAY_NAME = "NNRP Client SDK"
 PACKAGE_DESCRIPTION = "UPM distribution of the NNRP managed client SDK and packaged native bridge assets."
@@ -200,6 +204,11 @@ def native_plugin_meta(relative_path: str, rid: str) -> str:
     )
 
 
+def native_plugin_rid_for_relative_path(relative_path: str) -> str | None:
+    normalized = relative_path.replace("\\", "/").strip("/")
+    return UNITY_NATIVE_PLUGIN_RIDS_BY_PATH.get(normalized)
+
+
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -343,16 +352,8 @@ def emit_meta_files(output_root: Path) -> None:
         if file_path.suffix == ".dll" and file_path.parts[-2] == "Managed":
             content = managed_plugin_meta(relative_path)
         elif file_path.suffix in {".dll", ".so", ".dylib"}:
-            rid = relative_path.split("/")[2].lower() if relative_path.startswith("Runtime/Plugins/") else ""
-            if rid == "windows":
-                content = native_plugin_meta(relative_path, "win-x64")
-            elif rid == "linux":
-                content = native_plugin_meta(relative_path, "linux-x64")
-            elif rid == "macos":
-                arch = relative_path.split("/")[3].lower()
-                content = native_plugin_meta(relative_path, "osx-arm64" if arch == "arm64" else "osx-x64")
-            else:
-                content = default_meta(relative_path)
+            rid = native_plugin_rid_for_relative_path(relative_path)
+            content = native_plugin_meta(relative_path, rid) if rid else default_meta(relative_path)
         else:
             content = default_meta(relative_path)
         meta_path.write_text(content, encoding="utf-8")
