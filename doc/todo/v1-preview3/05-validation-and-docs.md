@@ -15,7 +15,7 @@
 - [x] Add native smoke coverage for routed multi-session preview3 result delivery on one live connection.
 - [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
   - [x] Add native bridge unit coverage for resume, recovery validators, schema descriptor helpers, and buffer acquire/view/release routing.
-  - [ ] Add integration coverage for resume behavior against a live native artifact.
+  - [x] Add integration coverage for resume behavior against a live native artifact.
 - [x] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
 - [x] Add allocation-focused smoke checks so managed preview3 hot paths do not silently copy payloads by default.
   - [x] Add smoke coverage that native event/result payload snapshots can be inspected through read-only memory/span views.
