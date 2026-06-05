@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -162,7 +163,7 @@ namespace Nnrp.NativeBridge.Tests
 
             Assert.Equal("fake-path", result.ArtifactPath);
             Assert.Equal(1, result.AbiMajor);
-            Assert.Equal(0, result.AbiMinor);
+            Assert.Equal(NnrpNativeArtifact.MinimumAbiMinor, result.AbiMinor);
             Assert.Equal(0, result.AbiPatch);
             Assert.Equal(1, result.ProtocolMajor);
             Assert.Equal(0, result.ProtocolWireFormat);
@@ -326,12 +327,16 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(NnrpHandleKind.Operation, new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)).Handle.Kind);
             Assert.Equal(NnrpHandleKind.EventPump, new NnrpEventPumpHandle(new NnrpHandle(NnrpHandleKind.EventPump, 4, 1)).Handle.Kind);
             Assert.Equal(NnrpHandleKind.Buffer, new NnrpBufferHandle(new NnrpHandle(NnrpHandleKind.Buffer, 5, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.SchemaRegistry, new NnrpSchemaRegistryHandle(new NnrpHandle(NnrpHandleKind.SchemaRegistry, 6, 1)).Handle.Kind);
+            Assert.Equal(NnrpHandleKind.CacheLease, new NnrpCacheLeaseHandle(new NnrpHandle(NnrpHandleKind.CacheLease, 7, 1)).Handle.Kind);
 
             Assert.Throws<ArgumentException>(() => new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
             Assert.Throws<ArgumentException>(() => new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)));
             Assert.Throws<ArgumentException>(() => new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)));
             Assert.Throws<ArgumentException>(() => new NnrpEventPumpHandle(new NnrpHandle(NnrpHandleKind.Buffer, 5, 1)));
             Assert.Throws<ArgumentException>(() => new NnrpBufferHandle(new NnrpHandle(NnrpHandleKind.EventPump, 4, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpSchemaRegistryHandle(new NnrpHandle(NnrpHandleKind.Buffer, 5, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpCacheLeaseHandle(new NnrpHandle(NnrpHandleKind.SchemaRegistry, 6, 1)));
         }
 
         [Fact]
@@ -453,8 +458,108 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpFfiDiagnostic(NnrpFfiStatus.Ok));
             Assert.True(entrypoints.DispatchEvent(new NnrpCallbackSink(IntPtr.Zero, IntPtr.Zero), ref eventValue).Succeeded);
 
+            NnrpHandle registry;
+            Assert.True(entrypoints.SchemaRegistryCreate(out registry).Succeeded);
+            Assert.Equal(NnrpHandleKind.SchemaRegistry, registry.Kind);
+
+            uint action;
+            Assert.True(entrypoints.SchemaRegistryInstall(registry, TokenSchemaDescriptor(), out action).Succeeded);
+            Assert.Equal((uint)NnrpSchemaRegistryAction.Installed, action);
+
+            NnrpSchemaDescriptorHeader descriptor;
+            Assert.True(entrypoints.SchemaRegistryLookup(registry, 0x1001, 3, out descriptor).Succeeded);
+            Assert.Equal((uint)0x1001, descriptor.SchemaId);
+            Assert.Equal((uint)3, descriptor.SchemaVersion);
+
+            Assert.True(entrypoints.SchemaRegistryValidateBinding(registry, MatchingTypedPayloadDescriptor()).Succeeded);
+            Assert.True(entrypoints.SchemaRegistryInvalidate(registry, 0x1001, 3, out action).Succeeded);
+            Assert.Equal((uint)NnrpSchemaRegistryAction.Invalidated, action);
+            Assert.True(entrypoints.SchemaRegistryRelease(registry).Succeeded);
+
+            NnrpCacheLeaseResult leaseResult;
+            Assert.True(entrypoints.CacheQuery(MatchingCacheLeaseRequest(), out leaseResult).Succeeded);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, leaseResult.OutcomeCode);
+            Assert.Equal(NnrpHandleKind.CacheLease, leaseResult.LeaseHandle.Kind);
+            Assert.True(entrypoints.CacheTouch(MatchingCacheLeaseRequest(), out leaseResult).Succeeded);
+            Assert.Equal((ulong)2500, leaseResult.ExpiresAtMilliseconds);
+
+            var objects = new[] { MatchingCacheObjectId(), new NnrpCacheObjectId(5, 6, 7, 8) };
+            var results = new NnrpCacheLeaseResult[objects.Length];
+            var objectHandle = GCHandle.Alloc(objects, GCHandleType.Pinned);
+            var resultHandle = GCHandle.Alloc(results, GCHandleType.Pinned);
+            try
+            {
+                Assert.True(entrypoints.CachePrefetch(
+                    new NnrpHandle(NnrpHandleKind.Session, 3, 1),
+                    objectHandle.AddrOfPinnedObject(),
+                    new UIntPtr((uint)objects.Length),
+                    1000,
+                    500,
+                    resultHandle.AddrOfPinnedObject()).Succeeded);
+            }
+            finally
+            {
+                resultHandle.Free();
+                objectHandle.Free();
+            }
+
+            Assert.Equal((uint)1, results[0].ObjectId.CacheNamespace);
+            Assert.Equal((uint)5, results[1].ObjectId.CacheNamespace);
+            Assert.True(entrypoints.CacheRelease(new NnrpHandle(NnrpHandleKind.CacheLease, 77, 1), out leaseResult).Succeeded);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, leaseResult.OutcomeCode);
+
             entrypoints.Dispose();
             entrypoints.Dispose();
+        }
+
+        [Fact]
+        public void NativeSchemaRegistryRoutesNativeEntrypoints()
+        {
+            var registry = NnrpNativeSchemaRegistry.Create(CreateEntrypoints());
+
+            Assert.False(registry.IsReleased);
+            Assert.Equal(NnrpHandleKind.SchemaRegistry, registry.Handle.Handle.Kind);
+            Assert.Equal(NnrpSchemaRegistryAction.Installed, registry.Install(TokenSchemaDescriptor()));
+
+            var descriptor = registry.Lookup(0x1001, 3);
+
+            Assert.Equal((uint)0x1001, descriptor.SchemaId);
+            Assert.Equal((uint)3, descriptor.SchemaVersion);
+            registry.ValidateBinding(MatchingTypedPayloadDescriptor());
+            Assert.Equal(NnrpSchemaRegistryAction.Invalidated, registry.Invalidate(0x1001, 3));
+
+            registry.Release();
+
+            Assert.True(registry.IsReleased);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => registry.Lookup(0x1001, 3));
+            registry.Dispose();
+        }
+
+        [Fact]
+        public void NativeCacheLeasesRouteNativeEntrypoints()
+        {
+            var cache = new NnrpNativeCacheLeases(CreateEntrypoints());
+
+            var query = cache.Query(MatchingCacheLeaseRequest());
+            var touch = cache.Touch(MatchingCacheLeaseRequest());
+            var prefetch = cache.Prefetch(
+                new NnrpHandle(NnrpHandleKind.Session, 3, 1),
+                new[] { MatchingCacheObjectId(), new NnrpCacheObjectId(5, 6, 7, 8) },
+                1000,
+                500);
+            var release = cache.Release(new NnrpCacheLeaseHandle(query.LeaseHandle));
+
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
+            Assert.Equal((ulong)2000, query.ExpiresAtMilliseconds);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, touch.OutcomeCode);
+            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Equal(2, prefetch.Length);
+            Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
+            Assert.Equal((uint)5, prefetch[1].ObjectId.CacheNamespace);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
+            Assert.Empty(cache.Prefetch(new NnrpHandle(NnrpHandleKind.Session, 3, 1), Array.Empty<NnrpCacheObjectId>(), 1000, 500));
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeCacheLeases(null!));
+            Assert.Throws<ArgumentNullException>(() => cache.Prefetch(new NnrpHandle(NnrpHandleKind.Session, 3, 1), null!, 1000, 500));
         }
 
         [Fact]
@@ -483,6 +588,69 @@ namespace Nnrp.NativeBridge.Tests
                     Control,
                     PollEmpty,
                     DispatchEvent));
+        }
+
+        [Fact]
+        public void NativeRuntimeEntrypointsMissingOptionalDelegatesReturnDeterministicErrors()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+
+            NnrpHandle registry;
+            uint action;
+            NnrpSchemaDescriptorHeader schemaDescriptor;
+            NnrpCacheLeaseResult leaseResult;
+
+            Assert.Equal(NnrpErrorFamily.Schema, entrypoints.SchemaRegistryCreate(out registry).ErrorFamily);
+            Assert.False(registry.IsValid);
+            Assert.Equal(
+                NnrpErrorFamily.Schema,
+                entrypoints.SchemaRegistryInstall(NnrpHandle.Invalid, TokenSchemaDescriptor(), out action).ErrorFamily);
+            Assert.Equal(
+                NnrpErrorFamily.Schema,
+                entrypoints.SchemaRegistryLookup(NnrpHandle.Invalid, 0x1001, 3, out schemaDescriptor).ErrorFamily);
+            Assert.Equal(default(NnrpSchemaDescriptorHeader), schemaDescriptor);
+            Assert.Equal(
+                NnrpErrorFamily.Schema,
+                entrypoints.SchemaRegistryInvalidate(NnrpHandle.Invalid, 0x1001, 3, out action).ErrorFamily);
+            Assert.Equal(
+                NnrpErrorFamily.Schema,
+                entrypoints.SchemaRegistryValidateBinding(NnrpHandle.Invalid, MatchingTypedPayloadDescriptor()).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.Schema, entrypoints.SchemaRegistryRelease(NnrpHandle.Invalid).ErrorFamily);
+
+            Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheQuery(MatchingCacheLeaseRequest(), out leaseResult).ErrorFamily);
+            Assert.Equal(default(NnrpCacheLeaseResult), leaseResult);
+            Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheTouch(MatchingCacheLeaseRequest(), out leaseResult).ErrorFamily);
+            Assert.Equal(
+                NnrpErrorFamily.Cache,
+                entrypoints.CachePrefetch(
+                    new NnrpHandle(NnrpHandleKind.Session, 3, 1),
+                    IntPtr.Zero,
+                    UIntPtr.Zero,
+                    1000,
+                    500,
+                    IntPtr.Zero).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheRelease(NnrpHandle.Invalid, out leaseResult).ErrorFamily);
         }
 
         [Fact]
@@ -1577,7 +1745,7 @@ namespace Nnrp.NativeBridge.Tests
 
         private static NnrpRuntimeCapabilities MatchingCapabilities(
             ushort abiMajor = 1,
-            ushort abiMinor = 0,
+            ushort abiMinor = NnrpNativeArtifact.MinimumAbiMinor,
             ushort abiPatch = 0,
             byte protocolMajor = 1,
             byte protocolWireFormat = 0,
@@ -1621,7 +1789,17 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 Control,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryLookup: SchemaRegistryLookup,
+                schemaRegistryInvalidate: SchemaRegistryInvalidate,
+                schemaRegistryValidateBinding: SchemaRegistryValidateBinding,
+                schemaRegistryRelease: HandleStatus,
+                cacheQuery: CacheQuery,
+                cacheTouch: CacheTouch,
+                cachePrefetch: CachePrefetch,
+                cacheRelease: CacheRelease);
         }
 
         private static NnrpProtocolVersion CurrentProtocolVersion()
@@ -1753,6 +1931,158 @@ namespace Nnrp.NativeBridge.Tests
         private static NnrpFfiStatus DispatchEvent(NnrpCallbackSink sink, ref NnrpEvent @event)
         {
             return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpSchemaDescriptorHeader TokenSchemaDescriptor()
+        {
+            return new NnrpSchemaDescriptorHeader(
+                0x1001,
+                3,
+                2,
+                0,
+                1,
+                1,
+                32,
+                0,
+                1,
+                0x6e6e7270746f6b33UL);
+        }
+
+        private static NnrpTypedPayloadDescriptor MatchingTypedPayloadDescriptor()
+        {
+            return new NnrpTypedPayloadDescriptor(
+                2,
+                0,
+                0x1001,
+                3,
+                1,
+                0,
+                16);
+        }
+
+        private static NnrpFfiStatus SchemaRegistryCreate(out NnrpHandle registry)
+        {
+            registry = new NnrpHandle(NnrpHandleKind.SchemaRegistry, 70, 1);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus SchemaRegistryInstall(
+            NnrpHandle registry,
+            NnrpSchemaDescriptorHeader descriptor,
+            out uint action)
+        {
+            action = (uint)NnrpSchemaRegistryAction.Installed;
+            return registry.Kind == NnrpHandleKind.SchemaRegistry && descriptor.SchemaId != 0
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus SchemaRegistryLookup(
+            NnrpHandle registry,
+            uint schemaId,
+            uint schemaVersion,
+            out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = TokenSchemaDescriptor();
+            return registry.Kind == NnrpHandleKind.SchemaRegistry && schemaId == descriptor.SchemaId && schemaVersion == descriptor.SchemaVersion
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus SchemaRegistryInvalidate(
+            NnrpHandle registry,
+            uint schemaId,
+            uint schemaVersion,
+            out uint action)
+        {
+            action = (uint)NnrpSchemaRegistryAction.Invalidated;
+            return registry.Kind == NnrpHandleKind.SchemaRegistry && schemaId == 0x1001 && schemaVersion == 3
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus SchemaRegistryValidateBinding(
+            NnrpHandle registry,
+            NnrpTypedPayloadDescriptor descriptor)
+        {
+            return registry.Kind == NnrpHandleKind.SchemaRegistry && descriptor.SchemaId == 0x1001 && descriptor.SchemaVersion == 3
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpCacheObjectId MatchingCacheObjectId()
+        {
+            return new NnrpCacheObjectId(1, 2, 3, 4);
+        }
+
+        private static NnrpCacheLeaseRequest MatchingCacheLeaseRequest()
+        {
+            return new NnrpCacheLeaseRequest(
+                new NnrpHandle(NnrpHandleKind.Session, 3, 1),
+                MatchingCacheObjectId(),
+                9,
+                1000,
+                500);
+        }
+
+        private static NnrpCacheLeaseResult CreateCacheLeaseResult(
+            NnrpCacheObjectId objectId,
+            NnrpCacheLeaseOutcome outcome = NnrpCacheLeaseOutcome.Valid,
+            ulong expiresAtMilliseconds = 2000)
+        {
+            return new NnrpCacheLeaseResult(
+                (uint)outcome,
+                new NnrpHandle(NnrpHandleKind.CacheLease, 77, 1),
+                objectId,
+                9,
+                88,
+                expiresAtMilliseconds);
+        }
+
+        private static NnrpFfiStatus CacheQuery(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
+        {
+            result = CreateCacheLeaseResult(request.ObjectId);
+            return request.Owner.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
+        }
+
+        private static NnrpFfiStatus CacheTouch(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
+        {
+            result = CreateCacheLeaseResult(request.ObjectId, expiresAtMilliseconds: request.NowMilliseconds + request.TtlMilliseconds + 1000);
+            return request.Owner.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
+        }
+
+        private static NnrpFfiStatus CachePrefetch(
+            NnrpHandle owner,
+            IntPtr objects,
+            UIntPtr objectCount,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds,
+            IntPtr results)
+        {
+            if (!owner.IsValid)
+            {
+                return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
+            }
+
+            int objectSize = Marshal.SizeOf<NnrpCacheObjectId>();
+            int resultSize = Marshal.SizeOf<NnrpCacheLeaseResult>();
+            int count = checked((int)objectCount.ToUInt64());
+            for (int index = 0; index < count; index++)
+            {
+                var objectId = Marshal.PtrToStructure<NnrpCacheObjectId>(IntPtr.Add(objects, index * objectSize));
+                Marshal.StructureToPtr(
+                    CreateCacheLeaseResult(objectId, expiresAtMilliseconds: nowMilliseconds + ttlMilliseconds + (ulong)index),
+                    IntPtr.Add(results, index * resultSize),
+                    false);
+            }
+
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus CacheRelease(NnrpHandle lease, out NnrpCacheLeaseResult result)
+        {
+            result = CreateCacheLeaseResult(MatchingCacheObjectId(), NnrpCacheLeaseOutcome.Released);
+            return lease.Kind == NnrpHandleKind.CacheLease ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
         }
 
         private static NnrpPollResult EmptyPollResult()

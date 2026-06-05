@@ -21,9 +21,10 @@
 
 ## FFI Consumption
 
-- [ ] Consume the frozen handle families for connection, session, operation, schema, and buffer views.
-  - [x] Wrap connection, session, operation, event pump, and buffer value handles exposed by the frozen Rust FFI.
-  - [ ] Wrap schema handles and stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
+- [ ] Consume the frozen handle families for connection, session, operation, schema, cache lease, and buffer views.
+  - [x] Wrap connection, session, operation, event pump, buffer value, and cache lease handles exposed by the frozen Rust FFI.
+  - [x] Wrap schema registry handles exposed by the frozen Rust FFI.
+  - [ ] Wrap stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
 - [ ] Implement callback, polling, and event-queue adapters according to the frozen Rust binding contract.
   - [x] Adapt native polling/event-queue snapshots for Unity and plain .NET hosts.
   - [x] Choose event queue as the default managed delivery model for preview3.
@@ -46,7 +47,9 @@
 - [ ] Implement cache lease, schema registry, and typed payload descriptor wrappers against the frozen 32B / 24B layouts and standard error behavior.
   - [x] Add cache lease, schema/profile registry, and typed payload descriptor managed wrappers.
   - [x] Align typed payload descriptor parsing, writing, and conformance coverage with the frozen 24B layout and token schema anchor.
-  - [ ] Route lease policy, dependency validation, and schema/profile interpretation through native-core-owned helpers once the bridge exposes those operations.
+  - [x] Route schema registry install, lookup, invalidation, and binding validation through native-owned helpers exposed by the bridge.
+  - [x] Route cache lease query, touch, prefetch, and release through native-owned helpers exposed by the bridge.
+  - [ ] Route cache dependency validation through native-core-owned helpers once the bridge exposes those operations.
 - [ ] Consume Rust-generated conformance fixtures as the only canonical preview3 protocol baseline.
 
 ## Packaging Strategy

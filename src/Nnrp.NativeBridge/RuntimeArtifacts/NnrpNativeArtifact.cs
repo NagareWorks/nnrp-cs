@@ -528,6 +528,8 @@ namespace Nnrp.NativeBridge
         Operation = 3,
         EventPump = 4,
         Buffer = 5,
+        SchemaRegistry = 6,
+        CacheLease = 7,
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -667,6 +669,28 @@ namespace Nnrp.NativeBridge
         public NnrpHandle Handle { get; }
     }
 
+    public readonly struct NnrpSchemaRegistryHandle
+    {
+        public NnrpSchemaRegistryHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.SchemaRegistry);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
+    public readonly struct NnrpCacheLeaseHandle
+    {
+        public NnrpCacheLeaseHandle(NnrpHandle handle)
+        {
+            handle.RequireKind(NnrpHandleKind.CacheLease);
+            Handle = handle;
+        }
+
+        public NnrpHandle Handle { get; }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpBufferView
     {
@@ -707,6 +731,341 @@ namespace Nnrp.NativeBridge
         public readonly UIntPtr Length;
 
         public static NnrpMutableBufferView Empty => new NnrpMutableBufferView(IntPtr.Zero, UIntPtr.Zero);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpSchemaDescriptorHeader
+    {
+        public NnrpSchemaDescriptorHeader(
+            uint schemaId,
+            uint schemaVersion,
+            ushort profileId,
+            ushort schemaFlags,
+            byte minVersionMajor,
+            byte maxVersionMajor,
+            uint bodyBytes,
+            ushort dependencyCount,
+            ushort defaultStreamSemantics,
+            ulong schemaHash)
+        {
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+            ProfileId = profileId;
+            SchemaFlags = schemaFlags;
+            MinVersionMajor = minVersionMajor;
+            MaxVersionMajor = maxVersionMajor;
+            Reserved0 = 0;
+            BodyBytes = bodyBytes;
+            DependencyCount = dependencyCount;
+            DefaultStreamSemantics = defaultStreamSemantics;
+            SchemaHash = schemaHash;
+        }
+
+        public readonly uint SchemaId;
+
+        public readonly uint SchemaVersion;
+
+        public readonly ushort ProfileId;
+
+        public readonly ushort SchemaFlags;
+
+        public readonly byte MinVersionMajor;
+
+        public readonly byte MaxVersionMajor;
+
+        public readonly ushort Reserved0;
+
+        public readonly uint BodyBytes;
+
+        public readonly ushort DependencyCount;
+
+        public readonly ushort DefaultStreamSemantics;
+
+        public readonly ulong SchemaHash;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTypedPayloadDescriptor
+    {
+        public NnrpTypedPayloadDescriptor(
+            ushort profileId,
+            ushort descriptorFlags,
+            uint schemaId,
+            uint schemaVersion,
+            ushort streamSemantics,
+            uint offset,
+            uint length)
+        {
+            ProfileId = profileId;
+            DescriptorFlags = descriptorFlags;
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+            StreamSemantics = streamSemantics;
+            Reserved0 = 0;
+            Offset = offset;
+            Length = length;
+        }
+
+        public readonly ushort ProfileId;
+
+        public readonly ushort DescriptorFlags;
+
+        public readonly uint SchemaId;
+
+        public readonly uint SchemaVersion;
+
+        public readonly ushort StreamSemantics;
+
+        public readonly ushort Reserved0;
+
+        public readonly uint Offset;
+
+        public readonly uint Length;
+    }
+
+    public enum NnrpSchemaRegistryAction : uint
+    {
+        Installed = 0,
+        AlreadyInstalled = 1,
+        Updated = 2,
+        Invalidated = 3,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpCacheObjectId
+    {
+        public NnrpCacheObjectId(uint cacheNamespace, uint cacheKeyHigh, uint cacheKeyLow, uint objectKind)
+        {
+            CacheNamespace = cacheNamespace;
+            CacheKeyHigh = cacheKeyHigh;
+            CacheKeyLow = cacheKeyLow;
+            ObjectKind = objectKind;
+        }
+
+        public readonly uint CacheNamespace;
+
+        public readonly uint CacheKeyHigh;
+
+        public readonly uint CacheKeyLow;
+
+        public readonly uint ObjectKind;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpCacheLeaseRequest
+    {
+        public NnrpCacheLeaseRequest(
+            NnrpHandle owner,
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            Owner = owner;
+            ObjectId = objectId;
+            ExpectedVersion = expectedVersion;
+            NowMilliseconds = nowMilliseconds;
+            TtlMilliseconds = ttlMilliseconds;
+        }
+
+        public readonly NnrpHandle Owner;
+
+        public readonly NnrpCacheObjectId ObjectId;
+
+        public readonly ulong ExpectedVersion;
+
+        public readonly ulong NowMilliseconds;
+
+        public readonly uint TtlMilliseconds;
+    }
+
+    public enum NnrpCacheLeaseOutcome : uint
+    {
+        Valid = 0,
+        Miss = 1,
+        Expired = 2,
+        Released = 3,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpCacheLeaseResult
+    {
+        public NnrpCacheLeaseResult(
+            uint outcomeCode,
+            NnrpHandle leaseHandle,
+            NnrpCacheObjectId objectId,
+            ulong objectVersion,
+            ulong leaseId,
+            ulong expiresAtMilliseconds)
+        {
+            OutcomeCode = outcomeCode;
+            LeaseHandle = leaseHandle;
+            ObjectId = objectId;
+            ObjectVersion = objectVersion;
+            LeaseId = leaseId;
+            ExpiresAtMilliseconds = expiresAtMilliseconds;
+        }
+
+        public readonly uint OutcomeCode;
+
+        public readonly NnrpHandle LeaseHandle;
+
+        public readonly NnrpCacheObjectId ObjectId;
+
+        public readonly ulong ObjectVersion;
+
+        public readonly ulong LeaseId;
+
+        public readonly ulong ExpiresAtMilliseconds;
+    }
+
+    public sealed class NnrpNativeSchemaRegistry : IDisposable
+    {
+        private NnrpNativeSchemaRegistry(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpSchemaRegistryHandle handle)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Handle = handle;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpSchemaRegistryHandle Handle { get; private set; }
+
+        public bool IsReleased { get; private set; }
+
+        public static NnrpNativeSchemaRegistry Create(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            if (entrypoints == null)
+            {
+                throw new ArgumentNullException(nameof(entrypoints));
+            }
+
+            NnrpHandle registry;
+            entrypoints.SchemaRegistryCreate(out registry).ThrowIfError();
+            return new NnrpNativeSchemaRegistry(entrypoints, new NnrpSchemaRegistryHandle(registry));
+        }
+
+        public NnrpSchemaRegistryAction Install(NnrpSchemaDescriptorHeader descriptor)
+        {
+            EnsureOpen();
+            uint action;
+            Entrypoints.SchemaRegistryInstall(Handle.Handle, descriptor, out action).ThrowIfError();
+            return (NnrpSchemaRegistryAction)action;
+        }
+
+        public NnrpSchemaDescriptorHeader Lookup(uint schemaId, uint schemaVersion)
+        {
+            EnsureOpen();
+            NnrpSchemaDescriptorHeader descriptor;
+            Entrypoints.SchemaRegistryLookup(Handle.Handle, schemaId, schemaVersion, out descriptor).ThrowIfError();
+            return descriptor;
+        }
+
+        public NnrpSchemaRegistryAction Invalidate(uint schemaId, uint schemaVersion)
+        {
+            EnsureOpen();
+            uint action;
+            Entrypoints.SchemaRegistryInvalidate(Handle.Handle, schemaId, schemaVersion, out action).ThrowIfError();
+            return (NnrpSchemaRegistryAction)action;
+        }
+
+        public void ValidateBinding(NnrpTypedPayloadDescriptor descriptor)
+        {
+            EnsureOpen();
+            Entrypoints.SchemaRegistryValidateBinding(Handle.Handle, descriptor).ThrowIfError();
+        }
+
+        public void Release()
+        {
+            EnsureOpen();
+            Entrypoints.SchemaRegistryRelease(Handle.Handle).ThrowIfError();
+            IsReleased = true;
+        }
+
+        public void Dispose()
+        {
+            if (IsReleased)
+            {
+                return;
+            }
+
+            Release();
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsReleased)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Schema));
+            }
+        }
+    }
+
+    public sealed class NnrpNativeCacheLeases
+    {
+        public NnrpNativeCacheLeases(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpCacheLeaseResult Query(NnrpCacheLeaseRequest request)
+        {
+            NnrpCacheLeaseResult result;
+            Entrypoints.CacheQuery(request, out result).ThrowIfError();
+            return result;
+        }
+
+        public NnrpCacheLeaseResult Touch(NnrpCacheLeaseRequest request)
+        {
+            NnrpCacheLeaseResult result;
+            Entrypoints.CacheTouch(request, out result).ThrowIfError();
+            return result;
+        }
+
+        public NnrpCacheLeaseResult[] Prefetch(NnrpHandle owner, NnrpCacheObjectId[] objects, ulong nowMilliseconds, uint ttlMilliseconds)
+        {
+            if (objects == null)
+            {
+                throw new ArgumentNullException(nameof(objects));
+            }
+
+            if (objects.Length == 0)
+            {
+                return Array.Empty<NnrpCacheLeaseResult>();
+            }
+
+            var results = new NnrpCacheLeaseResult[objects.Length];
+            var objectHandle = GCHandle.Alloc(objects, GCHandleType.Pinned);
+            var resultHandle = GCHandle.Alloc(results, GCHandleType.Pinned);
+            try
+            {
+                Entrypoints.CachePrefetch(
+                    owner,
+                    objectHandle.AddrOfPinnedObject(),
+                    new UIntPtr((uint)objects.Length),
+                    nowMilliseconds,
+                    ttlMilliseconds,
+                    resultHandle.AddrOfPinnedObject()).ThrowIfError();
+            }
+            finally
+            {
+                resultHandle.Free();
+                objectHandle.Free();
+            }
+
+            return results;
+        }
+
+        public NnrpCacheLeaseResult Release(NnrpCacheLeaseHandle lease)
+        {
+            NnrpCacheLeaseResult result;
+            Entrypoints.CacheRelease(lease.Handle, out result).ThrowIfError();
+            return result;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1043,7 +1402,17 @@ namespace Nnrp.NativeBridge
             PollEmptyInvoker pollEmpty,
             DispatchEventInvoker dispatchEvent,
             HandleStatusInvoker? connectionClose = null,
-            HandleStatusInvoker? clientCloseConnection = null)
+            HandleStatusInvoker? clientCloseConnection = null,
+            SchemaRegistryCreateInvoker? schemaRegistryCreate = null,
+            SchemaRegistryInstallInvoker? schemaRegistryInstall = null,
+            SchemaRegistryLookupInvoker? schemaRegistryLookup = null,
+            SchemaRegistryInvalidateInvoker? schemaRegistryInvalidate = null,
+            SchemaRegistryValidateBindingInvoker? schemaRegistryValidateBinding = null,
+            HandleStatusInvoker? schemaRegistryRelease = null,
+            CacheLeaseRequestInvoker? cacheQuery = null,
+            CacheLeaseRequestInvoker? cacheTouch = null,
+            CachePrefetchInvoker? cachePrefetch = null,
+            CacheReleaseInvoker? cacheRelease = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -1068,7 +1437,17 @@ namespace Nnrp.NativeBridge
                 pollEmpty,
                 dispatchEvent,
                 connectionClose,
-                clientCloseConnection)
+                clientCloseConnection,
+                schemaRegistryCreate,
+                schemaRegistryInstall,
+                schemaRegistryLookup,
+                schemaRegistryInvalidate,
+                schemaRegistryValidateBinding,
+                schemaRegistryRelease,
+                cacheQuery,
+                cacheTouch,
+                cachePrefetch,
+                cacheRelease)
         {
         }
 
@@ -1096,7 +1475,17 @@ namespace Nnrp.NativeBridge
             PollEmptyInvoker pollEmpty,
             DispatchEventInvoker dispatchEvent,
             HandleStatusInvoker? connectionClose,
-            HandleStatusInvoker? clientCloseConnection)
+            HandleStatusInvoker? clientCloseConnection,
+            SchemaRegistryCreateInvoker? schemaRegistryCreate,
+            SchemaRegistryInstallInvoker? schemaRegistryInstall,
+            SchemaRegistryLookupInvoker? schemaRegistryLookup,
+            SchemaRegistryInvalidateInvoker? schemaRegistryInvalidate,
+            SchemaRegistryValidateBindingInvoker? schemaRegistryValidateBinding,
+            HandleStatusInvoker? schemaRegistryRelease,
+            CacheLeaseRequestInvoker? cacheQuery,
+            CacheLeaseRequestInvoker? cacheTouch,
+            CachePrefetchInvoker? cachePrefetch,
+            CacheReleaseInvoker? cacheRelease)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -1122,6 +1511,16 @@ namespace Nnrp.NativeBridge
             DispatchEvent = dispatchEvent ?? throw new ArgumentNullException(nameof(dispatchEvent));
             ConnectionClose = connectionClose ?? ClientClose;
             ClientCloseConnection = clientCloseConnection ?? ConnectionClose;
+            SchemaRegistryCreate = schemaRegistryCreate ?? MissingSchemaRegistryCreate;
+            SchemaRegistryInstall = schemaRegistryInstall ?? MissingSchemaRegistryInstall;
+            SchemaRegistryLookup = schemaRegistryLookup ?? MissingSchemaRegistryLookup;
+            SchemaRegistryInvalidate = schemaRegistryInvalidate ?? MissingSchemaRegistryInvalidate;
+            SchemaRegistryValidateBinding = schemaRegistryValidateBinding ?? MissingSchemaRegistryValidateBinding;
+            SchemaRegistryRelease = schemaRegistryRelease ?? MissingHandleStatus;
+            CacheQuery = cacheQuery ?? MissingCacheLeaseRequest;
+            CacheTouch = cacheTouch ?? MissingCacheLeaseRequest;
+            CachePrefetch = cachePrefetch ?? MissingCachePrefetch;
+            CacheRelease = cacheRelease ?? MissingCacheRelease;
         }
 
         private IntPtr _libraryHandle;
@@ -1165,7 +1564,17 @@ namespace Nnrp.NativeBridge
                     Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
                     Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"),
                     Bind<HandleStatusInvoker>(handle, "nnrp_connection_close"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close_connection"));
+                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close_connection"),
+                    Bind<SchemaRegistryCreateInvoker>(handle, "nnrp_schema_registry_create"),
+                    Bind<SchemaRegistryInstallInvoker>(handle, "nnrp_schema_registry_install"),
+                    Bind<SchemaRegistryLookupInvoker>(handle, "nnrp_schema_registry_lookup"),
+                    Bind<SchemaRegistryInvalidateInvoker>(handle, "nnrp_schema_registry_invalidate"),
+                    Bind<SchemaRegistryValidateBindingInvoker>(handle, "nnrp_schema_registry_validate_binding"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_schema_registry_release"),
+                    Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_query"),
+                    Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
+                    Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
+                    Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"));
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
             {
@@ -1245,6 +1654,36 @@ namespace Nnrp.NativeBridge
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus DispatchEventInvoker(NnrpCallbackSink sink, ref NnrpEvent @event);
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaRegistryCreateInvoker(out NnrpHandle registry);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaRegistryInstallInvoker(NnrpHandle registry, NnrpSchemaDescriptorHeader descriptor, out uint action);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaRegistryLookupInvoker(NnrpHandle registry, uint schemaId, uint schemaVersion, out NnrpSchemaDescriptorHeader descriptor);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaRegistryInvalidateInvoker(NnrpHandle registry, uint schemaId, uint schemaVersion, out uint action);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaRegistryValidateBindingInvoker(NnrpHandle registry, NnrpTypedPayloadDescriptor descriptor);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus CacheLeaseRequestInvoker(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus CachePrefetchInvoker(
+            NnrpHandle owner,
+            IntPtr objects,
+            UIntPtr objectCount,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds,
+            IntPtr results);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus CacheReleaseInvoker(NnrpHandle lease, out NnrpCacheLeaseResult result);
+
         public CurrentProtocolVersionInvoker CurrentProtocolVersion { get; }
 
         public NnrpNativeArtifact.RuntimeCapabilitiesInvoker RuntimeCapabilities { get; }
@@ -1290,6 +1729,83 @@ namespace Nnrp.NativeBridge
         public PollEmptyInvoker PollEmpty { get; }
 
         public DispatchEventInvoker DispatchEvent { get; }
+
+        public SchemaRegistryCreateInvoker SchemaRegistryCreate { get; }
+
+        public SchemaRegistryInstallInvoker SchemaRegistryInstall { get; }
+
+        public SchemaRegistryLookupInvoker SchemaRegistryLookup { get; }
+
+        public SchemaRegistryInvalidateInvoker SchemaRegistryInvalidate { get; }
+
+        public SchemaRegistryValidateBindingInvoker SchemaRegistryValidateBinding { get; }
+
+        public HandleStatusInvoker SchemaRegistryRelease { get; }
+
+        public CacheLeaseRequestInvoker CacheQuery { get; }
+
+        public CacheLeaseRequestInvoker CacheTouch { get; }
+
+        public CachePrefetchInvoker CachePrefetch { get; }
+
+        public CacheReleaseInvoker CacheRelease { get; }
+
+        private static NnrpFfiStatus MissingSchemaRegistryCreate(out NnrpHandle registry)
+        {
+            registry = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingSchemaRegistryInstall(NnrpHandle registry, NnrpSchemaDescriptorHeader descriptor, out uint action)
+        {
+            action = 0;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingSchemaRegistryLookup(NnrpHandle registry, uint schemaId, uint schemaVersion, out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = default(NnrpSchemaDescriptorHeader);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingSchemaRegistryInvalidate(NnrpHandle registry, uint schemaId, uint schemaVersion, out uint action)
+        {
+            action = 0;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingSchemaRegistryValidateBinding(NnrpHandle registry, NnrpTypedPayloadDescriptor descriptor)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingHandleStatus(NnrpHandle handle)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingCacheLeaseRequest(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
+        {
+            result = default(NnrpCacheLeaseResult);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Cache);
+        }
+
+        private static NnrpFfiStatus MissingCachePrefetch(
+            NnrpHandle owner,
+            IntPtr objects,
+            UIntPtr objectCount,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds,
+            IntPtr results)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Cache);
+        }
+
+        private static NnrpFfiStatus MissingCacheRelease(NnrpHandle lease, out NnrpCacheLeaseResult result)
+        {
+            result = default(NnrpCacheLeaseResult);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Cache);
+        }
     }
 
     public readonly struct NnrpNativeRuntimeDiagnostic
@@ -2223,7 +2739,7 @@ namespace Nnrp.NativeBridge
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
         public const ushort ExpectedAbiMajor = 1;
-        public const ushort MinimumAbiMinor = 0;
+        public const ushort MinimumAbiMinor = 6;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;
         public const uint TransportSlotQuic = 0x00000001;
@@ -2237,6 +2753,14 @@ namespace Nnrp.NativeBridge
         public const ulong RuntimeFeatureRecovery = 0x0000000000000040;
         public const ulong RuntimeFeatureTypedPayload = 0x0000000000000080;
         public const ulong RuntimeFeatureTransportSlots = 0x0000000000000100;
+        public const ulong RuntimeFeatureBatchPolling = 0x0000000000000200;
+        public const ulong RuntimeFeatureCacheLeaseOps = 0x0000000000000400;
+        public const ulong RuntimeFeatureSchemaRegistryHandles = 0x0000000000000800;
+        public const ulong RuntimeFeatureBufferHandles = 0x0000000000001000;
+        public const ulong RuntimeFeatureExecutableResume = 0x0000000000002000;
+        public const ulong RuntimeFeatureClientCompletionHelpers = 0x0000000000004000;
+        public const ulong RuntimeFeatureClientCoarseResultHelpers = 0x0000000000008000;
+        public const ulong RuntimeFeatureClientCompactResultHelpers = 0x0000000000010000;
         public const ulong RequiredRuntimeFeatures =
             RuntimeFeatureProtocolCore
             | RuntimeFeatureClientApi
@@ -2246,7 +2770,10 @@ namespace Nnrp.NativeBridge
             | RuntimeFeatureCacheSchema
             | RuntimeFeatureRecovery
             | RuntimeFeatureTypedPayload
-            | RuntimeFeatureTransportSlots;
+            | RuntimeFeatureTransportSlots
+            | RuntimeFeatureCacheLeaseOps
+            | RuntimeFeatureSchemaRegistryHandles
+            | RuntimeFeatureBufferHandles;
         public const uint RequiredTransportSlots = TransportSlotTcp;
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

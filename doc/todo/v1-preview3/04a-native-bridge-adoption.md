@@ -12,8 +12,10 @@
 - [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
 - [x] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
 - [x] Reject ABI/protocol mismatches with deterministic managed exceptions and actionable diagnostic text.
-- [x] Wrap connection, session, operation, event pump, and buffer value handles exposed by the frozen Rust FFI.
-- [ ] Wrap schema and stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
+- [x] Wrap connection, session, operation, event pump, buffer value, and cache lease handles exposed by the frozen Rust FFI.
+- [x] Wrap schema registry handles and lifecycle operations exposed by the bridge contract.
+- [x] Wrap cache lease lifecycle operations exposed by the bridge contract.
+- [ ] Wrap stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
 - [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
   - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
   - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views without leaking raw FFI buffer lifetimes.

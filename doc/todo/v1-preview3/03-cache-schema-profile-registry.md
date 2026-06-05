@@ -6,7 +6,8 @@
 - [x] Add Unity/.NET-friendly cache query, touch, prefetch, and release helpers without re-implementing cache semantics in managed code.
 - [ ] Preserve native-core ownership of lease policy and dependency validation.
   - [x] Keep host APIs shaped as managed wrappers over native-backed cache query/touch/prefetch/release results.
-  - [ ] Route lease policy evaluation and dependency validation through native bridge operations once the bridge exposes those operations.
+  - [x] Route cache lease query, touch, prefetch, and release through native bridge operations.
+  - [ ] Route dependency validation through native bridge operations once the bridge exposes those operations.
 
 ## Schema And Registry Surface
 
