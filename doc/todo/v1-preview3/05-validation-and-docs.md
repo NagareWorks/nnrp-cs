@@ -11,20 +11,20 @@
 - [x] Add native smoke coverage for multiple preview3 sessions on one live connection facade.
 - [x] Add native smoke coverage for routed multi-session preview3 result delivery on one live connection.
 - [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
-- [ ] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
+- [x] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
 - [ ] Add allocation-focused smoke checks so managed preview3 hot paths do not silently copy payloads by default.
   - [x] Add smoke coverage that native event/result payload snapshots can be inspected through read-only memory/span views.
   - [ ] Add allocation-focused hot-path coverage for submit/result loops once borrowed or pooled submit payload lifetimes are explicit.
 
 ## Documentation And Rollout
 
-- [ ] Document the C# SDK as a Rust-backed preview3 binding plus Unity/.NET host integration layer.
+- [x] Document the C# SDK as a Rust-backed preview3 binding plus Unity/.NET host integration layer.
   - [x] Document that `Nnrp.NativeBridge` is the preview3 native-backed host facade and that managed fallback is diagnostic or unsupported-runtime only.
   - [x] Document native-backed server/session usage through `Nnrp.NativeBridge`.
 - [ ] Keep `doc/benchmarks/rs-native-artifacts-migration.md` updated with the native artifact plan, supported platform matrix, and pre/post migration benchmark results.
 - [ ] Document the current connection/session model and how it replaces the earlier preview-era assumptions.
 - [ ] Document cache lease, schema registry, profile neutrality, and operation/workflow lifecycle semantics for hosts.
-- [ ] Document how the Rust-backed APIs replace the prior helper surface within `NNRP/1`, without reintroducing parallel helper families.
-- [ ] Document the CI-first package strategy so reviewers reject repo-staged DLL and Unity-package regressions.
+- [x] Document how the Rust-backed APIs replace the prior helper surface within `NNRP/1`, without reintroducing parallel helper families.
+- [x] Document the CI-first package strategy so reviewers reject repo-staged DLL and Unity-package regressions.
 - [ ] Document the Unity `.meta` generation policy and the required plugin directory layout for a single multi-platform Unity package.
-- [ ] Document the supported common-platform scope as Windows, macOS, Linux, Android, and iOS.
+- [x] Document the supported common-platform scope as Windows, macOS, Linux, Android, and iOS.
