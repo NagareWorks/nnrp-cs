@@ -614,6 +614,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.NotNull(result.Event);
             Assert.Equal(6u, result.Event!.Kind);
             Assert.Equal(new byte[] { 1, 2, 3 }, result.Event.Payload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, result.Event.PayloadMemory.ToArray());
+            Assert.Equal(new byte[] { 1, 2, 3 }, result.Event.PayloadSpan.ToArray());
             Assert.Equal((ulong)12, result.Event.Connection.Id);
             Assert.Equal((ulong)41, result.Event.Session.Id);
             Assert.Equal((ulong)99, result.Event.Operation.Id);
@@ -658,6 +660,9 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((ulong)99, completed.OperationId);
             Assert.Equal((uint)7, completed.FrameId);
             Assert.Equal(new byte[] { 1, 2, 3 }, completed.Payload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, completed.PayloadMemory.ToArray());
+            Assert.Equal(new byte[] { 1, 2, 3 }, completed.PayloadSpan.ToArray());
+            Assert.Equal(completed.PayloadMemory.ToArray(), completed.Event.PayloadMemory.ToArray());
             Assert.Equal(NnrpNativeOperationLifecycle.Partial, partial.State);
             Assert.Equal(NnrpNativeOperationLifecycle.Degraded, degraded.State);
             Assert.Equal(NnrpNativeOperationLifecycle.StaleReuse, stale.State);

@@ -14,11 +14,15 @@
 - [ ] Wrap schema and stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
 - [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
   - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
+  - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views without leaking raw FFI buffer lifetimes.
+  - [ ] Replace submit/control payload pinning with explicit borrowed or pooled lifetime helpers once the native ABI can keep the boundary observable.
+  - [ ] Add host-facing lifetime documentation for Unity/.NET callback and event-pump consumers.
 - [ ] Define borrowed-buffer rules for future zero-copy result/body views.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
   - [x] Return managed poll/event snapshots from the native connection facade instead of raw FFI structs.
   - [x] Guard native session operations after explicit close on the managed facade.
   - [x] Add connection-level lifetime guards once native connection close/dispose is exposed.
+  - [ ] Add callback-registration ownership guards once native callback subscription handles are exposed.
 - [x] Map stable Rust error codes into managed exception and result surfaces.
 - [ ] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.

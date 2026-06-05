@@ -1361,6 +1361,10 @@ namespace Nnrp.NativeBridge
 
         public byte[] Payload { get; }
 
+        public ReadOnlyMemory<byte> PayloadMemory => Payload;
+
+        public ReadOnlySpan<byte> PayloadSpan => Payload;
+
         public NnrpNativeRuntimeDiagnostic Diagnostic { get; }
 
         public static NnrpNativeRuntimeEvent FromFfi(NnrpEvent @event)
@@ -1426,6 +1430,10 @@ namespace Nnrp.NativeBridge
         public uint FrameId { get; }
 
         public byte[] Payload { get; }
+
+        public ReadOnlyMemory<byte> PayloadMemory => Payload;
+
+        public ReadOnlySpan<byte> PayloadSpan => Payload;
 
         public NnrpNativeRuntimeEvent Event { get; }
 
