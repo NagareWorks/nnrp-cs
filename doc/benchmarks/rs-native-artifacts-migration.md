@@ -65,26 +65,28 @@ Rules:
 | Run | Date | SDK commit | nnrp-rs artifact | Host runtime | OS/arch | CPU | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pre-migration baseline | 2026-05-25 | 135ca63 | N/A | .NET 8.0.27 | windows/x64 | Intel(R) Core(TM)2 Duo CPU T7700 @ 2.40GHz | Conformance benchmark runner selected and measured 9 scenarios. |
-| Post-migration native | TBD | TBD | v1.0.0-preview.3.8 | TBD | TBD | TBD | TBD |
+| Post-migration native | 2026-06-06 | 9c8d7dd | v1.0.0-preview.3.8 | .NET 8.0.27 | windows/x64 | AMD Ryzen 9 9955HX3D 16-Core Processor | Benchmark adapter measured the same 9 scenarios locally; CPU differs from the pre-migration baseline, so deltas are directional rather than same-machine gates. |
 
 ### Latency Benchmarks
 
 | Benchmark | Payload | Iterations | Pre p50 | Pre p95 | Pre p99 | Post p50 | Post p95 | Post p99 | Delta | Notes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Header encode/decode | L0 header | 100000 | 0.4 us | 0.5 us | 0.7 us | TBD | TBD | TBD | TBD | Measured by `l4.header.encode_decode.latency`. |
-| Metadata encode/decode | session open/open ack | 100000 | 1.4 us | 2.2 us | 3.5 us | TBD | TBD | TBD | TBD | Measured by `l4.metadata.session_open_ack.latency`. |
-| Metadata encode/decode | frame submit/result push | 100000 | 0.9 us | 1.5 us | 4.5 us | TBD | TBD | TBD | TBD | Measured by `l4.metadata.submit_result.latency`. |
-| Typed payload pack/unpack | tensor descriptor plus payload | 100000 | 0.9 us | 2.1 us | 5.2 us | TBD | TBD | TBD | TBD | Measured by `l4.typed_payload.tensor_pack_unpack.latency`. |
-| Native probe | version plus capability query | 100000 | 0.2 us | 0.3 us | 1.2 us | TBD | TBD | TBD | TBD | Measured by `l4.runtime.probe.latency`. |
-| Session lifecycle | open plus close loop | 100000 | 0.5 us | 0.6 us | 1.2 us | TBD | TBD | TBD | TBD | Measured by `l4.session.lifecycle.latency`. |
+| Header encode/decode | L0 header | 100000 | 0.4 us | 0.5 us | 0.7 us | 0.2 us | 0.2 us | 0.3 us | p50 -50.0%; p95 -60.0%; p99 -57.1% | Measured by `l4.header.encode_decode.latency`. |
+| Metadata encode/decode | session open/open ack | 100000 | 1.4 us | 2.2 us | 3.5 us | 0.9 us | 1.0 us | 1.0 us | p50 -35.7%; p95 -54.5%; p99 -71.4% | Measured by `l4.metadata.session_open_ack.latency`. |
+| Metadata encode/decode | frame submit/result push | 100000 | 0.9 us | 1.5 us | 4.5 us | 0.7 us | 0.8 us | 2.9 us | p50 -22.2%; p95 -46.7%; p99 -35.6% | Measured by `l4.metadata.submit_result.latency`. |
+| Typed payload pack/unpack | tensor descriptor plus payload | 100000 | 0.9 us | 2.1 us | 5.2 us | 0.5 us | 0.9 us | 1.1 us | p50 -44.4%; p95 -57.1%; p99 -78.8% | Measured by `l4.typed_payload.tensor_pack_unpack.latency`. |
+| Native probe | version plus capability query | 100000 | 0.2 us | 0.3 us | 1.2 us | 0.1 us | 0.1 us | 0.3 us | p50 -50.0%; p95 -66.7%; p99 -75.0% | Measured by `l4.runtime.probe.latency`. |
+| Session lifecycle | open plus close loop | 100000 | 0.5 us | 0.6 us | 1.2 us | 0.2 us | 0.2 us | 0.2 us | p50 -60.0%; p95 -66.7%; p99 -83.3% | Measured by `l4.session.lifecycle.latency`. |
 
 ### Throughput Benchmarks
 
 | Benchmark | Payload | Duration | Pre throughput | Pre CPU | Pre GC alloc | Pre peak memory | Post throughput | Post CPU | Post GC alloc | Post peak memory | Delta | Notes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Submit/result loop | inline tensor payload | 10 s | 584203.6 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Measured by `l4.submit_result.inline_tensor.throughput`. |
-| TCP loopback | request/result stream | 10 s | 2250626.4 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Measured by `l4.transport.tcp.loopback.throughput` against the SDK local transport-probe loopback path. |
-| QUIC loopback | request/result stream | 10 s | 2210593.2 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Optional slot; measured by `l4.transport.quic.loopback.throughput` against the SDK local transport-probe loopback path. |
+| Submit/result loop | inline tensor payload | 10 s | 584203.6 ops/s | N/A | N/A | N/A | 2029075.6 ops/s | N/A | N/A | N/A | +247.3% | Measured by `l4.submit_result.inline_tensor.throughput`. |
+| TCP loopback | request/result stream | 10 s | 2250626.4 ops/s | N/A | N/A | N/A | 5299734.4 ops/s | N/A | N/A | N/A | +135.5% | Measured by `l4.transport.tcp.loopback.throughput` against the SDK local transport-probe loopback path. |
+| QUIC loopback | request/result stream | 10 s | 2210593.2 ops/s | N/A | N/A | N/A | 5292433.7 ops/s | N/A | N/A | N/A | +139.4% | Optional slot; measured by `l4.transport.quic.loopback.throughput` against the SDK local transport-probe loopback path. |
+
+The current benchmark adapter reports latency percentiles and throughput only. CPU, GC allocation, and peak memory counters were not captured in the pre- or post-migration runs.
 
 ## Migration Phases
 
@@ -96,8 +98,8 @@ Rules:
 6. Add post-migration benchmarks and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
 7. Enable conformance and package validation CI for the supported platform matrix.
 
-## Open Decisions
+## Closed Decisions
 
-1. Whether native artifacts are published inside the primary client package or split into per-platform companion packages.
-2. Whether iOS should use a static native bridge artifact from the first migration PR or remain behind a later Unity package gate.
-3. Which native capability probe names are considered stable enough for managed feature gating.
+1. Native artifacts for the current C# line stay in the primary native bridge/client package layout: NuGet assets use deterministic `runtimes/<rid>/native` paths, and Unity receives one common-platform client package. Per-platform companion packages remain deferred until release packaging needs them.
+2. iOS remains in the common-platform Unity package baseline with importer metadata and pinned-artifact resolution. It remains a preview gate before GA rather than a separate later package family.
+3. Native capability probe names are stable for the managed gates currently claimed by `Nnrp.NativeBridge`: ABI/protocol version, core runtime features, cache/schema, recovery, typed payloads, callback dispatch, event polling, schema registry handles, cache lease operations, TCP slot, and optional QUIC slot. New probe names must land in `nnrp-rs` first, then be claimed through the C# capability manifest only after adapter coverage exists.
