@@ -2755,36 +2755,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, byte[]? payload = null)
         {
-            EnsureOpen();
-            GCHandle payloadHandle = default(GCHandle);
-            try
-            {
-                var payloadView = NnrpBufferView.Empty;
-                if (payload != null && payload.Length > 0)
-                {
-                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
-                }
-
-                NnrpHandle operation;
-                var status = Entrypoints.ServerReceiveSubmit(
-                    new NnrpServerReceiveSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
-                    out operation);
-                status.ThrowIfError();
-                return new NnrpNativeRuntimeOperation(
-                    Entrypoints,
-                    Handle,
-                    new NnrpOperationHandle(operation),
-                    operationId,
-                    frameId);
-            }
-            finally
-            {
-                if (payloadHandle.IsAllocated)
-                {
-                    payloadHandle.Free();
-                }
-            }
+            return ReceiveSubmit(operationId, frameId, payload == null ? ReadOnlyMemory<byte>.Empty : payload);
         }
 
         public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, ReadOnlyMemory<byte> payload)
@@ -2831,32 +2802,7 @@ namespace Nnrp.NativeBridge
 
         public void SendResult(NnrpNativeRuntimeOperation operation, byte[]? payload = null)
         {
-            if (operation == null)
-            {
-                throw new ArgumentNullException(nameof(operation));
-            }
-
-            EnsureOpen();
-            GCHandle payloadHandle = default(GCHandle);
-            try
-            {
-                var payloadView = NnrpBufferView.Empty;
-                if (payload != null && payload.Length > 0)
-                {
-                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
-                }
-
-                Entrypoints.ServerSendResult(
-                    new NnrpServerSendResultRequest(operation.Handle.Handle, payloadView)).ThrowIfError();
-            }
-            finally
-            {
-                if (payloadHandle.IsAllocated)
-                {
-                    payloadHandle.Free();
-                }
-            }
+            SendResult(operation, payload == null ? ReadOnlyMemory<byte>.Empty : payload);
         }
 
         public void SendResult(NnrpNativeRuntimeOperation operation, ReadOnlyMemory<byte> payload)
@@ -3275,38 +3221,12 @@ namespace Nnrp.NativeBridge
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
-            EnsureOpen();
-            GCHandle payloadHandle = default(GCHandle);
-            try
-            {
-                var payloadView = NnrpBufferView.Empty;
-                if (payload != null && payload.Length > 0)
-                {
-                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
-                }
-
-                NnrpHandle operation;
-                var status = Entrypoints.ClientSubmit(
-                    new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
-                    out operation);
-                status.ThrowIfError();
-                return new NnrpNativeRuntimeOperation(
-                    Entrypoints,
-                    Handle,
-                    new NnrpOperationHandle(operation),
-                    operationId,
-                    frameId,
-                    parentOperationId,
-                    operationGroupId);
-            }
-            finally
-            {
-                if (payloadHandle.IsAllocated)
-                {
-                    payloadHandle.Free();
-                }
-            }
+            return SubmitOperation(
+                operationId,
+                frameId,
+                payload == null ? ReadOnlyMemory<byte>.Empty : payload,
+                parentOperationId,
+                operationGroupId);
         }
 
         public NnrpNativeRuntimeOperation SubmitOperation(
@@ -3608,25 +3528,7 @@ namespace Nnrp.NativeBridge
             uint controlCode,
             byte[]? payload)
         {
-            GCHandle payloadHandle = default(GCHandle);
-            try
-            {
-                var payloadView = NnrpBufferView.Empty;
-                if (payload != null && payload.Length > 0)
-                {
-                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
-                }
-
-                entrypoints.Control(new NnrpControlRequest(handle, controlCode, payloadView)).ThrowIfError();
-            }
-            finally
-            {
-                if (payloadHandle.IsAllocated)
-                {
-                    payloadHandle.Free();
-                }
-            }
+            SendControl(entrypoints, handle, controlCode, payload == null ? ReadOnlyMemory<byte>.Empty : payload);
         }
 
         internal static void SendControl(
