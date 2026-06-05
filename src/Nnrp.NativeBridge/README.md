@@ -99,6 +99,40 @@ var routed = connectionHost.SubmitAndPollResult(
     payload: Array.Empty<byte>());
 ```
 
+Schema and cache helpers:
+
+Schema registry and cache lease helpers stay native-owned. The C# host facade creates safe managed wrappers over the native registry and lease operations so application code does not need to wire `NnrpNativeRuntimeEntrypoints` directly.
+
+```csharp
+using var registry = connectionHost.CreateSchemaRegistry();
+registry.Install(schemaDescriptor);
+registry.ValidateBinding(typedPayloadDescriptor);
+
+var cacheObject = new NnrpCacheObjectId(
+    cacheNamespace: 1,
+    cacheKeyHigh: 2,
+    cacheKeyLow: 3,
+    objectKind: 4);
+
+var lease = connectionHost.QueryCacheLease(
+    sessionId: 1,
+    objectId: cacheObject,
+    expectedVersion: 9,
+    nowMilliseconds: 1_000,
+    ttlMilliseconds: 500);
+
+connectionHost.TouchCacheLease(
+    sessionId: 1,
+    objectId: cacheObject,
+    expectedVersion: lease.ObjectVersion,
+    nowMilliseconds: 1_250,
+    ttlMilliseconds: 500);
+
+connectionHost.ReleaseCacheLease(new NnrpCacheLeaseHandle(lease.LeaseHandle));
+```
+
+Use the same pattern on `NnrpNativeRuntimeServerHost` when server-side hosts need schema registration or cache lease operations. Lease policy, schema binding validation, and version mismatch behavior remain delegated to the native runtime; the managed wrapper carries handles, descriptors, and result snapshots without re-implementing those policies in C#.
+
 Unity event pump and dispatch rules:
 
 The current host surface is polling/event-queue based. Drive one polling owner per native connection, normally from a Unity `Update` loop or from a single managed worker that posts completed work back to Unity's main thread. Do not let multiple Unity behaviours independently poll the same connection; use `NnrpNativeRuntimeConnectionHost` as the shared connection/session registry and route results by session and operation id.
