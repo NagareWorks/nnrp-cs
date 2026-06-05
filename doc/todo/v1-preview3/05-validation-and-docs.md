@@ -17,9 +17,9 @@
   - [x] Add native bridge unit coverage for resume, recovery validators, schema descriptor helpers, and buffer acquire/view/release routing.
   - [ ] Add integration coverage for resume behavior against a live native artifact.
 - [x] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
-- [ ] Add allocation-focused smoke checks so managed preview3 hot paths do not silently copy payloads by default.
+- [x] Add allocation-focused smoke checks so managed preview3 hot paths do not silently copy payloads by default.
   - [x] Add smoke coverage that native event/result payload snapshots can be inspected through read-only memory/span views.
-  - [ ] Add allocation-focused hot-path coverage for submit/result loops once borrowed or pooled submit payload lifetimes are explicit.
+  - [x] Add allocation-focused hot-path coverage for submit/result loops once borrowed or pooled submit payload lifetimes are explicit.
 
 ## Documentation And Rollout
 
