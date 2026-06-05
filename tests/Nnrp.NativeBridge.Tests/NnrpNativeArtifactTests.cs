@@ -930,6 +930,94 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeByteArrayPayloadOverloadsBorrowOriginalArray()
+        {
+            var submittedViews = new List<NnrpBufferView>();
+            var receivedViews = new List<NnrpBufferView>();
+            var resultViews = new List<NnrpBufferView>();
+            var controlViews = new List<NnrpBufferView>();
+
+            NnrpFfiStatus CaptureSubmit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+            {
+                submittedViews.Add(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+            {
+                receivedViews.Add(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerSendResult(NnrpServerSendResultRequest request)
+            {
+                resultViews.Add(request.Payload);
+                return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlViews.Add(request.Payload);
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                CaptureSubmit,
+                CaptureSubmit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                CaptureServerReceiveSubmit,
+                CaptureServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+            var payload = new byte[] { 1, 2, 3 };
+            var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+
+            try
+            {
+                var expectedPointer = payloadHandle.AddrOfPinnedObject();
+                var client = new NnrpNativeRuntimeClient(entrypoints);
+                var connection = client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+                var session = connection.OpenSession(41, 3, 4, 5, 6);
+                session.SubmitOperation(99, 7, payload);
+                session.Control(10, payload);
+
+                using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+                var serverSession = server.AcceptSession(42, 3, 4, 5, 6);
+                var operation = serverSession.ReceiveSubmit(100, 8, payload);
+                serverSession.SendResult(operation, payload);
+                serverSession.Control(11, payload);
+
+                AssertBorrowedView(expectedPointer, payload.Length, Assert.Single(submittedViews));
+                AssertBorrowedView(expectedPointer, payload.Length, Assert.Single(receivedViews));
+                AssertBorrowedView(expectedPointer, payload.Length, Assert.Single(resultViews));
+                Assert.Collection(
+                    controlViews,
+                    view => AssertBorrowedView(expectedPointer, payload.Length, view),
+                    view => AssertBorrowedView(expectedPointer, payload.Length, view));
+            }
+            finally
+            {
+                payloadHandle.Free();
+            }
+        }
+
+        [Fact]
         public async Task NativeRuntimeClientBorrowedMemoryOverloadsCoverAsyncAndPollingPaths()
         {
             var submitCount = 0;
@@ -2546,6 +2634,12 @@ namespace Nnrp.NativeBridge.Tests
         {
             Assert.Equal(expected.Pointer, actual.Pointer);
             Assert.Equal(expected.Length, actual.Length);
+        }
+
+        private static void AssertBorrowedView(IntPtr expectedPointer, int expectedLength, NnrpBufferView actual)
+        {
+            Assert.Equal(expectedPointer, actual.Pointer);
+            Assert.Equal(new UIntPtr((uint)expectedLength), actual.Length);
         }
 
         private static NnrpProtocolVersion CurrentProtocolVersion()
