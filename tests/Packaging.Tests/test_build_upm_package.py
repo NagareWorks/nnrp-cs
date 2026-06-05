@@ -4,6 +4,7 @@ import importlib.util
 import shutil
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -25,6 +26,24 @@ packaging = load_packaging_module()
 
 
 class UpmPackageMetadataTests(unittest.TestCase):
+    def test_preview3_project_references_stay_on_declared_boundaries(self) -> None:
+        expected_references = {
+            "src/Nnrp.Client/Nnrp.Client.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.Server/Nnrp.Server.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "tools/Nnrp.BenchmarkAdapter/Nnrp.BenchmarkAdapter.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+            },
+        }
+
+        for project_path, expected in expected_references.items():
+            with self.subTest(project=project_path):
+                project_file = REPO_ROOT / project_path
+                actual = self.read_project_references(project_file)
+                self.assertEqual(expected, actual)
+
     def test_native_bridge_package_keeps_managed_runtime_packages_out(self) -> None:
         native_bridge_project = REPO_ROOT / "src" / "Nnrp.NativeBridge" / "Nnrp.NativeBridge.csproj"
         project_text = native_bridge_project.read_text(encoding="utf-8")
@@ -181,6 +200,22 @@ class UpmPackageMetadataTests(unittest.TestCase):
     def write_file(path: Path, content: str = "") -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+    @staticmethod
+    def read_project_references(project_file: Path) -> set[str]:
+        project_root = project_file.parent
+        project = ET.parse(project_file).getroot()
+        references: set[str] = set()
+
+        for reference in project.findall(".//ProjectReference"):
+            include = reference.attrib.get("Include")
+            if include is None:
+                continue
+
+            reference_path = (project_root / include).resolve()
+            references.add(reference_path.relative_to(REPO_ROOT).as_posix())
+
+        return references
 
 
 if __name__ == "__main__":

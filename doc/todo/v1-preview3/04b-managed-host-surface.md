@@ -12,11 +12,11 @@
     - [x] Remove the NativeBridge auto-transport facade that exposed managed TCP packet/session handling as a NativeBridge entry point.
     - [x] Make native-backed paths required by default when the host opens a preview3 native facade.
     - [x] Add a named native runtime fallback policy so diagnostic fallback cannot be mistaken for the production path.
-    - [x] Mark managed client/server packages as diagnostic or unsupported-runtime surfaces in package metadata and README copy.
+    - [x] Mark managed client/server/TCP packages as diagnostic or unsupported-runtime surfaces in package metadata and README copy.
 - [ ] Keep any remaining managed codec logic limited to migration-time diagnostics while the preview3 Rust-backed path replaces the prior managed preview surface.
   - [x] Keep native bridge backend selection separate from managed fixture/test paths.
   - [x] Drop NativeBridge build-time dependency on managed client and TCP transport packages.
-  - [x] Add package-boundary regression coverage so NativeBridge cannot re-import managed client/TCP runtime packages.
+  - [x] Add package-boundary regression coverage so NativeBridge, source packages, and tool adapters cannot re-import managed runtime packages outside their declared boundaries.
   - [ ] Audit preview3 runtime call sites and move remaining managed codec helpers behind fixture/diagnostic paths.
 - [x] Add host-facing submit/result/control helpers that compose native preview3 handles rather than rebuilding packet logic in C#.
   - [x] Add client-side native submit/result/control helpers.

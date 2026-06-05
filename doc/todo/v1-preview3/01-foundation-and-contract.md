@@ -16,7 +16,7 @@
   - [ ] Decide the final public/internal split for schema handles, stable borrowed buffer views, Unity callback handles, and future zero-copy result views.
 - [ ] Finalize the preview3 public C# surface as the next in-place `NNRP/1` update without retaining superseded preview-era shims.
   - [x] Redirect preview helper call sites to Rust-backed facades for bootstrap, submit/result, cancel/control, and adapter smoke execution.
-  - [x] Mark managed client/server package surfaces as diagnostic or unsupported-runtime helpers rather than preview3 hot-path defaults.
+  - [x] Mark managed client/server/TCP package surfaces as diagnostic or unsupported-runtime helpers rather than preview3 hot-path defaults.
   - [ ] Remove or quarantine superseded preview-era helper families once the remaining managed diagnostic paths are isolated.
 
 ## FFI Consumption

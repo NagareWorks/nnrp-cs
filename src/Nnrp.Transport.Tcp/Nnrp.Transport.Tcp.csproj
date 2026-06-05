@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Transport.Tcp</PackageId>
-    <Description>TCP transport adapter for the NNRP runtime protocol.</Description>
+    <Description>Managed diagnostic TCP transport helpers for NNRP fixture and unsupported-runtime flows.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
