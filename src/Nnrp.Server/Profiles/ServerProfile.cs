@@ -17,7 +17,9 @@ namespace Nnrp.Server
 
         public TensorLayoutId[] AcceptedTensorLayouts { get; set; } = { TensorLayoutId.Nhwc };
 
-        public PayloadKind AcceptedPayloadKinds { get; set; } = PayloadKind.Tensor;
+        public uint AcceptedProfileBitmap { get; set; } = ControlMetadataBitmaps.StandardProfileBitmap;
+
+        public PayloadKind AcceptedPayloadKinds { get; set; } = PayloadKind.Tensor | PayloadKind.TokenChunk;
 
         public uint AcceptedObjectKinds { get; set; } = ControlMetadataBitmaps.LowFrequencyObjectBitmap;
 
@@ -58,6 +60,12 @@ namespace Nnrp.Server
 
         public bool TryValidate(out string validationError)
         {
+            if ((AcceptedProfileBitmap & ~ControlMetadataBitmaps.StandardProfileBitmap) != 0)
+            {
+                validationError = $"{nameof(AcceptedProfileBitmap)} contains unsupported standard profile bits.";
+                return false;
+            }
+
             return ToCapabilities().TryValidate(out validationError);
         }
 
@@ -77,7 +85,7 @@ namespace Nnrp.Server
                 authStatus: 0,
                 reserved0: 0,
                 sessionId: sessionId,
-                acceptedProfileBitmap: ControlMetadataBitmaps.TensorProfileBitmap,
+                acceptedProfileBitmap: AcceptedProfileBitmap,
                 acceptedPayloadKindBitmap: negotiationResult.Selection.PayloadKindBitmap,
                 acceptedCodecBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(AcceptedCodecs ?? Array.Empty<CodecId>()),
                 acceptedCompressionBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(AcceptedCodecs ?? Array.Empty<CodecId>()),

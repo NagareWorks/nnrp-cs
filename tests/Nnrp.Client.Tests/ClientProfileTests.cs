@@ -19,7 +19,8 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new[] { CodecId.Raw }, profile.SupportedCodecs);
             Assert.Equal(new[] { DTypeId.UInt8, DTypeId.Float16 }, profile.SupportedDTypes);
             Assert.Equal(new[] { TensorLayoutId.Nhwc }, profile.SupportedTensorLayouts);
-            Assert.Equal(PayloadKind.Tensor, profile.SupportedPayloadKinds);
+            Assert.Equal(ControlMetadataBitmaps.StandardProfileBitmap, profile.SupportedProfileBitmap);
+            Assert.Equal(PayloadKind.Tensor | PayloadKind.TokenChunk, profile.SupportedPayloadKinds);
             Assert.Equal(ControlMetadataBitmaps.LowFrequencyObjectBitmap, profile.SupportedObjectKinds);
             Assert.Equal(
                 BudgetPolicy.AllowPartial | BudgetPolicy.AllowStaleReuse | BudgetPolicy.AllowDegraded | BudgetPolicy.AllowDrop,
@@ -48,6 +49,7 @@ namespace Nnrp.Client.Tests
                 SupportedCodecs = new[] { CodecId.Lz4, CodecId.Raw },
                 SupportedDTypes = new[] { DTypeId.Float16 },
                 SupportedTensorLayouts = new[] { TensorLayoutId.Nhwc, TensorLayoutId.Nchw },
+                SupportedProfileBitmap = ControlMetadataBitmaps.TensorProfileBitmap | ControlMetadataBitmaps.TokenProfileBitmap,
                 SupportedPayloadKinds = PayloadKind.Tensor | PayloadKind.StructuredEvent,
                 SupportedObjectKinds = ControlMetadataBitmaps.BuildCacheObjectBitmap(CacheObjectKind.CameraBlock, CacheObjectKind.PayloadLayoutTemplate),
                 SupportedDegradePolicies = BudgetPolicy.AllowPartial | BudgetPolicy.AllowDegraded,
@@ -93,6 +95,11 @@ namespace Nnrp.Client.Tests
             profile.SupportedCodecs = new[] { CodecId.Raw, CodecId.Raw };
             Assert.False(profile.TryValidate(out validationError));
             Assert.Contains("duplicate", validationError);
+
+            profile.SupportedCodecs = new[] { CodecId.Raw };
+            profile.SupportedProfileBitmap = 0x80000000;
+            Assert.False(profile.TryValidate(out validationError));
+            Assert.Contains(nameof(ClientProfile.SupportedProfileBitmap), validationError);
         }
 
         [Fact]
@@ -136,6 +143,7 @@ namespace Nnrp.Client.Tests
                 SupportedCodecs = new[] { CodecId.Lz4, CodecId.Raw },
                 SupportedDTypes = new[] { DTypeId.Float16 },
                 SupportedTensorLayouts = new[] { TensorLayoutId.Nchw },
+                SupportedProfileBitmap = ControlMetadataBitmaps.StandardProfileBitmap,
                 SupportedPayloadKinds = PayloadKind.Tensor | PayloadKind.StructuredEvent,
                 SupportedObjectKinds = ControlMetadataBitmaps.BuildCacheObjectBitmap(CacheObjectKind.CameraBlock, CacheObjectKind.PayloadLayoutTemplate),
                 SupportedDegradePolicies = BudgetPolicy.AllowPartial | BudgetPolicy.AllowDegraded,
@@ -152,7 +160,7 @@ namespace Nnrp.Client.Tests
 
             Assert.Equal(MessageType.ClientHello, hello.Header.MessageType);
             Assert.Equal(11u, hello.Metadata.RequestedSessionId);
-            Assert.Equal(ControlMetadataBitmaps.TensorProfileBitmap, hello.Metadata.SupportedProfileBitmap);
+            Assert.Equal(ControlMetadataBitmaps.StandardProfileBitmap, hello.Metadata.SupportedProfileBitmap);
             Assert.Equal((uint)(PayloadKind.Tensor | PayloadKind.StructuredEvent), hello.Metadata.SupportedPayloadKindBitmap);
             Assert.Equal(2u, hello.Metadata.MaxLaneCount);
             Assert.Equal(0u, hello.Metadata.CacheNamespaceCount);

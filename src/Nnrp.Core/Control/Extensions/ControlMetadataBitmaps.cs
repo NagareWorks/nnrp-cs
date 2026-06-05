@@ -7,6 +7,8 @@ namespace Nnrp.Core
     {
         public const uint CurrentWireFormatBitmap = 1u << NnrpHeader.CurrentWireFormat;
         public const uint TensorProfileBitmap = 0x00000001;
+        public const uint TokenProfileBitmap = 0x00000002;
+        public const uint StandardProfileBitmap = TensorProfileBitmap | TokenProfileBitmap;
         public const uint TensorPayloadKindBitmap = (uint)PayloadKind.Tensor;
         public const uint SupportedTileIndexBitmap = 0x0000000F;
         public const uint CacheDigestBitmap = 0x00000001;

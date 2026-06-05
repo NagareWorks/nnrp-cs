@@ -23,7 +23,9 @@ namespace Nnrp.Client
 
         public TensorLayoutId[] SupportedTensorLayouts { get; set; } = { TensorLayoutId.Nhwc };
 
-        public PayloadKind SupportedPayloadKinds { get; set; } = PayloadKind.Tensor;
+        public uint SupportedProfileBitmap { get; set; } = ControlMetadataBitmaps.StandardProfileBitmap;
+
+        public PayloadKind SupportedPayloadKinds { get; set; } = PayloadKind.Tensor | PayloadKind.TokenChunk;
 
         public uint SupportedObjectKinds { get; set; } = ControlMetadataBitmaps.LowFrequencyObjectBitmap;
 
@@ -75,6 +77,12 @@ namespace Nnrp.Client
 
         public bool TryValidate(out string validationError)
         {
+            if ((SupportedProfileBitmap & ~ControlMetadataBitmaps.StandardProfileBitmap) != 0)
+            {
+                validationError = $"{nameof(SupportedProfileBitmap)} contains unsupported standard profile bits.";
+                return false;
+            }
+
             return ToCapabilities().TryValidate(out validationError);
         }
 
@@ -97,7 +105,7 @@ namespace Nnrp.Client
                 minVersionMajor: NnrpHeader.CurrentVersionMajor,
                 maxVersionMajor: NnrpHeader.CurrentVersionMajor,
                 supportedWireFormatBitmap: ControlMetadataBitmaps.EncodeCurrentWireFormatBitmap(),
-                supportedProfileBitmap: ControlMetadataBitmaps.TensorProfileBitmap,
+                supportedProfileBitmap: SupportedProfileBitmap,
                 supportedPayloadKindBitmap: (uint)SupportedPayloadKinds,
                 supportedCodecBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(SupportedCodecs ?? Array.Empty<CodecId>()),
                 supportedCompressionBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(SupportedCodecs ?? Array.Empty<CodecId>()),
@@ -147,7 +155,7 @@ namespace Nnrp.Client
                 minVersionMajor: NnrpHeader.CurrentVersionMajor,
                 maxVersionMajor: NnrpHeader.CurrentVersionMajor,
                 supportedWireFormatBitmap: ControlMetadataBitmaps.EncodeCurrentWireFormatBitmap(),
-                supportedProfileBitmap: ControlMetadataBitmaps.TensorProfileBitmap,
+                supportedProfileBitmap: SupportedProfileBitmap,
                 supportedPayloadKindBitmap: (uint)SupportedPayloadKinds,
                 supportedCodecBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(SupportedCodecs ?? Array.Empty<CodecId>()),
                 supportedCompressionBitmap: ControlMetadataBitmaps.EncodeCodecBitmap(SupportedCodecs ?? Array.Empty<CodecId>()),
