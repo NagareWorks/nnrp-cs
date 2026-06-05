@@ -14,21 +14,57 @@ MANAGED_ASSEMBLIES = [
     "Nnrp.Core",
     "Nnrp.Client",
     "Nnrp.Transport.Tcp",
+    "Nnrp.Transport.Quic",
     "Nnrp.NativeBridge",
 ]
 
+NATIVE_TRANSPORTS = {
+    "tcp": "Tcp",
+    "quic": "Quic",
+}
+
 NATIVE_LAYOUT = {
-    "win-x64": ("nnrp_quic_bridge.dll", Path("Runtime/Plugins/Windows/x86_64/nnrp_quic_bridge.dll")),
-    "linux-x64": ("libnnrp_quic_bridge.so", Path("Runtime/Plugins/Linux/x86_64/libnnrp_quic_bridge.so")),
-    "osx-x64": ("libnnrp_quic_bridge.dylib", Path("Runtime/Plugins/macOS/x86_64/libnnrp_quic_bridge.dylib")),
-    "osx-arm64": ("libnnrp_quic_bridge.dylib", Path("Runtime/Plugins/macOS/arm64/libnnrp_quic_bridge.dylib")),
+    "win-x86": ("nnrp_ffi.dll", Path("Runtime/Plugins/Windows/x86/nnrp_ffi.dll")),
+    "win-x64": ("nnrp_ffi.dll", Path("Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll")),
+    "win-arm64": ("nnrp_ffi.dll", Path("Runtime/Plugins/Windows/ARM64/nnrp_ffi.dll")),
+    "linux-x86": ("libnnrp_ffi.so", Path("Runtime/Plugins/Linux/x86/libnnrp_ffi.so")),
+    "linux-x64": ("libnnrp_ffi.so", Path("Runtime/Plugins/Linux/x86_64/libnnrp_ffi.so")),
+    "linux-arm": ("libnnrp_ffi.so", Path("Runtime/Plugins/Linux/ARMv7/libnnrp_ffi.so")),
+    "linux-arm64": ("libnnrp_ffi.so", Path("Runtime/Plugins/Linux/ARM64/libnnrp_ffi.so")),
+    "osx-x64": ("libnnrp_ffi.dylib", Path("Runtime/Plugins/macOS/x86_64/libnnrp_ffi.dylib")),
+    "osx-arm64": ("libnnrp_ffi.dylib", Path("Runtime/Plugins/macOS/arm64/libnnrp_ffi.dylib")),
+    "android-x86": ("libnnrp_ffi.so", Path("Runtime/Plugins/Android/x86/libnnrp_ffi.so")),
+    "android-x64": ("libnnrp_ffi.so", Path("Runtime/Plugins/Android/x86_64/libnnrp_ffi.so")),
+    "android-arm": ("libnnrp_ffi.so", Path("Runtime/Plugins/Android/armeabi-v7a/libnnrp_ffi.so")),
+    "android-arm64": ("libnnrp_ffi.so", Path("Runtime/Plugins/Android/arm64-v8a/libnnrp_ffi.so")),
+    "ios-arm64": ("libnnrp_ffi.a", Path("Runtime/Plugins/iOS/arm64/libnnrp_ffi.a")),
+    "iossimulator-arm64": ("libnnrp_ffi.a", Path("Runtime/Plugins/iOSSimulator/arm64/libnnrp_ffi.a")),
+    "iossimulator-x64": ("libnnrp_ffi.a", Path("Runtime/Plugins/iOSSimulator/x86_64/libnnrp_ffi.a")),
 }
 
 NATIVE_PLUGIN_SETTINGS = {
+    "win-x86": ("Windows", "x86"),
     "win-x64": ("Windows", "x86_64"),
+    "win-arm64": ("Windows", "ARM64"),
+    "linux-x86": ("Linux", "x86"),
     "linux-x64": ("Linux", "x86_64"),
+    "linux-arm": ("Linux", "ARMv7"),
+    "linux-arm64": ("Linux", "ARM64"),
     "osx-x64": ("OSX", "x86_64"),
     "osx-arm64": ("OSX", "ARM64"),
+    "android-x86": ("Android", "x86"),
+    "android-x64": ("Android", "x86_64"),
+    "android-arm": ("Android", "ARMv7"),
+    "android-arm64": ("Android", "ARM64"),
+    "ios-arm64": ("iOS", "ARM64"),
+    "iossimulator-arm64": ("iOS", "ARM64"),
+    "iossimulator-x64": ("iOS", "x86_64"),
+}
+
+UNITY_NATIVE_PLUGIN_RIDS_BY_PATH = {
+    (Path("Runtime/Plugins/Transports") / transport_name / Path(*relative_output.parts[2:])).as_posix(): rid
+    for transport_name in NATIVE_TRANSPORTS.values()
+    for rid, (_, relative_output) in NATIVE_LAYOUT.items()
 }
 
 PACKAGE_NAME = "com.nnrp.client"
@@ -200,6 +236,11 @@ def native_plugin_meta(relative_path: str, rid: str) -> str:
     )
 
 
+def native_plugin_rid_for_relative_path(relative_path: str) -> str | None:
+    normalized = relative_path.replace("\\", "/").strip("/")
+    return UNITY_NATIVE_PLUGIN_RIDS_BY_PATH.get(normalized)
+
+
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -216,13 +257,15 @@ def copy_managed_artifacts(repo_root: Path, configuration: str, output_root: Pat
 
 
 def copy_native_artifacts(native_root: Path, output_root: Path) -> None:
-    for rid, (filename, relative_output) in NATIVE_LAYOUT.items():
-        source_path = native_root / rid / filename
-        if not source_path.exists():
-            continue
-        target_path = output_root / relative_output
-        ensure_parent(target_path)
-        shutil.copy2(source_path, target_path)
+    for transport_slug, transport_name in NATIVE_TRANSPORTS.items():
+        transport_root = native_root / f"transport-{transport_slug}"
+        for rid, (filename, relative_output) in NATIVE_LAYOUT.items():
+            source_path = transport_root / rid / filename
+            if not source_path.exists():
+                continue
+            target_path = output_root / "Runtime" / "Plugins" / "Transports" / transport_name / Path(*relative_output.parts[2:])
+            ensure_parent(target_path)
+            shutil.copy2(source_path, target_path)
 
 
 def build_package_manifest(version: str, repository_url: str) -> dict[str, object]:
@@ -260,9 +303,12 @@ def build_release_readme(version: str) -> str:
         - Nnrp.Core
         - Nnrp.Client
         - Nnrp.Transport.Tcp
+        - Nnrp.Transport.Quic
         - Nnrp.NativeBridge
 
-        Included native plugins are placed under Runtime/Plugins for the supported desktop platforms built by CI.
+        Included native plugins are placed under Runtime/Plugins/Transports/Tcp and
+        Runtime/Plugins/Transports/Quic for Windows, macOS, Linux, Android, iOS, and iOS simulator
+        targets resolved from the pinned nnrp-rs release.
 
         Full protocol and SDK documentation: {PACKAGE_DOCUMENTATION_URL}
         """
@@ -342,17 +388,9 @@ def emit_meta_files(output_root: Path) -> None:
         meta_path = file_path.with_name(file_path.name + ".meta")
         if file_path.suffix == ".dll" and file_path.parts[-2] == "Managed":
             content = managed_plugin_meta(relative_path)
-        elif file_path.suffix in {".dll", ".so", ".dylib"}:
-            rid = relative_path.split("/")[2].lower() if relative_path.startswith("Runtime/Plugins/") else ""
-            if rid == "windows":
-                content = native_plugin_meta(relative_path, "win-x64")
-            elif rid == "linux":
-                content = native_plugin_meta(relative_path, "linux-x64")
-            elif rid == "macos":
-                arch = relative_path.split("/")[3].lower()
-                content = native_plugin_meta(relative_path, "osx-arm64" if arch == "arm64" else "osx-x64")
-            else:
-                content = default_meta(relative_path)
+        elif file_path.suffix in {".dll", ".so", ".dylib", ".a"}:
+            rid = native_plugin_rid_for_relative_path(relative_path)
+            content = native_plugin_meta(relative_path, rid) if rid else default_meta(relative_path)
         else:
             content = default_meta(relative_path)
         meta_path.write_text(content, encoding="utf-8")

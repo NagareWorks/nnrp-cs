@@ -2,7 +2,7 @@
 
 Nnrp.Server provides server-side helpers for the current NNRP/1 session contract.
 
-Use this package when implementing server-side session logic, result emission, or protocol-facing server helpers on top of the shared NNRP/1 wire model.
+Use this package when implementing server-side session logic, fixture inspection, diagnostics, or unsupported-runtime helpers on top of the shared NNRP/1 wire model. For preview3 production-style Rust-backed runtime integration, prefer `Nnrp.NativeBridge` and its native server/session facade.
 
 This package depends on Nnrp.Core.
 

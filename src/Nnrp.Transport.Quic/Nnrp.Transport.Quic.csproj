@@ -1,0 +1,101 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <PackageId>Nnrp.Transport.Quic</PackageId>
+    <Description>QUIC native transport entry surface for NNRP preview3 hosts.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NnrpQuicTransportArtifactRoot Condition="'$(NnrpQuicTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-quic</NnrpQuicTransportArtifactRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NnrpQuicTransportArtifactRoot)\win-x86\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-x86/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\win-x86\nnrp_ffi.dll')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\win-x64\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-x64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\win-x64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\win-arm64\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\win-arm64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib"
+      Pack="true"
+      PackagePath="runtimes/osx-x64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib"
+      Pack="true"
+      PackagePath="runtimes/osx-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\linux-x86\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-x86/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\linux-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\linux-x64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-x64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\linux-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\linux-arm\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-arm/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\linux-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\android-x86\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-x86/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\android-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\android-x64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-x64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\android-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\android-arm\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-arm/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\android-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\android-arm64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/ios-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-x64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpQuicTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-arm64/native/nnrp/transport/quic/"
+      Visible="false"
+      Condition="Exists('$(NnrpQuicTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
+  </ItemGroup>
+
+</Project>

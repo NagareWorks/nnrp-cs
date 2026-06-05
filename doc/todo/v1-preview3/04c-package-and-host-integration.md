@@ -1,10 +1,31 @@
 # C# Preview3 Package And Host Integration
 
-- [ ] Adapt polling, callback, or event-queue delivery primitives for Unity and plain .NET hosts.
-- [ ] Define CI-owned package layouts for NuGet-style server, NuGet-style client, and Unity-style client distribution.
-- [ ] Implement a deterministic package-generation step that emits Unity `.meta` files for folders, managed assemblies, and native plugin entries.
-- [ ] Build native bridge artifacts in a multi-platform CI matrix for Windows, macOS, Linux, Android, and iOS.
-- [ ] Assemble one Unity-style client package artifact that places all supported common-platform native binaries into the correct Unity plugin directories.
-- [ ] Decide which preview3 handles stay internal and which become public Unity/.NET abstractions.
-- [ ] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
-- [ ] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
+- [x] Adapt polling, callback, or event-queue delivery primitives for Unity and plain .NET hosts.
+- [x] Choose the default managed delivery model for preview3: event queue, callback registration, or async stream.
+- [x] Keep backend selection behind `Nnrp.NativeBridge` so tests can run against managed fixtures and native artifacts.
+- [x] Avoid per-frame managed allocation on the hot submit/result path; use spans, pooled buffers, or safe borrowed views where the ABI allows it.
+  - [x] Expose read-only payload views for native event/result snapshots so callers do not allocate another array for read-only inspection.
+  - [x] Add borrowed `ReadOnlyMemory<byte>` hot-path overloads for client submit/control and server receive/result/control so array-backed pooled slices can cross the native boundary without first copying into a fresh managed array.
+  - [x] Replace remaining submit payload pin/copy paths with borrowed or pooled views where the Rust ABI can keep the lifetime explicit.
+- [x] Define cancellation and disposal behavior when a managed task is cancelled while a native operation is active.
+- [x] Define CI-owned package layouts for NuGet-style server, NuGet-style client, and Unity-style client distribution.
+  - [x] Define deterministic NuGet native runtime asset paths for the native bridge package.
+  - [x] Split CI package outputs into NuGet server, NuGet client, and Unity client artifacts.
+  - [x] Split TCP and QUIC transport entry surfaces into separate NuGet packages so installing a transport package owns the transport-specific native runtime API instead of acting as a config flag.
+- [x] Map every supported native artifact to a deterministic NuGet `runtimes/<rid>/native` path.
+- [x] Map every supported native artifact to deterministic Unity plugin importer settings.
+- [x] Implement a deterministic package-generation step that emits Unity `.meta` files for folders, managed assemblies, and native plugin entries.
+- [x] Resolve CI-owned native bridge artifacts for Windows, macOS, Linux, Android, and iOS from the pinned `nnrp-rs` release.
+- [x] Assemble one Unity-style client package artifact that places all supported common-platform native binaries into the correct Unity plugin directories.
+- [x] Decide which preview3 handles stay internal and which become public Unity/.NET abstractions.
+  - [x] Keep connection/session host wrappers public as the managed Unity/.NET entry surface.
+  - [x] Keep native event/result payload ownership hidden behind read-only managed views.
+  - [x] Decide the final public/internal split for schema handles, borrowed buffer views, and callback sink interop shapes.
+- [x] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
+- [x] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
+- [x] Run the pre-migration benchmark suite and record the baseline in `doc/benchmarks/rs-native-artifacts-migration.md`.
+- [x] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
+
+Note: preview3 C# now has transport-owned package/API boundaries for TCP and QUIC. Split transport-scoped Rust native
+artifacts are accepted by the NativeBridge loader through selected transport-slot validation and covered by the benchmark
+adapter rows.

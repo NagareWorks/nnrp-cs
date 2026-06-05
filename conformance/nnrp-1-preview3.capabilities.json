@@ -1,0 +1,18 @@
+{
+  "implementation_name": "nnrp-cs",
+  "protocol_version": "nnrp-1-preview3",
+  "supports": [
+    "handshake.basic",
+    "session.open_close",
+    "frame_submit.tensor.inline",
+    "result_push.basic",
+    "flow_update",
+    "session.multi_session",
+    "operation.lifecycle",
+    "operation.cancel_scope",
+    "cache.lifecycle",
+    "payload.typed",
+    "profile.token",
+    "schema.registry"
+  ]
+}

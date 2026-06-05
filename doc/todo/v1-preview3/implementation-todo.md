@@ -3,7 +3,7 @@
 ## 0. Scope
 
 1. This directory tracks the preview3 C# SDK rollout as a Rust-core-backed binding and Unity/.NET host integration layer.
-2. Preview3 work here covers `Nnrp.Core`, `Nnrp.Client`, `Nnrp.NativeBridge`, and package/distribution definitions for CI-published client/server artifacts.
+2. Preview3 work here covers `Nnrp.Core`, `Nnrp.Client`, `Nnrp.NativeBridge`, `Nnrp.Transport.Tcp`, `Nnrp.Transport.Quic`, and package/distribution definitions for CI-published client/server artifacts.
 3. Preview3 wire semantics, state machines, cache/schema rules, and conformance baselines are owned by `nnrp-doc` plus `nnrp-rs`, not by this repository.
 
 ## 1. Shard Map

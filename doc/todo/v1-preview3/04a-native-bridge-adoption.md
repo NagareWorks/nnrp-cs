@@ -1,5 +1,41 @@
 # C# Preview3 Native Bridge Adoption
 
-- [ ] Consume the frozen Rust-to-C# bridge contract for preview3.
-- [ ] Wrap stable native handles for connection, session, operation, schema, and buffer views.
-- [ ] Map stable Rust error codes into managed exception and result surfaces.
+- [x] Consume the frozen Rust-to-C# bridge contract for preview3.
+  - [x] Bind and load the frozen preview3 runtime delegate table and request/event structs behind `Nnrp.NativeBridge`.
+  - [x] Add a native-backed client/session facade for connect, bootstrap, open-session, submit, cancel, control, event polling, and close.
+  - [x] Add a native-backed server/session facade for bind, accept, receive-submit, send-result, flow update, control, and close.
+  - [x] Add artifact-loading native server host facade so host code does not wire server entrypoints directly.
+  - [x] Replace managed runtime calls with the bound native entrypoints.
+- [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
+- [x] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
+  - [x] Keep native client/session/server facades routed through the bound Rust FFI entrypoints.
+  - [x] Add native-buffer payload overloads for client submit/control, server receive/result/control, and host facades.
+  - [x] Keep managed byte-array overloads as one-shot convenience wrappers rather than the only hot-path surface.
+- [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
+- [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
+- [x] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
+- [x] Reject ABI/protocol mismatches with deterministic managed exceptions and actionable diagnostic text.
+- [x] Wrap connection, session, operation, event pump, buffer value, and cache lease handles exposed by the frozen Rust FFI.
+- [x] Wrap schema registry handles and lifecycle operations exposed by the bridge contract.
+- [x] Wrap cache lease lifecycle operations exposed by the bridge contract.
+- [x] Wrap stable native buffer handles and borrowed buffer views exposed by the bridge contract.
+- [x] Define ownership and lifetime rules for native buffers exposed as arrays or safe handles.
+  - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
+  - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views without leaking raw FFI buffer lifetimes.
+  - [x] Add explicit native buffer acquire/view/release helpers so host code can own native buffer lifetimes deliberately.
+  - [x] Replace submit/control-only payload pinning as the only hot-path option with explicit native-buffer lifetime helpers.
+  - [x] Add host-facing lifetime documentation for Unity/.NET callback and event-pump consumers.
+- [x] Define borrowed-buffer rules for FFI-owned result/body views.
+  - [x] Document that current public result/event payloads are managed snapshots, while native buffer views are scoped to the consuming call.
+  - [x] Require any public borrowed-view surface to use an explicit scoped owner that cannot outlive the native connection, session, operation, or buffer handle.
+- [x] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
+  - [x] Return managed poll/event snapshots from the native connection facade instead of raw FFI structs.
+  - [x] Guard native session operations after explicit close on the managed facade.
+  - [x] Add connection-level lifetime guards once native connection close/dispose is exposed.
+  - [x] Add dispatch-sink ownership guards for callback/event-pump consumers without inventing extra managed subscription handles outside the frozen FFI contract.
+- [x] Map stable Rust error codes into managed exception and result surfaces.
+- [x] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
+  - [x] Remove the NativeBridge auto-transport client that mixed native QUIC with managed TCP/session packet handling.
+  - [x] Drop NativeBridge package references to managed client and TCP adapter packages.
+  - [x] Remove the legacy `nnrp_quic_bridge` wrapper and package assets so `Nnrp.NativeBridge` only ships the preview3 `nnrp_ffi` runtime contract.
+- [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.

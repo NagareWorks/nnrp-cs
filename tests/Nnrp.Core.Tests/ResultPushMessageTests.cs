@@ -499,7 +499,7 @@ namespace Nnrp.Core.Tests
                     payloadLength: 3,
                     reserved: 0),
                 new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
+                    PayloadKind.ToolDelta,
                     descriptorFlags: 0,
                     profileId: 5,
                     payloadOffset: 5,
@@ -536,7 +536,7 @@ namespace Nnrp.Core.Tests
                     reusedFrameId: 0,
                     coveredTileCount: 2,
                     droppedTileCount: 0,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.StructuredEvent,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
                     payloadFrameCount: 3),
                 new ushort[] { 10, 11 },
                 new[] { section },
@@ -551,15 +551,15 @@ namespace Nnrp.Core.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames[1].Payload.ToArray());
 
-            var structuredEventFrames = parsed.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5);
-            Assert.Single(structuredEventFrames);
-            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, structuredEventFrames[0].Payload.ToArray());
+            var alternateToolFrames = parsed.GetTypedPayloadFrames(PayloadKind.ToolDelta, 5);
+            Assert.Single(alternateToolFrames);
+            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, alternateToolFrames[0].Payload.ToArray());
 
-            Assert.Empty(parsed.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 9));
+            Assert.Empty(parsed.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5));
         }
 
         [Fact]
-        public void ResultPushMessageExposesPayloadFamilyFrameSetsAndCoverage()
+        public void ResultPushMessageExposesTokenPayloadFrameSetAndCoverage()
         {
             var section = CreateSection(
                 role: TensorRole.SrResidual,
@@ -569,25 +569,31 @@ namespace Nnrp.Core.Tests
             {
                 new TypedPayloadDescriptor(
                     PayloadKind.TokenChunk,
-                    descriptorFlags: 0,
-                    profileId: 3,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 0,
-                    payloadLength: 2,
-                    reserved: 0),
+                    payloadLength: 2),
                 new TypedPayloadDescriptor(
-                    PayloadKind.AudioChunk,
-                    descriptorFlags: 0,
-                    profileId: 4,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 2,
-                    payloadLength: 3,
-                    reserved: 0),
+                    payloadLength: 3),
                 new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
-                    descriptorFlags: 0,
-                    profileId: 6,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0001,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 5,
-                    payloadLength: 4,
-                    reserved: 0)
+                    payloadLength: 4)
             };
             var payloadRegion = new byte[] { 0x31, 0x32, 0x41, 0x42, 0x43, 0x61, 0x62, 0x63, 0x64 };
             var message = new ResultPushMessage(
@@ -619,7 +625,7 @@ namespace Nnrp.Core.Tests
                     reusedFrameId: 0,
                     coveredTileCount: 2,
                     droppedTileCount: 0,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk | PayloadKind.AudioChunk | PayloadKind.StructuredEvent,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk,
                     payloadFrameCount: 3),
                 new ushort[] { 10, 11 },
                 new[] { section },
@@ -629,25 +635,17 @@ namespace Nnrp.Core.Tests
             Assert.True(ResultPushMessage.TryParse(message.ToArray(), out var parsed, out var error), $"Parse error: {error}");
             Assert.Equal(NnrpParseError.None, error);
 
-            var tokenFrames = parsed.GetTokenChunkFrames(3);
+            var tokenFrames = parsed.GetTokenChunkFrames(TypedPayloadDescriptor.ProfileToken);
             Assert.Equal(PayloadKind.TokenChunk, tokenFrames.PayloadKind);
-            Assert.Equal((ushort)3, tokenFrames.ProfileId);
-            Assert.Equal(1, tokenFrames.FrameCount);
-            Assert.Equal(2, tokenFrames.PayloadBytes);
+            Assert.Equal(TypedPayloadDescriptor.ProfileToken, tokenFrames.ProfileId);
+            Assert.Equal(3, tokenFrames.FrameCount);
+            Assert.Equal(9, tokenFrames.PayloadBytes);
             Assert.Equal(new byte[] { 0x31, 0x32 }, tokenFrames.Frames.Span[0].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, tokenFrames.Frames.Span[1].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, tokenFrames.Frames.Span[2].Payload.ToArray());
 
-            var audioFrames = parsed.GetAudioChunkFrames(4);
-            Assert.Equal(1, audioFrames.FrameCount);
-            Assert.Equal(3, audioFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, audioFrames.Frames.Span[0].Payload.ToArray());
-
-            var eventFrames = parsed.GetStructuredEventFrames(6);
-            Assert.Equal(1, eventFrames.FrameCount);
-            Assert.Equal(4, eventFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, eventFrames.Frames.Span[0].Payload.ToArray());
-
-            Assert.True(parsed.TryGetPayloadCoverage(PayloadKind.TokenChunk, 3, out var tokenCoverage));
-            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.TokenChunk, 3, 1, 2), tokenCoverage);
+            Assert.True(parsed.TryGetPayloadCoverage(PayloadKind.TokenChunk, TypedPayloadDescriptor.ProfileToken, out var tokenCoverage));
+            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.TokenChunk, TypedPayloadDescriptor.ProfileToken, 3, 9), tokenCoverage);
             Assert.False(parsed.TryGetPayloadCoverage(PayloadKind.VideoChunk, 9, out _));
         }
 
@@ -680,16 +678,9 @@ namespace Nnrp.Core.Tests
                     profileId: 9,
                     payloadOffset: 2,
                     payloadLength: 3,
-                    reserved: 0),
-                new TypedPayloadDescriptor(
-                    PayloadKind.OpaqueBytes,
-                    descriptorFlags: 0,
-                    profileId: 12,
-                    payloadOffset: 5,
-                    payloadLength: 4,
                     reserved: 0)
             };
-            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45, 0x90, 0x91, 0x92, 0x93 };
+            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45 };
             var message = new ResultPushMessage(
                 new NnrpHeader(
                     versionMajor: NnrpHeader.CurrentVersionMajor,
@@ -719,8 +710,8 @@ namespace Nnrp.Core.Tests
                     reusedFrameId: 0,
                     coveredTileCount: 2,
                     droppedTileCount: 0,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.OpaqueBytes,
-                    payloadFrameCount: 3),
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
+                    payloadFrameCount: 2),
                 new ushort[] { 10, 11 },
                 new[] { section },
                 descriptors,
@@ -737,16 +728,67 @@ namespace Nnrp.Core.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames.Frames.Span[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames.Frames.Span[1].Payload.ToArray());
 
-            var opaqueFrames = parsed.GetOpaqueBytesFrames(12);
+            Assert.True(parsed.TryGetPayloadCoverage(PayloadKind.ToolDelta, 9, out var toolCoverage));
+            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.ToolDelta, 9, 2, 5), toolCoverage);
+
+            var opaqueDescriptors = new[]
+            {
+                new TypedPayloadDescriptor(
+                    PayloadKind.OpaqueBytes,
+                    descriptorFlags: 0,
+                    profileId: 12,
+                    payloadOffset: 0,
+                    payloadLength: 4,
+                    reserved: 0)
+            };
+            var opaquePayloadRegion = new byte[] { 0x90, 0x91, 0x92, 0x93 };
+            var opaqueMessage = new ResultPushMessage(
+                new NnrpHeader(
+                    versionMajor: NnrpHeader.CurrentVersionMajor,
+                    wireFormat: NnrpHeader.CurrentWireFormat,
+                    messageType: MessageType.ResultPush,
+                    flags: HeaderFlags.None,
+                    metaLength: ResultPushMetadata.CurrentMetadataLength,
+                    bodyLength: 0,
+                    sessionId: 12,
+                    frameId: 13,
+                    viewId: 0,
+                    routeId: 0,
+                    traceId: 15),
+                new ResultPushMetadata(
+                    statusCode: ResultStatusCode.Success,
+                    resultFlags: ResultFlags.None,
+                    sectionCount: 1,
+                    tileCount: 2,
+                    activeProfileId: 7,
+                    inferenceMilliseconds: 12,
+                    queueMilliseconds: 3,
+                    serverTotalMilliseconds: 15,
+                    tileBaseId: 10,
+                    tileIndexBytes: 0,
+                    resultClass: ResultClass.Complete,
+                    appliedBudgetPolicy: BudgetPolicy.None,
+                    reusedFrameId: 0,
+                    coveredTileCount: 2,
+                    droppedTileCount: 0,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.OpaqueBytes,
+                    payloadFrameCount: 1),
+                new ushort[] { 10, 11 },
+                new[] { section },
+                opaqueDescriptors,
+                opaquePayloadRegion);
+
+            Assert.True(ResultPushMessage.TryParse(opaqueMessage.ToArray(), out var parsedOpaque, out error), $"Parse error: {error}");
+            Assert.Equal(NnrpParseError.None, error);
+
+            var opaqueFrames = parsedOpaque.GetOpaqueBytesFrames(12);
             Assert.Equal(PayloadKind.OpaqueBytes, opaqueFrames.PayloadKind);
             Assert.Equal((ushort)12, opaqueFrames.ProfileId);
             Assert.Equal(1, opaqueFrames.FrameCount);
             Assert.Equal(4, opaqueFrames.PayloadBytes);
             Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, opaqueFrames.Frames.Span[0].Payload.ToArray());
 
-            Assert.True(parsed.TryGetPayloadCoverage(PayloadKind.ToolDelta, 9, out var toolCoverage));
-            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.ToolDelta, 9, 2, 5), toolCoverage);
-            Assert.True(parsed.TryGetPayloadCoverage(PayloadKind.OpaqueBytes, 12, out var opaqueCoverage));
+            Assert.True(parsedOpaque.TryGetPayloadCoverage(PayloadKind.OpaqueBytes, 12, out var opaqueCoverage));
             Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.OpaqueBytes, 12, 1, 4), opaqueCoverage);
         }
 

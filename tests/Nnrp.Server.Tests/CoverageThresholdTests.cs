@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -10,6 +11,16 @@ namespace Nnrp.Server.Tests
 {
     public sealed class CoverageThresholdTests
     {
+        [Fact]
+        public void ServerAssemblyIsMarkedAsManagedDiagnosticSurface()
+        {
+            var marker = Assert.Single(
+                typeof(NnrpServerSession).Assembly.GetCustomAttributes<NnrpManagedDiagnosticSurfaceAttribute>());
+
+            Assert.Contains("diagnostic", marker.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Nnrp.NativeBridge", marker.Reason, StringComparison.Ordinal);
+        }
+
         [Fact]
         public async Task AcceptAsyncAttachesTransportPolicyAckWhenTransportIsKnownTcp()
         {

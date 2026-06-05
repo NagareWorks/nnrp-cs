@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Client;
@@ -10,6 +11,16 @@ namespace Nnrp.Client.Tests
 {
     public sealed class CoverageThresholdTests
     {
+        [Fact]
+        public void ClientAssemblyIsMarkedAsManagedDiagnosticSurface()
+        {
+            var marker = Assert.Single(
+                typeof(NnrpClient).Assembly.GetCustomAttributes<NnrpManagedDiagnosticSurfaceAttribute>());
+
+            Assert.Contains("diagnostic", marker.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Nnrp.NativeBridge", marker.Reason, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void TransportMigrationTriggerCoversRemainingDecisionBranches()
         {
@@ -131,12 +142,19 @@ namespace Nnrp.Client.Tests
             Assert.True(resultPushEvent.IsResultPush);
             Assert.False(resultPushEvent.IsFlowUpdate);
             Assert.Equal(default(ResultPushMessage), resultPushEvent.GetResultPush());
+            Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetResultDrop());
             Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetFlowUpdate());
             Assert.Throws<InvalidOperationException>(() => resultPushEvent.GetResultHint());
+
+            var resultDropEvent = NnrpSessionEvent.FromResultDrop(default);
+            Assert.True(resultDropEvent.IsResultDrop);
+            Assert.Equal(default(ResultDropMessage), resultDropEvent.GetResultDrop());
+            Assert.Throws<InvalidOperationException>(() => resultDropEvent.GetResultPush());
 
             var flowUpdateEvent = NnrpSessionEvent.FromFlowUpdate(default);
             Assert.True(flowUpdateEvent.IsFlowUpdate);
             Assert.Equal(default(FlowUpdateMessage), flowUpdateEvent.GetFlowUpdate());
+            Assert.Equal(default(FlowCreditUpdate), flowUpdateEvent.GetFlowCreditUpdate());
 
             var resultHintEvent = NnrpSessionEvent.FromResultHint(default);
             Assert.True(resultHintEvent.IsResultHint);

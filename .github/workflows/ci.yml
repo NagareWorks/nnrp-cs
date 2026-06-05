@@ -2,10 +2,98 @@ name: CI
 
 on:
   push:
+    branches:
+      - develop
+      - main
+      - release/**
   pull_request:
   workflow_dispatch:
 
 jobs:
+  content-policy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Reject prohibited vendor/model references
+        id: content_policy
+        shell: bash
+        run: |
+          set +e
+          first_term="Anthro""pic"
+          second_term="Clau""de"
+          output="$(
+            set -euo pipefail
+            violations=0
+            for term in "$first_term" "$second_term"; do
+              matches="$(git grep -n -I -i -F -- "$term" -- . || true)"
+              if [ -n "$matches" ]; then
+                echo "Tracked file content contains prohibited keyword: $term"
+                echo "$matches"
+                violations=1
+              fi
+            done
+
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              base="${{ github.event.pull_request.base.sha }}"
+              head="${{ github.event.pull_request.head.sha }}"
+            else
+              base="${{ github.event.before }}"
+              head="${{ github.sha }}"
+            fi
+
+            if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+              messages="$(git log --format=%B "$base..$head")"
+            else
+              messages="$(git log --format=%B -n 1 "$head")"
+            fi
+
+            for term in "$first_term" "$second_term"; do
+              if grep -qiF -- "$term" <<< "$messages"; then
+                echo "Commit message contains prohibited keyword: $term"
+                violations=1
+              fi
+            done
+
+            exit "$violations"
+          )"
+          status="$?"
+          {
+            echo "output<<EOF"
+            echo "$output"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$output"
+          exit "$status"
+
+      - name: Close prohibited-content PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          POLICY_OUTPUT: ${{ steps.content_policy.outputs.output }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "This PR was closed automatically because it violates the repository content policy."
+            echo
+            echo "Prohibited vendor/model references are not accepted in code or commit messages."
+            echo
+            echo '```text'
+            printf '%s\n' "$POLICY_OUTPUT"
+            echo '```'
+          } > content-policy-comment.md
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file content-policy-comment.md
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -13,7 +101,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -83,6 +171,11 @@ jobs:
             exit 0
           fi
 
+          if [ "$head_ref" = "develop" ] && [ "$base_ref" = "main" ]; then
+            echo "Develop-to-main integration PR detected; preserving reviewed integration history is allowed."
+            exit 0
+          fi
+
           commit_count='${{ github.event.pull_request.commits }}'
           if [ "$commit_count" -ne 1 ]; then
             echo "Normal PRs from feature/fix/docs/chore branches must contain exactly one commit before review. Current PR has $commit_count commits. Squash the history before requesting review."
@@ -97,22 +190,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Checkout nnrp-conformance action
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
           path: nnrp-conformance-action
@@ -127,6 +220,9 @@ jobs:
           --validate-tracked-metadata
           --repository-url https://github.com/${{ github.repository }}
 
+      - name: Test UPM package metadata generation
+        run: python -m unittest discover -s tests/Packaging.Tests -p "test_*.py"
+
       - name: Restore
         run: dotnet restore Nnrp.sln
 
@@ -137,8 +233,6 @@ jobs:
         shell: pwsh
         run: |
           $coverageRoot = Join-Path $PWD "artifacts/test-results"
-          $env:NNRP_CONFORMANCE_RECIPE_MANIFEST = Join-Path $PWD 'nnrp-conformance-action/protocol/nnrp-1-preview2/vectors/semantic-vectors.json'
-
           function Invoke-CoveredTest {
             param(
               [string]$ProjectPath,
@@ -177,10 +271,11 @@ jobs:
             }
           }
 
-          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceExporter]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Core.Tests/Nnrp.Core.Tests.csproj" -ArtifactName "Nnrp.Core.Tests" -IncludeFilter "[Nnrp.Core]*%2c[Nnrp.ConformanceAdapter]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj" -ArtifactName "Nnrp.Client.Tests" -IncludeFilter "[Nnrp.Client]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj" -ArtifactName "Nnrp.Transport.Quic.Tests" -IncludeFilter "[Nnrp.Transport.Quic]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj" -ArtifactName "Nnrp.NativeBridge.Tests" -IncludeFilter "[Nnrp.NativeBridge]*" -Threshold 90
 
       - name: Incremental line coverage gate
@@ -218,7 +313,7 @@ jobs:
 
       - name: Upload test result artifacts
         if: always() && hashFiles('artifacts/test-results/**') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-results
           path: artifacts/test-results/
@@ -235,12 +330,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Checkout nnrp-conformance action
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
           path: nnrp-conformance-action
@@ -267,7 +362,7 @@ jobs:
           "artifact-name=nnrp-cs-conformance" >> $env:GITHUB_OUTPUT
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -281,11 +376,10 @@ jobs:
           capabilities-path: ${{ steps.conformance-baseline.outputs.capabilities-path }}
           working-directory: .
           artifact-name: ${{ steps.conformance-baseline.outputs.artifact-name }}
-          sdk-vector-command: >-
-            dotnet run --project tools/Nnrp.ConformanceExporter/Nnrp.ConformanceExporter.csproj --
-            --protocol-version ${{ steps.conformance-baseline.outputs.protocol-version }}
-            --recipe-manifest nnrp-conformance-action/protocol/${{ steps.conformance-baseline.outputs.protocol-version }}/vectors/semantic-vectors.json
-            --output $env:NNRP_CONFORMANCE_SDK_VECTOR_OUTPUT
+          adapter-command: >-
+            dotnet run --project tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj --
+            --plan $env:NNRP_CONFORMANCE_ADAPTER_PLAN
+            --output $env:NNRP_CONFORMANCE_ADAPTER_RESULTS
 
   docs-only:
     needs:
@@ -299,6 +393,7 @@ jobs:
 
   required-checks:
     needs:
+      - content-policy
       - changes
       - commit-policy
       - build-test
@@ -311,6 +406,11 @@ jobs:
       - name: Enforce required CI path
         shell: bash
         run: |
+          if [ "${{ needs.content-policy.result }}" != "success" ]; then
+            echo "Repository content policy validation failed."
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ needs.commit-policy.result }}" != "success" ]; then
             echo "PR commit policy validation failed."
             exit 1
@@ -333,4 +433,3 @@ jobs:
             echo "Conformance validation failed."
             exit 1
           fi
-

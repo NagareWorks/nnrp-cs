@@ -829,12 +829,14 @@ namespace Nnrp.Core.Tests
         public void TypedPayloadDescriptorRoundTripsAndRejectsReservedFields()
         {
             var descriptor = new TypedPayloadDescriptor(
-                PayloadKind.Tensor,
-                descriptorFlags: 0,
-                profileId: 7,
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0x0002,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                 payloadOffset: 32,
-                payloadLength: 96,
-                reserved: 0);
+                payloadLength: 96);
 
             var payload = descriptor.ToArray();
 
@@ -843,9 +845,50 @@ namespace Nnrp.Core.Tests
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(descriptor, parsed);
 
-            payload[1] = 1;
+            payload[3] = 0x10;
             Assert.False(TypedPayloadDescriptor.TryParse(payload, strict: true, out _, out error));
             Assert.Equal(NnrpParseError.NonZeroReservedField, error);
+        }
+
+        [Fact]
+        public void TypedPayloadDescriptorCoversProfileAndFlagEdgeBranches()
+        {
+            var invalidFlags = new TypedPayloadDescriptor(
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0x0010,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 1);
+            Assert.False(invalidFlags.TryWrite(new byte[TypedPayloadDescriptor.DescriptorLength], out _));
+            Assert.Equal(0u, invalidFlags.Reserved);
+
+            var invalidReserved = new TypedPayloadDescriptor(
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 1,
+                reserved0: 1);
+            Assert.False(invalidReserved.TryWrite(new byte[TypedPayloadDescriptor.DescriptorLength], out _));
+
+            var extensionProfile = new TypedPayloadDescriptor(
+                PayloadKind.OpaqueBytes,
+                profileId: 99,
+                descriptorFlags: 0,
+                schemaId: 0x2000,
+                schemaVersion: 1,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
+                payloadOffset: 0,
+                payloadLength: 0);
+            Assert.True(TypedPayloadDescriptor.TryParse(extensionProfile.ToArray(), strict: true, out var parsed, out var error));
+            Assert.Equal(NnrpParseError.None, error);
+            Assert.Equal(PayloadKind.None, parsed.PayloadKind);
         }
 
         [Fact]
@@ -886,19 +929,23 @@ namespace Nnrp.Core.Tests
         public void TypedPayloadRegionValidatorAcceptsOrderedDeclaredFrames()
         {
             var descriptor0 = new TypedPayloadDescriptor(
-                PayloadKind.Tensor,
-                descriptorFlags: 0,
-                profileId: 1,
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0x0002,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                 payloadOffset: 0,
-                payloadLength: 4,
-                reserved: 0);
+                payloadLength: 4);
             var descriptor1 = new TypedPayloadDescriptor(
-                PayloadKind.ToolDelta,
-                descriptorFlags: 0,
-                profileId: 2,
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0x0001,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                 payloadOffset: 4,
-                payloadLength: 2,
-                reserved: 0);
+                payloadLength: 2);
             var descriptorRegion = new byte[TypedPayloadDescriptor.DescriptorLength * 2];
             descriptor0.Write(descriptorRegion.AsSpan(0, TypedPayloadDescriptor.DescriptorLength));
             descriptor1.Write(descriptorRegion.AsSpan(TypedPayloadDescriptor.DescriptorLength, TypedPayloadDescriptor.DescriptorLength));
@@ -906,7 +953,7 @@ namespace Nnrp.Core.Tests
 
             Assert.True(
                 TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
-                    PayloadKind.Tensor | PayloadKind.ToolDelta,
+                    PayloadKind.TokenChunk,
                     payloadFrameCount: 2,
                     descriptorRegion,
                     payloadRegion,
@@ -919,10 +966,113 @@ namespace Nnrp.Core.Tests
 
             Assert.True(TypedPayloadRegionValidator.TrySummarizeProfileCoverage(descriptors, out var coverages, out var payloadKindBitmap, out error));
             Assert.Equal(NnrpParseError.None, error);
-            Assert.Equal(PayloadKind.Tensor | PayloadKind.ToolDelta, payloadKindBitmap);
-            Assert.Equal(2, coverages.Length);
-            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.Tensor, 1, 1, 4), coverages[0]);
-            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.ToolDelta, 2, 1, 2), coverages[1]);
+            Assert.Equal(PayloadKind.TokenChunk, payloadKindBitmap);
+            Assert.Single(coverages);
+            Assert.Equal(new TypedPayloadProfileCoverage(PayloadKind.TokenChunk, TypedPayloadDescriptor.ProfileToken, 2, 6), coverages[0]);
+        }
+
+        [Fact]
+        public void TypedPayloadRegionValidatorRejectsProfileMismatchesAfterParsingAndInMemory()
+        {
+            var tensorProfileDescriptor = new TypedPayloadDescriptor(
+                PayloadKind.Tensor,
+                TypedPayloadDescriptor.ProfileTensor,
+                descriptorFlags: 0,
+                schemaId: 0x2000,
+                schemaVersion: 1,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
+                payloadOffset: 0,
+                payloadLength: 0);
+
+            Assert.False(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
+                    PayloadKind.Tensor | PayloadKind.TokenChunk,
+                    payloadFrameCount: 1,
+                    tensorProfileDescriptor.ToArray(),
+                    ReadOnlyMemory<byte>.Empty,
+                    out _,
+                    out var error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+
+            Assert.False(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadDescriptors(
+                    PayloadKind.Tensor | PayloadKind.TokenChunk,
+                    payloadFrameCount: 1,
+                    new[] { tensorProfileDescriptor },
+                    ReadOnlyMemory<byte>.Empty,
+                    out error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+
+            var tokenPayloadWrongProfile = new TypedPayloadDescriptor(
+                PayloadKind.TokenChunk,
+                profileId: 99,
+                descriptorFlags: 0,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 0);
+            Assert.False(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadDescriptors(
+                    PayloadKind.TokenChunk,
+                    payloadFrameCount: 1,
+                    new[] { tokenPayloadWrongProfile },
+                    ReadOnlyMemory<byte>.Empty,
+                    out error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+
+            Assert.False(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
+                    PayloadKind.Tensor | PayloadKind.TokenChunk,
+                    payloadFrameCount: 1,
+                    tokenPayloadWrongProfile.ToArray(),
+                    ReadOnlyMemory<byte>.Empty,
+                    out _,
+                    out error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+
+            var unspecifiedWithSchema = new TypedPayloadDescriptor(
+                PayloadKind.None,
+                TypedPayloadDescriptor.ProfileUnspecified,
+                descriptorFlags: 0,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 0);
+            Assert.False(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadDescriptors(
+                    PayloadKind.ToolDelta,
+                    payloadFrameCount: 1,
+                    new[] { unspecifiedWithSchema },
+                    ReadOnlyMemory<byte>.Empty,
+                    out error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+        }
+
+        [Fact]
+        public void TypedPayloadRegionValidatorResolvesSinglePayloadKindForExtensionProfile()
+        {
+            var descriptor = new TypedPayloadDescriptor(
+                PayloadKind.OpaqueBytes,
+                profileId: 99,
+                descriptorFlags: 0,
+                schemaId: 0x2000,
+                schemaVersion: 1,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
+                payloadOffset: 0,
+                payloadLength: 1);
+
+            Assert.True(
+                TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
+                    PayloadKind.ToolDelta,
+                    payloadFrameCount: 1,
+                    descriptor.ToArray(),
+                    new byte[] { 0x7F },
+                    out var descriptors,
+                    out var error));
+            Assert.Equal(NnrpParseError.None, error);
+            Assert.Equal(PayloadKind.ToolDelta, descriptors[0].PayloadKind);
         }
 
         [Fact]

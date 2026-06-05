@@ -121,7 +121,7 @@ namespace Nnrp.Client.Tests
                     payloadLength: 3,
                     reserved: 0),
                 new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
+                    PayloadKind.ToolDelta,
                     descriptorFlags: 0,
                     profileId: 5,
                     payloadOffset: 5,
@@ -135,7 +135,7 @@ namespace Nnrp.Client.Tests
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.StructuredEvent,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
                     payloadFrameCount: 3,
                     typedPayloadDescriptors: descriptors,
                     typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
@@ -144,7 +144,7 @@ namespace Nnrp.Client.Tests
 
             var result = await client.SubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
 
-            Assert.Equal(PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.StructuredEvent, result.PayloadKindBitmap);
+            Assert.Equal(PayloadKind.Tensor | PayloadKind.ToolDelta, result.PayloadKindBitmap);
             Assert.Equal<ushort>(3, result.PayloadFrameCount);
             Assert.Equal(3, result.TypedPayloadFrames.Length);
 
@@ -153,9 +153,10 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames[1].Payload.ToArray());
 
-            var structuredEventFrames = result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5);
-            Assert.Single(structuredEventFrames);
-            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, structuredEventFrames[0].Payload.ToArray());
+            var alternateToolFrames = result.GetTypedPayloadFrames(PayloadKind.ToolDelta, 5);
+            Assert.Single(alternateToolFrames);
+            Assert.Equal(new byte[] { 0x90, 0x91, 0x92, 0x93 }, alternateToolFrames[0].Payload.ToArray());
+            Assert.Empty(result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 5));
         }
 
         [Fact]
@@ -176,26 +177,38 @@ namespace Nnrp.Client.Tests
                     profileId: 9,
                     payloadOffset: 2,
                     payloadLength: 3,
-                    reserved: 0),
+                    reserved: 0)
+            };
+            var opaqueDescriptors = new[]
+            {
                 new TypedPayloadDescriptor(
                     PayloadKind.OpaqueBytes,
                     descriptorFlags: 0,
                     profileId: 12,
-                    payloadOffset: 5,
+                    payloadOffset: 0,
                     payloadLength: 4,
                     reserved: 0)
             };
-            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45, 0x90, 0x91, 0x92, 0x93 };
+            var payloadRegion = new byte[] { 0x41, 0x42, 0x43, 0x44, 0x45 };
+            var opaquePayloadRegion = new byte[] { 0x90, 0x91, 0x92, 0x93 };
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
                 CreateResultPush(
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta | PayloadKind.OpaqueBytes,
-                    payloadFrameCount: 3,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
+                    payloadFrameCount: 2,
                     typedPayloadDescriptors: descriptors,
-                    typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
+                    typedPayloadFrameRegion: payloadRegion).ToFramedMessage(),
+                CreateResultPush(
+                    sessionId: 41,
+                    frameId: 304,
+                    wireFormat: NnrpHeader.CurrentWireFormat,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.OpaqueBytes,
+                    payloadFrameCount: 1,
+                    typedPayloadDescriptors: opaqueDescriptors,
+                    typedPayloadFrameRegion: opaquePayloadRegion).ToFramedMessage());
             var client = new NnrpClient(new ClientProfile(), transport);
             await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
 
@@ -209,7 +222,9 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 0x41, 0x42 }, toolFrames.Frames.Span[0].Payload.ToArray());
             Assert.Equal(new byte[] { 0x43, 0x44, 0x45 }, toolFrames.Frames.Span[1].Payload.ToArray());
 
-            var opaqueFrames = result.GetOpaqueBytesFrames(12);
+            var opaqueResult = await client.SubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var opaqueFrames = opaqueResult.GetOpaqueBytesFrames(12);
             Assert.Equal(PayloadKind.OpaqueBytes, opaqueFrames.PayloadKind);
             Assert.Equal((ushort)12, opaqueFrames.ProfileId);
             Assert.Equal(1, opaqueFrames.FrameCount);
@@ -218,48 +233,47 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
-        public async Task SubmitAsyncPreservesTokenAndMultimodalTypedPayloadFrames()
+        public async Task SubmitAsyncPreservesTokenTypedPayloadFrames()
         {
             var descriptors = new[]
             {
                 new TypedPayloadDescriptor(
                     PayloadKind.TokenChunk,
-                    descriptorFlags: 0,
-                    profileId: 3,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 0,
-                    payloadLength: 2,
-                    reserved: 0),
+                    payloadLength: 2),
                 new TypedPayloadDescriptor(
-                    PayloadKind.AudioChunk,
-                    descriptorFlags: 0,
-                    profileId: 4,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0002,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 2,
-                    payloadLength: 3,
-                    reserved: 0),
+                    payloadLength: 3),
                 new TypedPayloadDescriptor(
-                    PayloadKind.VideoChunk,
-                    descriptorFlags: 0,
-                    profileId: 5,
+                    PayloadKind.TokenChunk,
+                    TypedPayloadDescriptor.ProfileToken,
+                    descriptorFlags: 0x0001,
+                    schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                    schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                    streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
                     payloadOffset: 5,
-                    payloadLength: 2,
-                    reserved: 0),
-                new TypedPayloadDescriptor(
-                    PayloadKind.StructuredEvent,
-                    descriptorFlags: 0,
-                    profileId: 6,
-                    payloadOffset: 7,
-                    payloadLength: 4,
-                    reserved: 0)
+                    payloadLength: 4)
             };
-            var payloadRegion = new byte[] { 0x31, 0x32, 0x41, 0x42, 0x43, 0x51, 0x52, 0x61, 0x62, 0x63, 0x64 };
+            var payloadRegion = new byte[] { 0x31, 0x32, 0x41, 0x42, 0x43, 0x61, 0x62, 0x63, 0x64 };
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
                 CreateResultPush(
                     sessionId: 41,
                     frameId: 303,
                     wireFormat: NnrpHeader.CurrentWireFormat,
-                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk | PayloadKind.AudioChunk | PayloadKind.VideoChunk | PayloadKind.StructuredEvent,
-                    payloadFrameCount: 4,
+                    payloadKindBitmap: PayloadKind.Tensor | PayloadKind.TokenChunk,
+                    payloadFrameCount: 3,
                     typedPayloadDescriptors: descriptors,
                     typedPayloadFrameRegion: payloadRegion).ToFramedMessage());
             var client = new NnrpClient(new ClientProfile(), transport);
@@ -267,33 +281,16 @@ namespace Nnrp.Client.Tests
 
             var result = await client.SubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
 
-            Assert.Equal(PayloadKind.Tensor | PayloadKind.TokenChunk | PayloadKind.AudioChunk | PayloadKind.VideoChunk | PayloadKind.StructuredEvent, result.PayloadKindBitmap);
-            Assert.Equal<ushort>(4, result.PayloadFrameCount);
-            Assert.Equal(4, result.TypedPayloadFrames.Length);
-            Assert.Equal(new byte[] { 0x31, 0x32 }, result.GetTypedPayloadFrames(PayloadKind.TokenChunk, 3)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, result.GetTypedPayloadFrames(PayloadKind.AudioChunk, 4)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x51, 0x52 }, result.GetTypedPayloadFrames(PayloadKind.VideoChunk, 5)[0].Payload.ToArray());
-            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, result.GetTypedPayloadFrames(PayloadKind.StructuredEvent, 6)[0].Payload.ToArray());
+            Assert.Equal(PayloadKind.Tensor | PayloadKind.TokenChunk, result.PayloadKindBitmap);
+            Assert.Equal<ushort>(3, result.PayloadFrameCount);
+            Assert.Equal(3, result.TypedPayloadFrames.Length);
 
-            var tokenFrames = result.GetTokenChunkFrames(3);
-            Assert.Equal(1, tokenFrames.FrameCount);
-            Assert.Equal(2, tokenFrames.PayloadBytes);
+            var tokenFrames = result.GetTokenChunkFrames(TypedPayloadDescriptor.ProfileToken);
+            Assert.Equal(3, tokenFrames.FrameCount);
+            Assert.Equal(9, tokenFrames.PayloadBytes);
             Assert.Equal(new byte[] { 0x31, 0x32 }, tokenFrames.Frames.Span[0].Payload.ToArray());
-
-            var audioFrames = result.GetAudioChunkFrames(4);
-            Assert.Equal(1, audioFrames.FrameCount);
-            Assert.Equal(3, audioFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, audioFrames.Frames.Span[0].Payload.ToArray());
-
-            var videoFrames = result.GetVideoChunkFrames(5);
-            Assert.Equal(1, videoFrames.FrameCount);
-            Assert.Equal(2, videoFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x51, 0x52 }, videoFrames.Frames.Span[0].Payload.ToArray());
-
-            var eventFrames = result.GetStructuredEventFrames(6);
-            Assert.Equal(1, eventFrames.FrameCount);
-            Assert.Equal(4, eventFrames.PayloadBytes);
-            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, eventFrames.Frames.Span[0].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x41, 0x42, 0x43 }, tokenFrames.Frames.Span[1].Payload.ToArray());
+            Assert.Equal(new byte[] { 0x61, 0x62, 0x63, 0x64 }, tokenFrames.Frames.Span[2].Payload.ToArray());
         }
 
         [Fact]
@@ -715,6 +712,38 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
+        public async Task MigrateAsyncPrunesBufferedDropsBelowResumeFromFrameId()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateSessionMigrateAck(sessionId: 41, traceId: 55, resumeFromFrameId: 305).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.True(client.IsFrameInFlight(304));
+
+            await client.MigrateAsync(
+                oldTransportId: TransportId.Tcp,
+                newTransportId: TransportId.Quic,
+                lastResultFrameId: 303,
+                clientMigrateTimestampMicroseconds: 123456789,
+                traceId: 55,
+                cancellationToken: CancellationToken.None);
+
+            Assert.False(client.IsFrameInFlight(304));
+            var staleFrame = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(304, cancellationToken: CancellationToken.None));
+            Assert.Contains("not in flight", staleFrame.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task TryAutoMigrateAsyncSendsSessionMigrateWhenTriggerFires()
         {
             var transport = new QueueTransport(
@@ -861,7 +890,250 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
-        public async Task ReceiveResultAsyncBuffersFlowUpdatesWhileWaitingForResult()
+        public async Task ReceiveResultAsyncBuffersControlEventsWhileWaitingForResult()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateFlowUpdate(sessionId: 41).ToFramedMessage(),
+                CreateResultHint(sessionId: 41).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.False(client.IsFrameInFlight(303));
+            Assert.True(client.IsFrameInFlight(304));
+            Assert.Equal(1, client.BufferedFlowUpdateCount);
+            Assert.Equal(1, client.BufferedResultHintCount);
+
+            var flowEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+            Assert.True(flowEvent.IsFlowUpdate);
+            var flowUpdate = flowEvent.GetFlowUpdate();
+            Assert.Equal(41u, flowUpdate.Header.SessionId);
+            Assert.Equal(FlowUpdateScopeKind.Session, flowUpdate.Metadata.ScopeKind);
+            Assert.Equal(FlowUpdateReason.Congestion, flowUpdate.Metadata.UpdateReason);
+            Assert.Equal(4u, flowUpdate.Metadata.RetryAfterMilliseconds);
+
+            Assert.False(client.TryDequeueFlowUpdate(out _));
+            Assert.True(client.TryDequeueResultHint(out var resultHint));
+            Assert.Equal(41u, resultHint.Header.SessionId);
+            Assert.Equal(ResultHintBudgetPolicy.Partial, resultHint.Metadata.AppliedBudgetPolicy);
+            Assert.Equal(ResultHintCongestionState.Elevated, resultHint.Metadata.CongestionState);
+            Assert.Equal(ResultHintReason.ServerBusy, resultHint.Metadata.Reason);
+
+            var dropEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+            Assert.True(dropEvent.IsResultDrop);
+            Assert.Equal(304u, dropEvent.GetResultDrop().Header.FrameId);
+            Assert.False(client.IsFrameInFlight(304));
+            Assert.Equal(0, client.BufferedFlowUpdateCount);
+            Assert.Equal(0, client.BufferedResultHintCount);
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncThrowsWhenExpectedResultIsDropped()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 303).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("RESULT_DROP received", failure.Message);
+            Assert.False(client.IsFrameInFlight(303));
+            Assert.Equal(0, client.InFlightFrameCount);
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncThrowsWhenBufferedResultDropIsRequested()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.True(client.IsFrameInFlight(304));
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(304, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("RESULT_DROP received", failure.Message);
+            Assert.False(client.IsFrameInFlight(304));
+            Assert.Equal(0, client.InFlightFrameCount);
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsResultDropForDifferentSession()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 42, frameId: 303).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("RESULT_DROP session_id 42", failure.Message);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsMalformedFlowUpdateWhileWaitingForResult()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateMalformedFlowUpdate(sessionId: 41));
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("malformed FLOW_UPDATE", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsMismatchedFlowUpdateWhileWaitingForResult()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateFlowUpdate(sessionId: 42).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("FLOW_UPDATE session_id 42", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsMalformedResultDropWhileWaitingForResult()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateMalformedResultDrop(sessionId: 41, frameId: 303));
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("malformed RESULT_DROP", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsResultDropForFrameNotInFlight()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("is not currently in flight", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsDuplicateBufferedResultDrop()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("Duplicate buffered RESULT_DROP", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsResultPushAfterBufferedResultDropForSameFrame()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 304, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("Conflicting buffered RESULT_PUSH", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveResultAsyncRejectsResultDropAfterBufferedResultPushForSameFrame()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 304, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None));
+
+            Assert.Contains("Conflicting buffered RESULT_DROP", failure.Message, StringComparison.Ordinal);
+            Assert.False(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task TryDequeueFlowUpdateReadsBufferedControlEvent()
         {
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
@@ -875,18 +1147,14 @@ namespace Nnrp.Client.Tests
             var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
 
             Assert.Equal(303u, result.Header.FrameId);
-            Assert.Equal(1, client.BufferedFlowUpdateCount);
             Assert.True(client.TryDequeueFlowUpdate(out var flowUpdate));
             Assert.Equal(41u, flowUpdate.Header.SessionId);
-            Assert.Equal(FlowUpdateScopeKind.Session, flowUpdate.Metadata.ScopeKind);
             Assert.Equal(FlowUpdateReason.Congestion, flowUpdate.Metadata.UpdateReason);
-            Assert.Equal(4u, flowUpdate.Metadata.RetryAfterMilliseconds);
-            Assert.False(client.TryDequeueFlowUpdate(out _));
-            Assert.Equal(0, client.BufferedFlowUpdateCount);
+            Assert.False(client.TryDequeueResultHint(out _));
         }
 
         [Fact]
-        public async Task ReceiveNextEventAsyncYieldsFlowUpdateThenResultPush()
+        public async Task TryDequeueFlowCreditUpdateReadsBufferedControlEvent()
         {
             var transport = new QueueTransport(
                 CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
@@ -897,15 +1165,170 @@ namespace Nnrp.Client.Tests
 
             await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
 
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.True(client.TryDequeueFlowCreditUpdate(out var creditUpdate));
+            Assert.Equal(FlowUpdateScopeKind.Session, creditUpdate.ScopeKind);
+            Assert.Equal(41u, creditUpdate.SessionId);
+            Assert.Equal(2, creditUpdate.Credit);
+            Assert.Equal(9u, creditUpdate.CreditEpoch);
+            Assert.True(creditUpdate.HasCredit);
+            Assert.True(creditUpdate.HasRetryAfter);
+            Assert.False(client.TryDequeueFlowCreditUpdate(out _));
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncYieldsBufferedDropBeforeLaterBufferedResult()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 305, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 305), CancellationToken.None);
+
+            var result = await client.ReceiveResultAsync(303, cancellationToken: CancellationToken.None);
+            var dropEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+            var bufferedResultEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+
+            Assert.Equal(303u, result.Header.FrameId);
+            Assert.True(dropEvent.IsResultDrop);
+            Assert.Equal(304u, dropEvent.GetResultDrop().Header.FrameId);
+            Assert.True(bufferedResultEvent.IsResultPush);
+            Assert.Equal(305u, bufferedResultEvent.GetResultPush().Header.FrameId);
+            Assert.Equal(0, client.InFlightFrameCount);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncYieldsControlEventsDropThenResultPush()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateFlowUpdate(sessionId: 41).ToFramedMessage(),
+                CreateResultHint(sessionId: 41).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 304).ToFramedMessage(),
+                CreateResultPush(sessionId: 41, frameId: 303, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 304), CancellationToken.None);
+
             var flowEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+            var hintEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
+            var dropEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
             var resultEvent = await client.ReceiveNextEventAsync(CancellationToken.None);
 
             Assert.True(flowEvent.IsFlowUpdate);
             Assert.Equal(FlowUpdateReason.Congestion, flowEvent.GetFlowUpdate().Metadata.UpdateReason);
+            Assert.True(hintEvent.IsResultHint);
+            Assert.Equal(ResultHintReason.ServerBusy, hintEvent.GetResultHint().Metadata.Reason);
+            Assert.True(dropEvent.IsResultDrop);
+            Assert.Equal(304u, dropEvent.GetResultDrop().Header.FrameId);
             Assert.True(resultEvent.IsResultPush);
             Assert.Equal(303u, resultEvent.GetResultPush().Header.FrameId);
             Assert.False(client.IsFrameInFlight(303));
+            Assert.False(client.IsFrameInFlight(304));
             Assert.Equal(0, client.InFlightFrameCount);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsMalformedResultHint()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateMalformedResultHint(sessionId: 41));
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("malformed RESULT_HINT", failure.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsMismatchedResultHint()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateResultHint(sessionId: 42).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("RESULT_HINT session_id 42", failure.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsMalformedResultDrop()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CreateMalformedResultDrop(sessionId: 41, frameId: 303));
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("malformed RESULT_DROP", failure.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsResultDropForDifferentSession()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 42, frameId: 303).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            await client.SendSubmitAsync(CreateSubmitRequest(frameId: 303), CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("RESULT_DROP session_id 42", failure.Message, StringComparison.Ordinal);
+            Assert.True(client.IsFrameInFlight(303));
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsResultDropWithoutInFlightFrame()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                ResultDropMessage.Create(sessionId: 41, frameId: 303).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("is not currently in flight", failure.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ReceiveNextEventAsyncRejectsUnsupportedPumpMessage()
+        {
+            var transport = new QueueTransport(
+                CreateServerHelloAck(sessionId: 41, wireFormat: NnrpHeader.CurrentWireFormat).ToFramedMessage(),
+                CloseMessage.Create(sessionId: 41, "not an event", traceId: 0).ToFramedMessage());
+            var client = new NnrpClient(new ClientProfile(), transport);
+            await client.ConnectAsync(requestedSessionId: 41, cancellationToken: CancellationToken.None);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await client.ReceiveNextEventAsync(CancellationToken.None));
+
+            Assert.Contains("Expected FLOW_UPDATE, RESULT_HINT, RESULT_PUSH, or RESULT_DROP", failure.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -1115,6 +1538,75 @@ namespace Nnrp.Client.Tests
                 creditEpoch: 9,
                 flags: FlowUpdateFlags.CreditValid | FlowUpdateFlags.RetryAfterValid);
             return new FlowUpdateMessage(header, metadata);
+        }
+
+        private static NnrpFramedMessage CreateMalformedFlowUpdate(uint sessionId)
+        {
+            var header = new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.FlowUpdate,
+                flags: HeaderFlags.None,
+                metaLength: 0,
+                bodyLength: 0,
+                sessionId: sessionId,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0);
+            return new NnrpFramedMessage(header, Array.Empty<byte>(), Array.Empty<byte>());
+        }
+
+        private static ResultHintMessage CreateResultHint(uint sessionId)
+        {
+            var header = new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.ResultHint,
+                flags: HeaderFlags.None,
+                metaLength: ResultHintMetadata.MetadataLength,
+                bodyLength: 0,
+                sessionId: sessionId,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0);
+            var metadata = new ResultHintMetadata(
+                appliedBudgetPolicy: ResultHintBudgetPolicy.Partial,
+                congestionState: ResultHintCongestionState.Elevated,
+                reason: ResultHintReason.ServerBusy,
+                retryAfterMilliseconds: 8);
+            return new ResultHintMessage(header, metadata);
+        }
+
+        private static NnrpFramedMessage CreateMalformedResultHint(uint sessionId)
+        {
+            var header = new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.ResultHint,
+                flags: HeaderFlags.None,
+                metaLength: 0,
+                bodyLength: 0,
+                sessionId: sessionId,
+                frameId: 0,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0);
+            return new NnrpFramedMessage(header, Array.Empty<byte>(), Array.Empty<byte>());
+        }
+
+        private static NnrpFramedMessage CreateMalformedResultDrop(uint sessionId, uint frameId)
+        {
+            var header = new NnrpHeader(
+                versionMajor: NnrpHeader.CurrentVersionMajor,
+                messageType: MessageType.ResultDrop,
+                flags: HeaderFlags.CanDrop,
+                metaLength: 1,
+                bodyLength: 0,
+                sessionId: sessionId,
+                frameId: frameId,
+                viewId: 0,
+                routeId: 0,
+                traceId: 0);
+            return new NnrpFramedMessage(header, new byte[] { 0 }, Array.Empty<byte>());
         }
 
         private static SessionMigrateAckMessage CreateSessionMigrateAck(uint sessionId, ulong traceId, ulong resumeFromFrameId)

@@ -30,83 +30,55 @@ on:
         required: true
         type: boolean
         default: false
+      nnrp_rs_version:
+        description: nnrp-rs native artifact version to package
+        required: true
+        default: 1.0.0-preview.3.8
 
 permissions:
   contents: write
 
 jobs:
 
-  native-bridge:
-    name: Native bridge (${{ matrix.rid }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-            build_kind: native
-            binary_path: native/nnrp_quic_bridge/target/release/nnrp_quic_bridge.dll
-          - os: ubuntu-latest
-            rid: linux-x64
-            build_kind: native
-            binary_path: native/nnrp_quic_bridge/target/release/libnnrp_quic_bridge.so
-          - os: ubuntu-latest
-            rid: osx-x64
-            build_kind: zig
-            target: x86_64-apple-darwin
-            binary_path: native/nnrp_quic_bridge/target/x86_64-apple-darwin/release/libnnrp_quic_bridge.dylib
-          - os: ubuntu-latest
-            rid: osx-arm64
-            build_kind: zig
-            target: aarch64-apple-darwin
-            binary_path: native/nnrp_quic_bridge/target/aarch64-apple-darwin/release/libnnrp_quic_bridge.dylib
+  native-artifacts:
+    name: Resolve nnrp-rs native artifacts
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
-      - name: Setup Rust
-        if: matrix.build_kind == 'native'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build native bridge
-        if: matrix.build_kind == 'native'
-        shell: pwsh
-        run: |
-          cargo build --manifest-path native/nnrp_quic_bridge/Cargo.toml --release
-          $destination = Join-Path 'artifacts/native' '${{ matrix.rid }}'
-          New-Item -ItemType Directory -Force -Path $destination | Out-Null
-          Copy-Item '${{ matrix.binary_path }}' $destination
-
-      - name: Build native bridge with zig cross toolchain
-        if: matrix.build_kind == 'zig'
+      - name: Resolve nnrp-rs version
+        id: nnrp-rs
         shell: bash
         run: |
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:/io" \
-            -w /io \
-            ghcr.io/rust-cross/cargo-zigbuild:latest \
-            cargo zigbuild --manifest-path native/nnrp_quic_bridge/Cargo.toml --release --target ${{ matrix.target }}
+          set -euo pipefail
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.nnrp_rs_version || '1.0.0-preview.3.8' }}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          mkdir -p "artifacts/native/${{ matrix.rid }}"
-          cp "${{ matrix.binary_path }}" "artifacts/native/${{ matrix.rid }}/"
+      - name: Download nnrp-rs FFI artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/download_nnrp_rs_artifacts.py
+          --version ${{ steps.nnrp-rs.outputs.version }}
+          --output artifacts/native
 
       - name: Upload native artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: native-${{ matrix.rid }}
-          path: artifacts/native/${{ matrix.rid }}/
+          name: native-artifacts
+          path: artifacts/native/
           if-no-files-found: error
           retention-days: 14
 
   package:
     name: Package managed SDK and UPM bundle
     runs-on: windows-latest
-    needs: native-bridge
+    needs: native-artifacts
     environment: release
     permissions:
       contents: write
@@ -120,25 +92,25 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Resolve version
         id: version
@@ -200,21 +172,10 @@ jobs:
           }
 
       - name: Download native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
-          pattern: native-*
-          path: artifacts/native-download
-
-      - name: Normalize native artifact layout
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/native | Out-Null
-          Get-ChildItem artifacts/native-download -Directory | ForEach-Object {
-            $rid = $_.Name -replace '^native-', ''
-            $destination = Join-Path 'artifacts/native' $rid
-            New-Item -ItemType Directory -Force -Path $destination | Out-Null
-            Get-ChildItem $_.FullName -File | Copy-Item -Destination $destination -Force
-          }
+          name: native-artifacts
+          path: artifacts/native
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -276,12 +237,45 @@ jobs:
           }
           Compress-Archive -Path artifacts/packages/*.nupkg -DestinationPath $nugetZip -Force
 
+          function Compress-PackageBundle {
+            param(
+              [string] $Name,
+              [string[]] $PackageIds
+            )
+
+            $bundlePath = Join-Path (Resolve-Path 'artifacts').Path ("{0}-{1}.zip" -f $Name, $version)
+            if (Test-Path $bundlePath) {
+              Remove-Item $bundlePath -Force
+            }
+
+            $packagePaths = @()
+            foreach ($packageId in $PackageIds) {
+              $matches = @(Get-ChildItem artifacts/packages -Filter ("{0}.{1}.nupkg" -f $packageId, $version))
+              if ($matches.Count -ne 1) {
+                throw "Expected exactly one package for $packageId $version, found $($matches.Count)."
+              }
+
+              $packagePaths += $matches[0].FullName
+            }
+
+            Compress-Archive -Path $packagePaths -DestinationPath $bundlePath -Force
+          }
+
+          Compress-PackageBundle `
+            -Name 'nnrp-cs-client-nuget' `
+            -PackageIds @('Nnrp.Core', 'Nnrp.Client', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.NativeBridge')
+          Compress-PackageBundle `
+            -Name 'nnrp-cs-server-nuget' `
+            -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.NativeBridge')
+
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nnrp-cs-release-${{ steps.version.outputs.package_version }}
           path: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-client-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-server-nuget-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
           if-no-files-found: error
@@ -295,6 +289,8 @@ jobs:
           name: nnrp-cs v${{ steps.version.outputs.package_version }}
           files: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-client-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-server-nuget-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
 
