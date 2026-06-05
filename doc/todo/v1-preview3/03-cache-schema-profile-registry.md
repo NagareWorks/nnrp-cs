@@ -7,7 +7,7 @@
 - [ ] Preserve native-core ownership of lease policy and dependency validation.
   - [x] Keep host APIs shaped as managed wrappers over native-backed cache query/touch/prefetch/release results.
   - [x] Route cache lease query, touch, prefetch, and release through native bridge operations.
-  - [ ] Route dependency validation through native bridge operations once the bridge exposes those operations.
+  - [ ] Keep dependency-validation wording aligned with the native bridge surface; do not imply a standalone dependency-validation ABI until one exists.
 
 ## Schema And Registry Surface
 
@@ -16,7 +16,8 @@
   - [x] Align typed payload descriptor parsing, writing, and conformance coverage with the frozen 24B layout and token schema anchor.
 - [ ] Keep schema/profile interpretation native-core-owned; managed code should expose descriptors and safe wrappers only.
   - [x] Expose schema descriptors, typed payload descriptor views, and registry wrappers without embedding profile-local bodies in fixed protocol metadata.
-  - [ ] Move remaining schema/profile interpretation decisions behind native-owned registry/policy helpers when the bridge exposes them.
+  - [x] Route schema descriptor parse/write, token descriptor lookup, and typed-payload binding validation through native bridge helpers.
+  - [ ] Move remaining schema/profile interpretation decisions behind native-owned registry/policy helpers when the bridge exposes policy operations beyond descriptor/binding validation.
 
 ## Standard Profiles
 

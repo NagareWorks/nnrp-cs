@@ -823,6 +823,56 @@ namespace Nnrp.NativeBridge
         public readonly uint Length;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpSessionRecoveryOutcome
+    {
+        public NnrpSessionRecoveryOutcome(uint outcomeCode, uint resumeWindowMilliseconds)
+        {
+            OutcomeCode = outcomeCode;
+            ResumeWindowMilliseconds = resumeWindowMilliseconds;
+        }
+
+        public readonly uint OutcomeCode;
+
+        public readonly uint ResumeWindowMilliseconds;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpSessionResumeRequest
+    {
+        public NnrpSessionResumeRequest(
+            NnrpHandle connection,
+            uint requestedSessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion,
+            uint resumeTokenBytes)
+        {
+            Connection = connection;
+            RequestedSessionId = requestedSessionId;
+            Generation = generation;
+            ProfileId = profileId;
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+            ResumeTokenBytes = resumeTokenBytes;
+        }
+
+        public readonly NnrpHandle Connection;
+
+        public readonly uint RequestedSessionId;
+
+        public readonly uint Generation;
+
+        public readonly ushort ProfileId;
+
+        public readonly uint SchemaId;
+
+        public readonly uint SchemaVersion;
+
+        public readonly uint ResumeTokenBytes;
+    }
+
     public enum NnrpSchemaRegistryAction : uint
     {
         Installed = 0,
@@ -999,6 +1049,293 @@ namespace Nnrp.NativeBridge
             if (IsReleased)
             {
                 throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Schema));
+            }
+        }
+    }
+
+    public sealed class NnrpNativeSchemaDescriptors
+    {
+        public NnrpNativeSchemaDescriptors(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpSchemaDescriptorHeader Parse(byte[] source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            GCHandle sourceHandle = default(GCHandle);
+            try
+            {
+                var sourceView = NnrpBufferView.Empty;
+                if (source.Length > 0)
+                {
+                    sourceHandle = GCHandle.Alloc(source, GCHandleType.Pinned);
+                    sourceView = new NnrpBufferView(sourceHandle.AddrOfPinnedObject(), new UIntPtr((uint)source.Length));
+                }
+
+                NnrpSchemaDescriptorHeader descriptor;
+                Entrypoints.SchemaDescriptorParse(sourceView, out descriptor).ThrowIfError();
+                return descriptor;
+            }
+            finally
+            {
+                if (sourceHandle.IsAllocated)
+                {
+                    sourceHandle.Free();
+                }
+            }
+        }
+
+        public void Write(NnrpSchemaDescriptorHeader descriptor, byte[] destination)
+        {
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+
+            GCHandle destinationHandle = default(GCHandle);
+            try
+            {
+                var destinationView = NnrpMutableBufferView.Empty;
+                if (destination.Length > 0)
+                {
+                    destinationHandle = GCHandle.Alloc(destination, GCHandleType.Pinned);
+                    destinationView = new NnrpMutableBufferView(destinationHandle.AddrOfPinnedObject(), new UIntPtr((uint)destination.Length));
+                }
+
+                Entrypoints.SchemaDescriptorWrite(descriptor, destinationView).ThrowIfError();
+            }
+            finally
+            {
+                if (destinationHandle.IsAllocated)
+                {
+                    destinationHandle.Free();
+                }
+            }
+        }
+
+        public NnrpSchemaDescriptorHeader TokenDelta()
+        {
+            NnrpSchemaDescriptorHeader descriptor;
+            Entrypoints.TokenDeltaSchemaDescriptor(out descriptor).ThrowIfError();
+            return descriptor;
+        }
+
+        public void ValidateBinding(NnrpSchemaDescriptorHeader[] schemaDescriptors, NnrpTypedPayloadDescriptor descriptor)
+        {
+            if (schemaDescriptors == null)
+            {
+                throw new ArgumentNullException(nameof(schemaDescriptors));
+            }
+
+            GCHandle descriptorsHandle = default(GCHandle);
+            try
+            {
+                var descriptors = IntPtr.Zero;
+                if (schemaDescriptors.Length > 0)
+                {
+                    descriptorsHandle = GCHandle.Alloc(schemaDescriptors, GCHandleType.Pinned);
+                    descriptors = descriptorsHandle.AddrOfPinnedObject();
+                }
+
+                Entrypoints.TypedPayloadValidateBinding(
+                    descriptors,
+                    new UIntPtr((uint)schemaDescriptors.Length),
+                    descriptor).ThrowIfError();
+            }
+            finally
+            {
+                if (descriptorsHandle.IsAllocated)
+                {
+                    descriptorsHandle.Free();
+                }
+            }
+        }
+    }
+
+    public sealed class NnrpNativeRecovery
+    {
+        public NnrpNativeRecovery(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public void ValidateSessionRecoveryRequest(byte[] sessionOpenMetadata)
+        {
+            WithBufferView(sessionOpenMetadata, view => Entrypoints.SessionRecoveryRequestValidate(view).ThrowIfError());
+        }
+
+        public NnrpSessionRecoveryOutcome ValidateSessionRecoveryAck(byte[] sessionOpenMetadata, byte[] sessionOpenAckMetadata)
+        {
+            NnrpSessionRecoveryOutcome outcome = default(NnrpSessionRecoveryOutcome);
+            WithBufferView(
+                sessionOpenMetadata,
+                openView => WithBufferView(
+                    sessionOpenAckMetadata,
+                    ackView =>
+                    {
+                        Entrypoints.SessionRecoveryAckValidate(openView, ackView, out outcome).ThrowIfError();
+                    }));
+            return outcome;
+        }
+
+        public void ValidateMigrationRecovery(byte[] sessionMigrateMetadata, byte[] sessionMigrateAckMetadata)
+        {
+            WithBufferView(
+                sessionMigrateMetadata,
+                migrateView => WithBufferView(
+                    sessionMigrateAckMetadata,
+                    ackView => Entrypoints.MigrationRecoveryValidate(migrateView, ackView).ThrowIfError()));
+        }
+
+        public bool ShouldReplayFrame(byte[] sessionMigrateAckMetadata, ulong frameId)
+        {
+            byte shouldReplay = 0;
+            WithBufferView(
+                sessionMigrateAckMetadata,
+                ackView => Entrypoints.MigrationShouldReplayFrame(ackView, frameId, out shouldReplay).ThrowIfError());
+            return shouldReplay != 0;
+        }
+
+        private static void WithBufferView(byte[] value, Action<NnrpBufferView> action)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            GCHandle handle = default(GCHandle);
+            try
+            {
+                var view = NnrpBufferView.Empty;
+                if (value.Length > 0)
+                {
+                    handle = GCHandle.Alloc(value, GCHandleType.Pinned);
+                    view = new NnrpBufferView(handle.AddrOfPinnedObject(), new UIntPtr((uint)value.Length));
+                }
+
+                action(view);
+            }
+            finally
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+        }
+    }
+
+    public sealed class NnrpNativeBuffer : IDisposable
+    {
+        internal NnrpNativeBuffer(NnrpNativeRuntimeEntrypoints entrypoints, NnrpBufferHandle handle, NnrpBufferView view)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Handle = handle;
+            View = view;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpBufferHandle Handle { get; private set; }
+
+        public NnrpBufferView View { get; private set; }
+
+        public bool IsReleased { get; private set; }
+
+        public void RefreshView()
+        {
+            EnsureOpen();
+            NnrpBufferView view;
+            Entrypoints.BufferView(Handle.Handle, out view).ThrowIfError();
+            View = view;
+        }
+
+        public byte[] CopyToArray()
+        {
+            EnsureOpen();
+            if (View.Length == UIntPtr.Zero)
+            {
+                return Array.Empty<byte>();
+            }
+
+            var length = checked((int)View.Length.ToUInt64());
+            var copy = new byte[length];
+            Marshal.Copy(View.Pointer, copy, 0, length);
+            return copy;
+        }
+
+        public void Release()
+        {
+            EnsureOpen();
+            Entrypoints.BufferRelease(Handle.Handle).ThrowIfError();
+            IsReleased = true;
+        }
+
+        public void Dispose()
+        {
+            if (IsReleased)
+            {
+                return;
+            }
+
+            Release();
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsReleased)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
+        }
+    }
+
+    public sealed class NnrpNativeBuffers
+    {
+        public NnrpNativeBuffers(NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpNativeBuffer AcquireCopy(byte[] source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            GCHandle sourceHandle = default(GCHandle);
+            try
+            {
+                var sourceView = NnrpBufferView.Empty;
+                if (source.Length > 0)
+                {
+                    sourceHandle = GCHandle.Alloc(source, GCHandleType.Pinned);
+                    sourceView = new NnrpBufferView(sourceHandle.AddrOfPinnedObject(), new UIntPtr((uint)source.Length));
+                }
+
+                NnrpHandle buffer;
+                NnrpBufferView view;
+                Entrypoints.BufferAcquireCopy(sourceView, out buffer, out view).ThrowIfError();
+                return new NnrpNativeBuffer(Entrypoints, new NnrpBufferHandle(buffer), view);
+            }
+            finally
+            {
+                if (sourceHandle.IsAllocated)
+                {
+                    sourceHandle.Free();
+                }
             }
         }
     }
@@ -1409,6 +1746,18 @@ namespace Nnrp.NativeBridge
             SchemaRegistryInvalidateInvoker? schemaRegistryInvalidate = null,
             SchemaRegistryValidateBindingInvoker? schemaRegistryValidateBinding = null,
             HandleStatusInvoker? schemaRegistryRelease = null,
+            ClientResumeSessionInvoker? clientResumeSession = null,
+            SchemaDescriptorParseInvoker? schemaDescriptorParse = null,
+            SchemaDescriptorWriteInvoker? schemaDescriptorWrite = null,
+            TokenDeltaSchemaDescriptorInvoker? tokenDeltaSchemaDescriptor = null,
+            TypedPayloadValidateBindingInvoker? typedPayloadValidateBinding = null,
+            RecoveryRequestValidateInvoker? sessionRecoveryRequestValidate = null,
+            RecoveryAckValidateInvoker? sessionRecoveryAckValidate = null,
+            MigrationRecoveryValidateInvoker? migrationRecoveryValidate = null,
+            MigrationShouldReplayFrameInvoker? migrationShouldReplayFrame = null,
+            BufferAcquireCopyInvoker? bufferAcquireCopy = null,
+            BufferViewInvoker? bufferView = null,
+            HandleStatusInvoker? bufferRelease = null,
             CacheLeaseRequestInvoker? cacheQuery = null,
             CacheLeaseRequestInvoker? cacheTouch = null,
             CachePrefetchInvoker? cachePrefetch = null,
@@ -1444,6 +1793,18 @@ namespace Nnrp.NativeBridge
                 schemaRegistryInvalidate,
                 schemaRegistryValidateBinding,
                 schemaRegistryRelease,
+                clientResumeSession,
+                schemaDescriptorParse,
+                schemaDescriptorWrite,
+                tokenDeltaSchemaDescriptor,
+                typedPayloadValidateBinding,
+                sessionRecoveryRequestValidate,
+                sessionRecoveryAckValidate,
+                migrationRecoveryValidate,
+                migrationShouldReplayFrame,
+                bufferAcquireCopy,
+                bufferView,
+                bufferRelease,
                 cacheQuery,
                 cacheTouch,
                 cachePrefetch,
@@ -1482,6 +1843,18 @@ namespace Nnrp.NativeBridge
             SchemaRegistryInvalidateInvoker? schemaRegistryInvalidate,
             SchemaRegistryValidateBindingInvoker? schemaRegistryValidateBinding,
             HandleStatusInvoker? schemaRegistryRelease,
+            ClientResumeSessionInvoker? clientResumeSession,
+            SchemaDescriptorParseInvoker? schemaDescriptorParse,
+            SchemaDescriptorWriteInvoker? schemaDescriptorWrite,
+            TokenDeltaSchemaDescriptorInvoker? tokenDeltaSchemaDescriptor,
+            TypedPayloadValidateBindingInvoker? typedPayloadValidateBinding,
+            RecoveryRequestValidateInvoker? sessionRecoveryRequestValidate,
+            RecoveryAckValidateInvoker? sessionRecoveryAckValidate,
+            MigrationRecoveryValidateInvoker? migrationRecoveryValidate,
+            MigrationShouldReplayFrameInvoker? migrationShouldReplayFrame,
+            BufferAcquireCopyInvoker? bufferAcquireCopy,
+            BufferViewInvoker? bufferView,
+            HandleStatusInvoker? bufferRelease,
             CacheLeaseRequestInvoker? cacheQuery,
             CacheLeaseRequestInvoker? cacheTouch,
             CachePrefetchInvoker? cachePrefetch,
@@ -1517,6 +1890,18 @@ namespace Nnrp.NativeBridge
             SchemaRegistryInvalidate = schemaRegistryInvalidate ?? MissingSchemaRegistryInvalidate;
             SchemaRegistryValidateBinding = schemaRegistryValidateBinding ?? MissingSchemaRegistryValidateBinding;
             SchemaRegistryRelease = schemaRegistryRelease ?? MissingHandleStatus;
+            ClientResumeSession = clientResumeSession ?? MissingClientResumeSession;
+            SchemaDescriptorParse = schemaDescriptorParse ?? MissingSchemaDescriptorParse;
+            SchemaDescriptorWrite = schemaDescriptorWrite ?? MissingSchemaDescriptorWrite;
+            TokenDeltaSchemaDescriptor = tokenDeltaSchemaDescriptor ?? MissingTokenDeltaSchemaDescriptor;
+            TypedPayloadValidateBinding = typedPayloadValidateBinding ?? MissingTypedPayloadValidateBinding;
+            SessionRecoveryRequestValidate = sessionRecoveryRequestValidate ?? MissingRecoveryRequestValidate;
+            SessionRecoveryAckValidate = sessionRecoveryAckValidate ?? MissingRecoveryAckValidate;
+            MigrationRecoveryValidate = migrationRecoveryValidate ?? MissingMigrationRecoveryValidate;
+            MigrationShouldReplayFrame = migrationShouldReplayFrame ?? MissingMigrationShouldReplayFrame;
+            BufferAcquireCopy = bufferAcquireCopy ?? MissingBufferAcquireCopy;
+            BufferView = bufferView ?? MissingBufferView;
+            BufferRelease = bufferRelease ?? MissingHandleStatus;
             CacheQuery = cacheQuery ?? MissingCacheLeaseRequest;
             CacheTouch = cacheTouch ?? MissingCacheLeaseRequest;
             CachePrefetch = cachePrefetch ?? MissingCachePrefetch;
@@ -1571,6 +1956,18 @@ namespace Nnrp.NativeBridge
                     Bind<SchemaRegistryInvalidateInvoker>(handle, "nnrp_schema_registry_invalidate"),
                     Bind<SchemaRegistryValidateBindingInvoker>(handle, "nnrp_schema_registry_validate_binding"),
                     Bind<HandleStatusInvoker>(handle, "nnrp_schema_registry_release"),
+                    Bind<ClientResumeSessionInvoker>(handle, "nnrp_client_resume_session"),
+                    Bind<SchemaDescriptorParseInvoker>(handle, "nnrp_schema_descriptor_parse"),
+                    Bind<SchemaDescriptorWriteInvoker>(handle, "nnrp_schema_descriptor_write"),
+                    Bind<TokenDeltaSchemaDescriptorInvoker>(handle, "nnrp_token_delta_schema_descriptor"),
+                    Bind<TypedPayloadValidateBindingInvoker>(handle, "nnrp_typed_payload_validate_binding"),
+                    Bind<RecoveryRequestValidateInvoker>(handle, "nnrp_session_recovery_request_validate"),
+                    Bind<RecoveryAckValidateInvoker>(handle, "nnrp_session_recovery_ack_validate"),
+                    Bind<MigrationRecoveryValidateInvoker>(handle, "nnrp_migration_recovery_validate"),
+                    Bind<MigrationShouldReplayFrameInvoker>(handle, "nnrp_migration_should_replay_frame"),
+                    Bind<BufferAcquireCopyInvoker>(handle, "nnrp_buffer_acquire_copy"),
+                    Bind<BufferViewInvoker>(handle, "nnrp_buffer_view"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_buffer_release"),
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_query"),
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
                     Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
@@ -1617,6 +2014,12 @@ namespace Nnrp.NativeBridge
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus SessionOpenInvoker(NnrpSessionOpenRequest request, out NnrpHandle session);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ClientResumeSessionInvoker(
+            NnrpSessionResumeRequest request,
+            out NnrpHandle session,
+            out NnrpSessionRecoveryOutcome outcome);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus SubmitInvoker(NnrpFfiSubmitRequest request, out NnrpHandle operation);
@@ -1670,6 +2073,47 @@ namespace Nnrp.NativeBridge
         public delegate NnrpFfiStatus SchemaRegistryValidateBindingInvoker(NnrpHandle registry, NnrpTypedPayloadDescriptor descriptor);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaDescriptorParseInvoker(NnrpBufferView source, out NnrpSchemaDescriptorHeader descriptor);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SchemaDescriptorWriteInvoker(NnrpSchemaDescriptorHeader descriptor, NnrpMutableBufferView destination);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TokenDeltaSchemaDescriptorInvoker(out NnrpSchemaDescriptorHeader descriptor);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TypedPayloadValidateBindingInvoker(IntPtr schemaDescriptors, UIntPtr schemaCount, NnrpTypedPayloadDescriptor descriptor);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus RecoveryRequestValidateInvoker(NnrpBufferView sessionOpenMetadata);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus RecoveryAckValidateInvoker(
+            NnrpBufferView sessionOpenMetadata,
+            NnrpBufferView sessionOpenAckMetadata,
+            out NnrpSessionRecoveryOutcome outcome);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus MigrationRecoveryValidateInvoker(
+            NnrpBufferView sessionMigrateMetadata,
+            NnrpBufferView sessionMigrateAckMetadata);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus MigrationShouldReplayFrameInvoker(
+            NnrpBufferView sessionMigrateAckMetadata,
+            ulong frameId,
+            out byte shouldReplay);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus BufferAcquireCopyInvoker(
+            NnrpBufferView source,
+            out NnrpHandle buffer,
+            out NnrpBufferView view);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus BufferViewInvoker(NnrpHandle buffer, out NnrpBufferView view);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus CacheLeaseRequestInvoker(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -1695,6 +2139,8 @@ namespace Nnrp.NativeBridge
         public SessionOpenInvoker SessionOpen { get; }
 
         public SessionOpenInvoker ClientOpenSession { get; }
+
+        public ClientResumeSessionInvoker ClientResumeSession { get; }
 
         public SubmitInvoker Submit { get; }
 
@@ -1742,6 +2188,28 @@ namespace Nnrp.NativeBridge
 
         public HandleStatusInvoker SchemaRegistryRelease { get; }
 
+        public SchemaDescriptorParseInvoker SchemaDescriptorParse { get; }
+
+        public SchemaDescriptorWriteInvoker SchemaDescriptorWrite { get; }
+
+        public TokenDeltaSchemaDescriptorInvoker TokenDeltaSchemaDescriptor { get; }
+
+        public TypedPayloadValidateBindingInvoker TypedPayloadValidateBinding { get; }
+
+        public RecoveryRequestValidateInvoker SessionRecoveryRequestValidate { get; }
+
+        public RecoveryAckValidateInvoker SessionRecoveryAckValidate { get; }
+
+        public MigrationRecoveryValidateInvoker MigrationRecoveryValidate { get; }
+
+        public MigrationShouldReplayFrameInvoker MigrationShouldReplayFrame { get; }
+
+        public BufferAcquireCopyInvoker BufferAcquireCopy { get; }
+
+        public BufferViewInvoker BufferView { get; }
+
+        public HandleStatusInvoker BufferRelease { get; }
+
         public CacheLeaseRequestInvoker CacheQuery { get; }
 
         public CacheLeaseRequestInvoker CacheTouch { get; }
@@ -1782,6 +2250,84 @@ namespace Nnrp.NativeBridge
         private static NnrpFfiStatus MissingHandleStatus(NnrpHandle handle)
         {
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingClientResumeSession(
+            NnrpSessionResumeRequest request,
+            out NnrpHandle session,
+            out NnrpSessionRecoveryOutcome outcome)
+        {
+            session = NnrpHandle.Invalid;
+            outcome = default(NnrpSessionRecoveryOutcome);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingSchemaDescriptorParse(NnrpBufferView source, out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = default(NnrpSchemaDescriptorHeader);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingSchemaDescriptorWrite(NnrpSchemaDescriptorHeader descriptor, NnrpMutableBufferView destination)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingTokenDeltaSchemaDescriptor(out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = default(NnrpSchemaDescriptorHeader);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingTypedPayloadValidateBinding(IntPtr schemaDescriptors, UIntPtr schemaCount, NnrpTypedPayloadDescriptor descriptor)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingRecoveryRequestValidate(NnrpBufferView sessionOpenMetadata)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingRecoveryAckValidate(
+            NnrpBufferView sessionOpenMetadata,
+            NnrpBufferView sessionOpenAckMetadata,
+            out NnrpSessionRecoveryOutcome outcome)
+        {
+            outcome = default(NnrpSessionRecoveryOutcome);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingMigrationRecoveryValidate(
+            NnrpBufferView sessionMigrateMetadata,
+            NnrpBufferView sessionMigrateAckMetadata)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingMigrationShouldReplayFrame(
+            NnrpBufferView sessionMigrateAckMetadata,
+            ulong frameId,
+            out byte shouldReplay)
+        {
+            shouldReplay = 0;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingBufferAcquireCopy(
+            NnrpBufferView source,
+            out NnrpHandle buffer,
+            out NnrpBufferView view)
+        {
+            buffer = NnrpHandle.Invalid;
+            view = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingBufferView(NnrpHandle buffer, out NnrpBufferView view)
+        {
+            view = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
         }
 
         private static NnrpFfiStatus MissingCacheLeaseRequest(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
@@ -2355,6 +2901,37 @@ namespace Nnrp.NativeBridge
                     schemaId,
                     schemaVersion),
                 out session);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeSession(
+                Entrypoints,
+                Handle,
+                new NnrpSessionHandle(session),
+                () => IsClosed,
+                this);
+        }
+
+        public NnrpNativeRuntimeSession ResumeSession(
+            uint requestedSessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion,
+            uint resumeTokenBytes,
+            out NnrpSessionRecoveryOutcome recoveryOutcome)
+        {
+            EnsureOpen();
+            NnrpHandle session;
+            var status = Entrypoints.ClientResumeSession(
+                new NnrpSessionResumeRequest(
+                    Handle.Handle,
+                    requestedSessionId,
+                    generation,
+                    profileId,
+                    schemaId,
+                    schemaVersion,
+                    resumeTokenBytes),
+                out session,
+                out recoveryOutcome);
             status.ThrowIfError();
             return new NnrpNativeRuntimeSession(
                 Entrypoints,

@@ -427,6 +427,10 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(entrypoints.ClientConnect(new NnrpClientConnectRequest(2, 1, 2), out handle).Succeeded);
             Assert.True(entrypoints.SessionOpen(MatchingSessionOpenRequest(), out handle).Succeeded);
             Assert.True(entrypoints.ClientOpenSession(MatchingSessionOpenRequest(), out handle).Succeeded);
+            NnrpSessionRecoveryOutcome recoveryOutcome;
+            Assert.True(entrypoints.ClientResumeSession(MatchingSessionResumeRequest(), out handle, out recoveryOutcome).Succeeded);
+            Assert.Equal(NnrpHandleKind.Session, handle.Kind);
+            Assert.Equal((uint)2, recoveryOutcome.ResumeWindowMilliseconds);
             Assert.True(entrypoints.Submit(MatchingSubmitRequest(), out handle).Succeeded);
             Assert.True(entrypoints.ClientSubmit(MatchingSubmitRequest(), out handle).Succeeded);
             Assert.True(entrypoints.SessionClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
@@ -475,6 +479,53 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(entrypoints.SchemaRegistryInvalidate(registry, 0x1001, 3, out action).Succeeded);
             Assert.Equal((uint)NnrpSchemaRegistryAction.Invalidated, action);
             Assert.True(entrypoints.SchemaRegistryRelease(registry).Succeeded);
+
+            Assert.True(entrypoints.TokenDeltaSchemaDescriptor(out descriptor).Succeeded);
+            Assert.Equal((uint)0x1001, descriptor.SchemaId);
+            Assert.True(entrypoints.SchemaDescriptorParse(new NnrpBufferView(new IntPtr(0x1000), new UIntPtr(32)), out descriptor).Succeeded);
+
+            var descriptorBytes = new byte[32];
+            var descriptorBytesHandle = GCHandle.Alloc(descriptorBytes, GCHandleType.Pinned);
+            try
+            {
+                Assert.True(entrypoints.SchemaDescriptorWrite(
+                    descriptor,
+                    new NnrpMutableBufferView(descriptorBytesHandle.AddrOfPinnedObject(), new UIntPtr((uint)descriptorBytes.Length))).Succeeded);
+            }
+            finally
+            {
+                descriptorBytesHandle.Free();
+            }
+
+            var descriptors = new[] { TokenSchemaDescriptor() };
+            var descriptorsHandle = GCHandle.Alloc(descriptors, GCHandleType.Pinned);
+            try
+            {
+                Assert.True(entrypoints.TypedPayloadValidateBinding(
+                    descriptorsHandle.AddrOfPinnedObject(),
+                    new UIntPtr((uint)descriptors.Length),
+                    MatchingTypedPayloadDescriptor()).Succeeded);
+            }
+            finally
+            {
+                descriptorsHandle.Free();
+            }
+
+            Assert.True(entrypoints.SessionRecoveryRequestValidate(NnrpBufferView.Empty).Succeeded);
+            Assert.True(entrypoints.SessionRecoveryAckValidate(NnrpBufferView.Empty, NnrpBufferView.Empty, out recoveryOutcome).Succeeded);
+            Assert.Equal((uint)2, recoveryOutcome.ResumeWindowMilliseconds);
+            Assert.True(entrypoints.MigrationRecoveryValidate(NnrpBufferView.Empty, NnrpBufferView.Empty).Succeeded);
+            byte shouldReplay;
+            Assert.True(entrypoints.MigrationShouldReplayFrame(NnrpBufferView.Empty, 7, out shouldReplay).Succeeded);
+            Assert.Equal((byte)1, shouldReplay);
+
+            NnrpBufferView bufferView;
+            Assert.True(entrypoints.BufferAcquireCopy(new NnrpBufferView(new IntPtr(0x1000), new UIntPtr(3)), out handle, out bufferView).Succeeded);
+            Assert.Equal(NnrpHandleKind.Buffer, handle.Kind);
+            Assert.Equal(new UIntPtr(3), bufferView.Length);
+            Assert.True(entrypoints.BufferView(handle, out bufferView).Succeeded);
+            Assert.Equal(new UIntPtr(3), bufferView.Length);
+            Assert.True(entrypoints.BufferRelease(handle).Succeeded);
 
             NnrpCacheLeaseResult leaseResult;
             Assert.True(entrypoints.CacheQuery(MatchingCacheLeaseRequest(), out leaseResult).Succeeded);
@@ -563,6 +614,67 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeSchemaDescriptorsRouteNativeEntrypoints()
+        {
+            var schemas = new NnrpNativeSchemaDescriptors(CreateEntrypoints());
+            var descriptor = schemas.TokenDelta();
+            var destination = new byte[32];
+
+            schemas.Write(descriptor, destination);
+            var parsed = schemas.Parse(new byte[] { 1, 2, 3 });
+            schemas.ValidateBinding(new[] { descriptor }, MatchingTypedPayloadDescriptor());
+
+            Assert.Equal((uint)0x1001, descriptor.SchemaId);
+            Assert.Equal((uint)0x1001, parsed.SchemaId);
+            Assert.NotEqual(0, BitConverter.ToInt32(destination, 0));
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeSchemaDescriptors(null!));
+            Assert.Throws<ArgumentNullException>(() => schemas.Parse(null!));
+            Assert.Throws<ArgumentNullException>(() => schemas.Write(descriptor, null!));
+            Assert.Throws<ArgumentNullException>(() => schemas.ValidateBinding(null!, MatchingTypedPayloadDescriptor()));
+        }
+
+        [Fact]
+        public void NativeRecoveryRoutesNativeEntrypoints()
+        {
+            var recovery = new NnrpNativeRecovery(CreateEntrypoints());
+
+            recovery.ValidateSessionRecoveryRequest(Array.Empty<byte>());
+            var outcome = recovery.ValidateSessionRecoveryAck(Array.Empty<byte>(), Array.Empty<byte>());
+            recovery.ValidateMigrationRecovery(Array.Empty<byte>(), Array.Empty<byte>());
+            var shouldReplay = recovery.ShouldReplayFrame(Array.Empty<byte>(), 7);
+
+            Assert.Equal((uint)2, outcome.ResumeWindowMilliseconds);
+            Assert.True(shouldReplay);
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeRecovery(null!));
+            Assert.Throws<ArgumentNullException>(() => recovery.ValidateSessionRecoveryRequest(null!));
+            Assert.Throws<ArgumentNullException>(() => recovery.ValidateSessionRecoveryAck(null!, Array.Empty<byte>()));
+            Assert.Throws<ArgumentNullException>(() => recovery.ValidateMigrationRecovery(null!, Array.Empty<byte>()));
+            Assert.Throws<ArgumentNullException>(() => recovery.ShouldReplayFrame(null!, 7));
+        }
+
+        [Fact]
+        public void NativeBuffersOwnNativeBufferHandles()
+        {
+            var buffers = new NnrpNativeBuffers(CreateEntrypoints());
+
+            using (var buffer = buffers.AcquireCopy(new byte[] { 1, 2, 3 }))
+            {
+                Assert.Equal(NnrpHandleKind.Buffer, buffer.Handle.Handle.Kind);
+                Assert.Equal(new byte[] { 1, 2, 3 }, buffer.CopyToArray());
+
+                buffer.RefreshView();
+
+                Assert.Equal(new byte[] { 1, 2, 3 }, buffer.CopyToArray());
+                buffer.Release();
+                Assert.True(buffer.IsReleased);
+                Assert.Throws<NnrpNativeInvalidStateException>(() => buffer.RefreshView());
+            }
+
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeBuffers(null!));
+            Assert.Throws<ArgumentNullException>(() => buffers.AcquireCopy(null!));
+        }
+
+        [Fact]
         public void NativeRuntimeEntrypointsRejectMissingDelegate()
         {
             Assert.Throws<ArgumentNullException>(() =>
@@ -638,6 +750,23 @@ namespace Nnrp.NativeBridge.Tests
                 entrypoints.SchemaRegistryValidateBinding(NnrpHandle.Invalid, MatchingTypedPayloadDescriptor()).ErrorFamily);
             Assert.Equal(NnrpErrorFamily.Schema, entrypoints.SchemaRegistryRelease(NnrpHandle.Invalid).ErrorFamily);
 
+            NnrpSessionRecoveryOutcome recoveryOutcome;
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.ClientResumeSession(MatchingSessionResumeRequest(), out registry, out recoveryOutcome).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.SchemaDescriptorParse(NnrpBufferView.Empty, out schemaDescriptor).StatusCode);
+            Assert.Equal(default(NnrpSchemaDescriptorHeader), schemaDescriptor);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.SchemaDescriptorWrite(TokenSchemaDescriptor(), NnrpMutableBufferView.Empty).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.TokenDeltaSchemaDescriptor(out schemaDescriptor).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.TypedPayloadValidateBinding(IntPtr.Zero, UIntPtr.Zero, MatchingTypedPayloadDescriptor()).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.SessionRecoveryRequestValidate(NnrpBufferView.Empty).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.SessionRecoveryAckValidate(NnrpBufferView.Empty, NnrpBufferView.Empty, out recoveryOutcome).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.MigrationRecoveryValidate(NnrpBufferView.Empty, NnrpBufferView.Empty).StatusCode);
+            byte shouldReplay;
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.MigrationShouldReplayFrame(NnrpBufferView.Empty, 7, out shouldReplay).StatusCode);
+            NnrpBufferView bufferView;
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.BufferAcquireCopy(NnrpBufferView.Empty, out registry, out bufferView).StatusCode);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.BufferView(NnrpHandle.Invalid, out bufferView).StatusCode);
+            Assert.Equal(NnrpErrorFamily.Schema, entrypoints.BufferRelease(NnrpHandle.Invalid).ErrorFamily);
+
             Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheQuery(MatchingCacheLeaseRequest(), out leaseResult).ErrorFamily);
             Assert.Equal(default(NnrpCacheLeaseResult), leaseResult);
             Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheTouch(MatchingCacheLeaseRequest(), out leaseResult).ErrorFamily);
@@ -660,12 +789,14 @@ namespace Nnrp.NativeBridge.Tests
 
             var connection = client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
             var session = connection.OpenSession(41, 3, 4, 5, 6);
+            var resumed = connection.ResumeSession(42, 4, 4, 5, 6, 16, out var recoveryOutcome);
             var operation = session.Submit(99, 7, new byte[] { 1, 2, 3 });
             var operationScope = session.SubmitOperation(100, 8, new byte[] { 1, 2, 3 }, parentOperationId: 99, operationGroupId: 1234);
             connection.Control(10, new byte[] { 4, 5 });
             operationScope.Cancel();
             session.Cancel(7);
             session.Control(11, new byte[] { 6, 7, 8 });
+            resumed.Close();
             session.Close();
 
             Assert.Equal((ulong)11, connection.Handle.Handle.Id);
@@ -673,6 +804,9 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((ulong)11, session.Connection.Handle.Id);
             Assert.Equal((ulong)41, session.Handle.Handle.Id);
             Assert.Equal((uint)3, session.Handle.Handle.Generation);
+            Assert.Equal((ulong)42, resumed.Handle.Handle.Id);
+            Assert.Equal((uint)4, resumed.Handle.Handle.Generation);
+            Assert.Equal((uint)2, recoveryOutcome.ResumeWindowMilliseconds);
             Assert.Equal((ulong)99, operation.Handle.Id);
             Assert.Equal((ulong)100, operationScope.OperationId);
             Assert.Equal((uint)8, operationScope.FrameId);
@@ -1889,6 +2023,18 @@ namespace Nnrp.NativeBridge.Tests
                 schemaRegistryInvalidate: SchemaRegistryInvalidate,
                 schemaRegistryValidateBinding: SchemaRegistryValidateBinding,
                 schemaRegistryRelease: HandleStatus,
+                clientResumeSession: ClientResumeSession,
+                schemaDescriptorParse: SchemaDescriptorParse,
+                schemaDescriptorWrite: SchemaDescriptorWrite,
+                tokenDeltaSchemaDescriptor: TokenDeltaSchemaDescriptor,
+                typedPayloadValidateBinding: TypedPayloadValidateBinding,
+                sessionRecoveryRequestValidate: SessionRecoveryRequestValidate,
+                sessionRecoveryAckValidate: SessionRecoveryAckValidate,
+                migrationRecoveryValidate: MigrationRecoveryValidate,
+                migrationShouldReplayFrame: MigrationShouldReplayFrame,
+                bufferAcquireCopy: BufferAcquireCopy,
+                bufferView: BufferView,
+                bufferRelease: HandleStatus,
                 cacheQuery: CacheQuery,
                 cacheTouch: CacheTouch,
                 cachePrefetch: CachePrefetch,
@@ -1927,6 +2073,23 @@ namespace Nnrp.NativeBridge.Tests
         {
             session = new NnrpHandle(NnrpHandleKind.Session, request.RequestedSessionId, request.Generation);
             return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpSessionResumeRequest MatchingSessionResumeRequest()
+        {
+            return new NnrpSessionResumeRequest(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), 3, 1, 1, 10, 1, 16);
+        }
+
+        private static NnrpFfiStatus ClientResumeSession(
+            NnrpSessionResumeRequest request,
+            out NnrpHandle session,
+            out NnrpSessionRecoveryOutcome outcome)
+        {
+            session = new NnrpHandle(NnrpHandleKind.Session, request.RequestedSessionId, request.Generation);
+            outcome = new NnrpSessionRecoveryOutcome(1, 2);
+            return request.Connection.Kind == NnrpHandleKind.Connection && request.ResumeTokenBytes > 0
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
         }
 
         private static NnrpFfiSubmitRequest MatchingSubmitRequest()
@@ -2053,6 +2216,85 @@ namespace Nnrp.NativeBridge.Tests
                 16);
         }
 
+        private static NnrpFfiStatus SchemaDescriptorParse(NnrpBufferView source, out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = TokenSchemaDescriptor();
+            return source.Pointer != IntPtr.Zero || source.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus SchemaDescriptorWrite(NnrpSchemaDescriptorHeader descriptor, NnrpMutableBufferView destination)
+        {
+            if (destination.Length != UIntPtr.Zero && destination.Pointer == IntPtr.Zero)
+            {
+                return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+            }
+
+            if (destination.Length != UIntPtr.Zero)
+            {
+                Marshal.WriteInt32(destination.Pointer, unchecked((int)descriptor.SchemaId));
+            }
+
+            return descriptor.SchemaId != 0
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus TokenDeltaSchemaDescriptor(out NnrpSchemaDescriptorHeader descriptor)
+        {
+            descriptor = TokenSchemaDescriptor();
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus TypedPayloadValidateBinding(
+            IntPtr schemaDescriptors,
+            UIntPtr schemaCount,
+            NnrpTypedPayloadDescriptor descriptor)
+        {
+            return schemaDescriptors != IntPtr.Zero && schemaCount != UIntPtr.Zero && descriptor.SchemaId == 0x1001
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus SessionRecoveryRequestValidate(NnrpBufferView sessionOpenMetadata)
+        {
+            return sessionOpenMetadata.Pointer != IntPtr.Zero || sessionOpenMetadata.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus SessionRecoveryAckValidate(
+            NnrpBufferView sessionOpenMetadata,
+            NnrpBufferView sessionOpenAckMetadata,
+            out NnrpSessionRecoveryOutcome outcome)
+        {
+            outcome = new NnrpSessionRecoveryOutcome(1, 2);
+            return sessionOpenMetadata.Length == UIntPtr.Zero || sessionOpenAckMetadata.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus MigrationRecoveryValidate(
+            NnrpBufferView sessionMigrateMetadata,
+            NnrpBufferView sessionMigrateAckMetadata)
+        {
+            return sessionMigrateMetadata.Pointer != IntPtr.Zero || sessionMigrateMetadata.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus MigrationShouldReplayFrame(
+            NnrpBufferView sessionMigrateAckMetadata,
+            ulong frameId,
+            out byte shouldReplay)
+        {
+            shouldReplay = frameId > 0 ? (byte)1 : (byte)0;
+            return sessionMigrateAckMetadata.Pointer != IntPtr.Zero || sessionMigrateAckMetadata.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
         private static NnrpFfiStatus SchemaRegistryCreate(out NnrpHandle registry)
         {
             registry = new NnrpHandle(NnrpHandleKind.SchemaRegistry, 70, 1);
@@ -2176,6 +2418,23 @@ namespace Nnrp.NativeBridge.Tests
         {
             result = CreateCacheLeaseResult(MatchingCacheObjectId(), NnrpCacheLeaseOutcome.Released);
             return lease.Kind == NnrpHandleKind.CacheLease ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
+        }
+
+        private static NnrpFfiStatus BufferAcquireCopy(NnrpBufferView source, out NnrpHandle buffer, out NnrpBufferView view)
+        {
+            buffer = new NnrpHandle(NnrpHandleKind.Buffer, 90, 1);
+            view = new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length));
+            return source.Pointer != IntPtr.Zero || source.Length == UIntPtr.Zero
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus BufferView(NnrpHandle buffer, out NnrpBufferView view)
+        {
+            view = new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length));
+            return buffer.Kind == NnrpHandleKind.Buffer
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
         }
 
         private static NnrpPollResult EmptyPollResult()

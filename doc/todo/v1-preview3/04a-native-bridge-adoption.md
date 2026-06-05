@@ -15,18 +15,19 @@
 - [x] Wrap connection, session, operation, event pump, buffer value, and cache lease handles exposed by the frozen Rust FFI.
 - [x] Wrap schema registry handles and lifecycle operations exposed by the bridge contract.
 - [x] Wrap cache lease lifecycle operations exposed by the bridge contract.
-- [ ] Wrap stable borrowed buffer-view handles once those handles are exposed by the bridge contract.
-- [ ] Define ownership and lifetime rules for native buffers exposed as spans, arrays, or safe handles.
+- [x] Wrap stable native buffer handles and borrowed buffer views exposed by the bridge contract.
+- [x] Define ownership and lifetime rules for native buffers exposed as arrays or safe handles.
   - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
   - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views without leaking raw FFI buffer lifetimes.
-  - [ ] Replace submit/control payload pinning with explicit borrowed or pooled lifetime helpers once the native ABI can keep the boundary observable.
+  - [x] Add explicit native buffer acquire/view/release helpers so host code can own native buffer lifetimes deliberately.
+  - [ ] Replace submit/control payload pinning with explicit borrowed or pooled lifetime helpers where the existing call ABI needs cross-call ownership.
   - [ ] Add host-facing lifetime documentation for Unity/.NET callback and event-pump consumers.
 - [ ] Define borrowed-buffer rules for future zero-copy result/body views.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
   - [x] Return managed poll/event snapshots from the native connection facade instead of raw FFI structs.
   - [x] Guard native session operations after explicit close on the managed facade.
   - [x] Add connection-level lifetime guards once native connection close/dispose is exposed.
-  - [ ] Add callback-registration ownership guards once native callback subscription handles are exposed.
+  - [ ] Add dispatch-sink ownership guards for callback/event-pump consumers without inventing callback subscription handles that the FFI does not expose.
 - [x] Map stable Rust error codes into managed exception and result surfaces.
 - [x] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
   - [x] Remove the NativeBridge auto-transport client that mixed native QUIC with managed TCP/session packet handling.
