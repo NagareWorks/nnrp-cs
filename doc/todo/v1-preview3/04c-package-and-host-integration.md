@@ -11,8 +11,8 @@
 - [x] Map every supported native artifact to a deterministic NuGet `runtimes/<rid>/native` path.
 - [x] Map every supported native artifact to deterministic Unity plugin importer settings.
 - [x] Implement a deterministic package-generation step that emits Unity `.meta` files for folders, managed assemblies, and native plugin entries.
-- [ ] Build native bridge artifacts in a multi-platform CI matrix for Windows, macOS, Linux, Android, and iOS.
-- [ ] Assemble one Unity-style client package artifact that places all supported common-platform native binaries into the correct Unity plugin directories.
+- [x] Resolve CI-owned native bridge artifacts for Windows, macOS, Linux, Android, and iOS from the pinned `nnrp-rs` release.
+- [x] Assemble one Unity-style client package artifact that places all supported common-platform native binaries into the correct Unity plugin directories.
 - [ ] Decide which preview3 handles stay internal and which become public Unity/.NET abstractions.
 - [ ] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
 - [ ] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.

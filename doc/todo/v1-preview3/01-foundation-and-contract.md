@@ -30,5 +30,5 @@
 - [ ] Split package outputs into NuGet-style server dependency, NuGet-style client dependency, and Unity-style client dependency.
 - [ ] Keep GitHub Packages as the first distribution target while leaving room for later NuGet / UPM registry rollout.
 - [ ] Add a deterministic CI-owned Unity `.meta` generation step so package trees do not depend on committed Unity editor output.
-- [ ] Freeze the current common-platform native package baseline as Windows + macOS + Linux + Android + iOS binaries in one Unity-style client package.
-- [ ] Keep the preview3 package scope limited to those common platforms.
+- [x] Freeze the current common-platform native package baseline as Windows + macOS + Linux + Android + iOS binaries in one Unity-style client package.
+- [x] Keep the preview3 package scope limited to those common platforms.

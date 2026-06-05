@@ -456,7 +456,7 @@ All SDK projects share the repository version from `Directory.Build.props`. SDK 
 dotnet pack Nnrp.sln -c Release
 ```
 
-The release workflow also builds the Unity-style `com.nnrp.client` package. The package is assembled in CI from the tracked OpenUPM metadata under `Packages/com.nnrp.client`, the managed `netstandard2.1` assemblies, and native bridge artifacts produced by the release matrix.
+The release workflow also builds the Unity-style `com.nnrp.client` package. The package is assembled in CI from the tracked OpenUPM metadata under `Packages/com.nnrp.client`, the managed `netstandard2.1` assemblies, and native `nnrp_ffi` artifacts resolved from the pinned `nnrp-rs` release.
 
 `scripts/build_upm_package.py` owns the package layout and deterministic Unity `.meta` generation. CI validates the tracked package metadata on every non-docs-only build and emits release `.zip` / `.tgz` bundles from the generated tree.
 
@@ -464,9 +464,21 @@ Current release plugin layout:
 
 | Platform | Unity plugin path | Native bridge artifact |
 | --- | --- | --- |
-| Windows x64 | `Runtime/Plugins/Windows/x86_64/` | `nnrp_quic_bridge.dll` |
-| Linux x64 | `Runtime/Plugins/Linux/x86_64/` | `libnnrp_quic_bridge.so` |
-| macOS x64 | `Runtime/Plugins/macOS/x86_64/` | `libnnrp_quic_bridge.dylib` |
-| macOS arm64 | `Runtime/Plugins/macOS/arm64/` | `libnnrp_quic_bridge.dylib` |
+| Windows x86 | `Runtime/Plugins/Windows/x86/` | `nnrp_ffi.dll` |
+| Windows x64 | `Runtime/Plugins/Windows/x86_64/` | `nnrp_ffi.dll` |
+| Windows arm64 | `Runtime/Plugins/Windows/ARM64/` | `nnrp_ffi.dll` |
+| Linux x86 | `Runtime/Plugins/Linux/x86/` | `libnnrp_ffi.so` |
+| Linux x64 | `Runtime/Plugins/Linux/x86_64/` | `libnnrp_ffi.so` |
+| Linux armv7 | `Runtime/Plugins/Linux/ARMv7/` | `libnnrp_ffi.so` |
+| Linux arm64 | `Runtime/Plugins/Linux/ARM64/` | `libnnrp_ffi.so` |
+| macOS x64 | `Runtime/Plugins/macOS/x86_64/` | `libnnrp_ffi.dylib` |
+| macOS arm64 | `Runtime/Plugins/macOS/arm64/` | `libnnrp_ffi.dylib` |
+| Android x86 | `Runtime/Plugins/Android/x86/` | `libnnrp_ffi.so` |
+| Android x64 | `Runtime/Plugins/Android/x86_64/` | `libnnrp_ffi.so` |
+| Android armv7 | `Runtime/Plugins/Android/armeabi-v7a/` | `libnnrp_ffi.so` |
+| Android arm64 | `Runtime/Plugins/Android/arm64-v8a/` | `libnnrp_ffi.so` |
+| iOS arm64 | `Runtime/Plugins/iOS/arm64/` | `libnnrp_ffi.a` |
+| iOS simulator arm64 | `Runtime/Plugins/iOSSimulator/arm64/` | `libnnrp_ffi.a` |
+| iOS simulator x64 | `Runtime/Plugins/iOSSimulator/x86_64/` | `libnnrp_ffi.a` |
 
-NuGet runtime asset inclusion is broader and conditional: `Nnrp.NativeBridge` will package native artifacts for supported runtime identifiers when those artifacts are supplied under `artifacts/native`. The current preview2 Unity release bundle ships the desktop `nnrp_quic_bridge` artifacts built by this repository's release matrix.
+NuGet runtime asset inclusion follows the same resolved artifact root: `Nnrp.NativeBridge` packages native artifacts for supported runtime identifiers when those artifacts are supplied under `artifacts/native`. The preview3 release workflow downloads the common-platform `nnrp_ffi` assets from `nnrp-rs` before packing NuGet and Unity artifacts.

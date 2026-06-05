@@ -16,7 +16,8 @@ namespace Nnrp.NativeBridge.Tests
         [InlineData("linux", "libnnrp_ffi.so")]
         [InlineData("android", "libnnrp_ffi.so")]
         [InlineData("darwin", "libnnrp_ffi.dylib")]
-        [InlineData("ios", "libnnrp_ffi.dylib")]
+        [InlineData("ios", "libnnrp_ffi.a")]
+        [InlineData("iossimulator", "libnnrp_ffi.a")]
         public void LibraryNameMatchesSupportedPlatforms(string osName, string expected)
         {
             Assert.Equal(expected, NnrpNativeArtifact.LibraryName(osName));
@@ -28,7 +29,8 @@ namespace Nnrp.NativeBridge.Tests
         [InlineData("macos", "arm64", "osx-arm64")]
         [InlineData("linux", "aarch64", "linux-arm64")]
         [InlineData("android", "armv7", "android-arm")]
-        [InlineData("ios", "amd64", "ios-x64")]
+        [InlineData("ios", "arm64", "ios-arm64")]
+        [InlineData("iossimulator", "amd64", "iossimulator-x64")]
         public void PlatformNormalizesRuntimeIdentifier(string osName, string architecture, string expected)
         {
             var platform = new NnrpNativePlatform(osName, architecture);

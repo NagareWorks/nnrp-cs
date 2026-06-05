@@ -26,9 +26,9 @@ The existing C# SDK owns managed packet helpers, native bridge scaffolding, and 
 
 ## Pinned Native Contract
 
-The current preview3 binding work consumes `nnrp-rs` commit `b38858dad4abd1b3c764f4c1afff918f38cebf6b`.
+The current preview3 binding work consumes `nnrp-rs` release `v1.0.0-preview.3.7`.
 
-This commit is not treated as a crates.io release boundary for C#. It is the native artifact contract pin for the current migration branch and includes:
+This release is the native artifact contract pin for the current C# preview3 line and includes:
 
 1. The `nnrp_runtime_capabilities` export.
 2. ABI version `1.0.0`.
@@ -36,7 +36,7 @@ This commit is not treated as a crates.io release boundary for C#. It is the nat
 4. Runtime feature flags for protocol core, client/server APIs, event polling, callback dispatch, cache/schema, recovery, typed payloads, and transport slots.
 5. Transport slot bits for TCP and optional QUIC.
 
-If a later `nnrp-rs` commit changes exported symbol names, ABI struct layout, required feature flags, or transport-slot meanings, update this pin and rerun the pre/post migration benchmark table before accepting the new artifact.
+If a later `nnrp-rs` release changes exported symbol names, ABI struct layout, required feature flags, or transport-slot meanings, update this pin and rerun the pre/post migration benchmark table before accepting the new artifact.
 
 ## Target Platform Matrix
 
@@ -65,7 +65,7 @@ Rules:
 | Run | Date | SDK commit | nnrp-rs artifact | Host runtime | OS/arch | CPU | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pre-migration baseline | 2026-05-25 | 135ca63 | N/A | .NET 8.0.27 | windows/x64 | Intel(R) Core(TM)2 Duo CPU T7700 @ 2.40GHz | Conformance benchmark runner selected and measured 9 scenarios. |
-| Post-migration native | TBD | TBD | b38858dad4abd1b3c764f4c1afff918f38cebf6b | TBD | TBD | TBD | TBD |
+| Post-migration native | TBD | TBD | v1.0.0-preview.3.7 | TBD | TBD | TBD | TBD |
 
 ### Latency Benchmarks
 

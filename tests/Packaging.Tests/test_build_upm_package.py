@@ -26,15 +26,32 @@ packaging = load_packaging_module()
 
 class UpmPackageMetadataTests(unittest.TestCase):
     def test_stable_guid_normalizes_paths(self) -> None:
-        first = packaging.stable_guid("Runtime/Plugins/Windows/x86_64/nnrp_quic_bridge.dll")
-        second = packaging.stable_guid(r"runtime\plugins\windows\x86_64\nnrp_quic_bridge.dll")
+        first = packaging.stable_guid("Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll")
+        second = packaging.stable_guid(r"runtime\plugins\windows\x86_64\nnrp_ffi.dll")
 
         self.assertEqual(first, second)
         self.assertEqual(32, len(first))
         self.assertNotEqual(first, packaging.stable_guid("Runtime/Managed/Nnrp.Core.dll"))
 
     def test_supported_native_layout_has_unity_importer_settings(self) -> None:
-        expected_rids = {"win-x64", "linux-x64", "osx-x64", "osx-arm64"}
+        expected_rids = {
+            "win-x86",
+            "win-x64",
+            "win-arm64",
+            "linux-x86",
+            "linux-x64",
+            "linux-arm",
+            "linux-arm64",
+            "osx-x64",
+            "osx-arm64",
+            "android-x86",
+            "android-x64",
+            "android-arm",
+            "android-arm64",
+            "ios-arm64",
+            "iossimulator-arm64",
+            "iossimulator-x64",
+        }
 
         self.assertEqual(expected_rids, set(packaging.NATIVE_LAYOUT))
         self.assertEqual(expected_rids, set(packaging.NATIVE_PLUGIN_SETTINGS))
@@ -52,7 +69,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
             self.assertIn(f"{platform}: {platform}", metadata)
             self.assertIn(f"CPU: {cpu}", metadata)
 
-        self.assertIsNone(packaging.native_plugin_rid_for_relative_path("Runtime/Plugins/Android/arm64/libnnrp_quic_bridge.so"))
+        self.assertIsNone(packaging.native_plugin_rid_for_relative_path("Runtime/Plugins/Android/arm64/libnnrp_ffi.so"))
 
     def test_emit_meta_files_covers_folders_managed_and_native_plugins(self) -> None:
         temp_root = Path(tempfile.mkdtemp(prefix="nnrp-upm-meta-test-"))
@@ -80,15 +97,24 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "Runtime/Plugins.meta",
                 "Runtime/Plugins/Windows.meta",
                 "Runtime/Plugins/Windows/x86_64.meta",
-                "Runtime/Plugins/Windows/x86_64/nnrp_quic_bridge.dll.meta",
+                "Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll.meta",
                 "Runtime/Plugins/Linux.meta",
                 "Runtime/Plugins/Linux/x86_64.meta",
-                "Runtime/Plugins/Linux/x86_64/libnnrp_quic_bridge.so.meta",
+                "Runtime/Plugins/Linux/x86_64/libnnrp_ffi.so.meta",
                 "Runtime/Plugins/macOS.meta",
                 "Runtime/Plugins/macOS/x86_64.meta",
-                "Runtime/Plugins/macOS/x86_64/libnnrp_quic_bridge.dylib.meta",
+                "Runtime/Plugins/macOS/x86_64/libnnrp_ffi.dylib.meta",
                 "Runtime/Plugins/macOS/arm64.meta",
-                "Runtime/Plugins/macOS/arm64/libnnrp_quic_bridge.dylib.meta",
+                "Runtime/Plugins/macOS/arm64/libnnrp_ffi.dylib.meta",
+                "Runtime/Plugins/Android.meta",
+                "Runtime/Plugins/Android/arm64-v8a.meta",
+                "Runtime/Plugins/Android/arm64-v8a/libnnrp_ffi.so.meta",
+                "Runtime/Plugins/iOS.meta",
+                "Runtime/Plugins/iOS/arm64.meta",
+                "Runtime/Plugins/iOS/arm64/libnnrp_ffi.a.meta",
+                "Runtime/Plugins/iOSSimulator.meta",
+                "Runtime/Plugins/iOSSimulator/x86_64.meta",
+                "Runtime/Plugins/iOSSimulator/x86_64/libnnrp_ffi.a.meta",
             }
             self.assertTrue(expected_meta_paths.issubset(metadata_snapshot))
 
@@ -101,9 +127,11 @@ class UpmPackageMetadataTests(unittest.TestCase):
             self.assertIn("DefaultImporter:", text_meta)
             self.assertNotIn("PluginImporter:", text_meta)
 
-            windows_meta = metadata_snapshot["Runtime/Plugins/Windows/x86_64/nnrp_quic_bridge.dll.meta"]
-            linux_meta = metadata_snapshot["Runtime/Plugins/Linux/x86_64/libnnrp_quic_bridge.so.meta"]
-            mac_arm_meta = metadata_snapshot["Runtime/Plugins/macOS/arm64/libnnrp_quic_bridge.dylib.meta"]
+            windows_meta = metadata_snapshot["Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll.meta"]
+            linux_meta = metadata_snapshot["Runtime/Plugins/Linux/x86_64/libnnrp_ffi.so.meta"]
+            mac_arm_meta = metadata_snapshot["Runtime/Plugins/macOS/arm64/libnnrp_ffi.dylib.meta"]
+            android_arm_meta = metadata_snapshot["Runtime/Plugins/Android/arm64-v8a/libnnrp_ffi.so.meta"]
+            ios_arm_meta = metadata_snapshot["Runtime/Plugins/iOS/arm64/libnnrp_ffi.a.meta"]
 
             self.assertIn("Windows: Windows", windows_meta)
             self.assertIn("CPU: x86_64", windows_meta)
@@ -111,6 +139,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
             self.assertIn("CPU: x86_64", linux_meta)
             self.assertIn("OSX: OSX", mac_arm_meta)
             self.assertIn("CPU: ARM64", mac_arm_meta)
+            self.assertIn("Android: Android", android_arm_meta)
+            self.assertIn("CPU: ARM64", android_arm_meta)
+            self.assertIn("iOS: iOS", ios_arm_meta)
+            self.assertIn("CPU: ARM64", ios_arm_meta)
 
             guids = []
             for content in metadata_snapshot.values():

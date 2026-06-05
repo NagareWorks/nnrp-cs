@@ -49,6 +49,7 @@ namespace Nnrp.NativeBridge
                     case "linux":
                     case "android":
                     case "ios":
+                    case "iossimulator":
                         ridOs = OsName;
                         break;
                     default:
@@ -157,6 +158,7 @@ namespace Nnrp.NativeBridge
                 case "linux":
                 case "android":
                 case "ios":
+                case "iossimulator":
                     return normalized;
                 default:
                     throw new NnrpNativeArtifactException("Unsupported native artifact OS: " + value);
@@ -2059,7 +2061,12 @@ namespace Nnrp.NativeBridge
                 return "nnrp_ffi.dll";
             }
 
-            if (normalized == "macos" || normalized == "ios")
+            if (normalized == "ios" || normalized == "iossimulator")
+            {
+                return "libnnrp_ffi.a";
+            }
+
+            if (normalized == "macos")
             {
                 return "libnnrp_ffi.dylib";
             }

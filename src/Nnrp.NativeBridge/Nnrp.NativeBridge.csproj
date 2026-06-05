@@ -98,26 +98,21 @@
       PackagePath="runtimes/android-arm64/native/"
       Visible="false"
       Condition="Exists('$(NativeBridgeArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\ios-x86\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/ios-x86/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-x86\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\ios-x64\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/ios-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-x64\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\ios-arm\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/ios-arm/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-arm\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.dylib"
+    <None Include="$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.a"
       Pack="true"
       PackagePath="runtimes/ios-arm64/native/"
       Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.dylib')" />
+      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
+    <None Include="$(NativeBridgeArtifactRoot)\iossimulator-x64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-x64/native/"
+      Visible="false"
+      Condition="Exists('$(NativeBridgeArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
+    <None Include="$(NativeBridgeArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-arm64/native/"
+      Visible="false"
+      Condition="Exists('$(NativeBridgeArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
   </ItemGroup>
 
   <ItemGroup>
