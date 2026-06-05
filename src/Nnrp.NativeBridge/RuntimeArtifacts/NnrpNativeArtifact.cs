@@ -1634,6 +1634,90 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpCompactResult
+    {
+        public NnrpCompactResult(
+            NnrpFfiStatus status,
+            byte hasResult,
+            uint eventKind,
+            uint resultState,
+            NnrpHandle operation,
+            ulong operationId,
+            uint frameId,
+            NnrpBufferView payload,
+            NnrpFfiDiagnostic diagnostic)
+        {
+            Status = status;
+            HasResult = hasResult;
+            EventKind = eventKind;
+            ResultState = resultState;
+            Operation = operation;
+            OperationId = operationId;
+            FrameId = frameId;
+            Payload = payload;
+            Diagnostic = diagnostic;
+        }
+
+        public readonly NnrpFfiStatus Status;
+
+        public readonly byte HasResult;
+
+        public readonly uint EventKind;
+
+        public readonly uint ResultState;
+
+        public readonly NnrpHandle Operation;
+
+        public readonly ulong OperationId;
+
+        public readonly uint FrameId;
+
+        public readonly NnrpBufferView Payload;
+
+        public readonly NnrpFfiDiagnostic Diagnostic;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpClientSubmitResultBatchRequest
+    {
+        public NnrpClientSubmitResultBatchRequest(
+            NnrpHandle session,
+            ulong operationIdStart,
+            uint frameIdStart,
+            uint frameIdStride,
+            NnrpBufferView submitPayload,
+            NnrpBufferView resultPayload,
+            UIntPtr maxEvents,
+            UIntPtr iterations)
+        {
+            Session = session;
+            OperationIdStart = operationIdStart;
+            FrameIdStart = frameIdStart;
+            FrameIdStride = frameIdStride;
+            SubmitPayload = submitPayload;
+            ResultPayload = resultPayload;
+            MaxEvents = maxEvents;
+            Iterations = iterations;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly ulong OperationIdStart;
+
+        public readonly uint FrameIdStart;
+
+        public readonly uint FrameIdStride;
+
+        public readonly NnrpBufferView SubmitPayload;
+
+        public readonly NnrpBufferView ResultPayload;
+
+        public readonly UIntPtr MaxEvents;
+
+        public readonly UIntPtr Iterations;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpClientCancelRequest
     {
         public NnrpClientCancelRequest(NnrpHandle session, uint frameId)
@@ -1791,7 +1875,8 @@ namespace Nnrp.NativeBridge
             CacheLeaseRequestInvoker? cacheQuery = null,
             CacheLeaseRequestInvoker? cacheTouch = null,
             CachePrefetchInvoker? cachePrefetch = null,
-            CacheReleaseInvoker? cacheRelease = null)
+            CacheReleaseInvoker? cacheRelease = null,
+            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -1838,7 +1923,8 @@ namespace Nnrp.NativeBridge
                 cacheQuery,
                 cacheTouch,
                 cachePrefetch,
-                cacheRelease)
+                cacheRelease,
+                clientSubmitResultCompactBatch)
         {
         }
 
@@ -1888,7 +1974,8 @@ namespace Nnrp.NativeBridge
             CacheLeaseRequestInvoker? cacheQuery,
             CacheLeaseRequestInvoker? cacheTouch,
             CachePrefetchInvoker? cachePrefetch,
-            CacheReleaseInvoker? cacheRelease)
+            CacheReleaseInvoker? cacheRelease,
+            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -1936,6 +2023,7 @@ namespace Nnrp.NativeBridge
             CacheTouch = cacheTouch ?? MissingCacheLeaseRequest;
             CachePrefetch = cachePrefetch ?? MissingCachePrefetch;
             CacheRelease = cacheRelease ?? MissingCacheRelease;
+            ClientSubmitResultCompactBatch = clientSubmitResultCompactBatch ?? MissingClientSubmitResultCompactBatch;
         }
 
         private IntPtr _libraryHandle;
@@ -1944,7 +2032,8 @@ namespace Nnrp.NativeBridge
         public static NnrpNativeRuntimeEntrypoints Load(
             string? artifactPath = null,
             string? artifactRoot = null,
-            NnrpNativePlatform? platform = null)
+            NnrpNativePlatform? platform = null,
+            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots)
         {
             string resolvedPath = string.IsNullOrWhiteSpace(artifactPath)
                 ? NnrpNativeArtifact.Resolve(artifactRoot, platform)
@@ -1954,7 +2043,10 @@ namespace Nnrp.NativeBridge
             {
                 handle = NativeDynamicLibrary.Load(resolvedPath);
                 var runtimeCapabilities = Bind<NnrpNativeArtifact.RuntimeCapabilitiesInvoker>(handle, "nnrp_runtime_capabilities");
-                NnrpNativeArtifact.Probe(resolvedPath, runtimeCapabilities: runtimeCapabilities);
+                NnrpNativeArtifact.Probe(
+                    resolvedPath,
+                    runtimeCapabilities: runtimeCapabilities,
+                    requiredTransportSlots: requiredTransportSlots);
                 return new NnrpNativeRuntimeEntrypoints(
                     handle,
                     Bind<CurrentProtocolVersionInvoker>(handle, "nnrp_current_protocol_version"),
@@ -2001,7 +2093,8 @@ namespace Nnrp.NativeBridge
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_query"),
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
                     Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
-                    Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"));
+                    Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"),
+                    Bind<ClientSubmitResultCompactBatchInvoker>(handle, "nnrp_client_submit_result_compact_batch"));
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
             {
@@ -2053,6 +2146,12 @@ namespace Nnrp.NativeBridge
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus SubmitInvoker(NnrpFfiSubmitRequest request, out NnrpHandle operation);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ClientSubmitResultCompactBatchInvoker(
+            NnrpClientSubmitResultBatchRequest request,
+            out NnrpCompactResult lastResult,
+            out UIntPtr completed);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus HandleStatusInvoker(NnrpHandle handle);
@@ -2176,6 +2275,8 @@ namespace Nnrp.NativeBridge
 
         public SubmitInvoker ClientSubmit { get; }
 
+        public ClientSubmitResultCompactBatchInvoker ClientSubmitResultCompactBatch { get; }
+
         public HandleStatusInvoker SessionClose { get; }
 
         public HandleStatusInvoker ClientClose { get; }
@@ -2289,6 +2390,16 @@ namespace Nnrp.NativeBridge
         {
             session = NnrpHandle.Invalid;
             outcome = default(NnrpSessionRecoveryOutcome);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingClientSubmitResultCompactBatch(
+            NnrpClientSubmitResultBatchRequest request,
+            out NnrpCompactResult lastResult,
+            out UIntPtr completed)
+        {
+            lastResult = default(NnrpCompactResult);
+            completed = UIntPtr.Zero;
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
         }
 
@@ -2597,12 +2708,17 @@ namespace Nnrp.NativeBridge
             string? artifactRoot = null,
             NnrpNativePlatform? platform = null,
             INnrpNativeRuntimeBackend? fallback = null,
-            NnrpNativeRuntimeFallbackPolicy fallbackPolicy = NnrpNativeRuntimeFallbackPolicy.RequireNative)
+            NnrpNativeRuntimeFallbackPolicy fallbackPolicy = NnrpNativeRuntimeFallbackPolicy.RequireNative,
+            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots)
         {
             try
             {
                 return new NnrpNativeRuntimeClient(
-                    NnrpNativeRuntimeEntrypoints.Load(artifactPath, artifactRoot, platform));
+                    NnrpNativeRuntimeEntrypoints.Load(
+                        artifactPath,
+                        artifactRoot,
+                        platform,
+                        requiredTransportSlots));
             }
             catch (NnrpNativeArtifactException)
             {
@@ -3440,6 +3556,58 @@ namespace Nnrp.NativeBridge
             return PollResult(operation, state, maxEvents);
         }
 
+        public ulong SubmitResultCompactBatch(
+            ulong operationIdStart,
+            uint frameIdStart,
+            uint frameIdStride,
+            ReadOnlyMemory<byte> submitPayload,
+            ReadOnlyMemory<byte> resultPayload,
+            int maxEvents,
+            int iterations)
+        {
+            EnsureOpen();
+            if (frameIdStride == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(frameIdStride), "frameIdStride must be positive.");
+            }
+
+            if (maxEvents < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxEvents), "maxEvents must be non-negative.");
+            }
+
+            if (iterations <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(iterations), "iterations must be positive.");
+            }
+
+            return WithBorrowedView(
+                submitPayload,
+                submitView => WithBorrowedView(
+                    resultPayload,
+                    resultView =>
+                    {
+                        NnrpCompactResult lastResult;
+                        UIntPtr completed;
+                        var request = new NnrpClientSubmitResultBatchRequest(
+                            Handle.Handle,
+                            operationIdStart,
+                            frameIdStart,
+                            frameIdStride,
+                            submitView,
+                            resultView,
+                            new UIntPtr((uint)maxEvents),
+                            new UIntPtr((uint)iterations));
+                        var status = Entrypoints.ClientSubmitResultCompactBatch(
+                            request,
+                            out lastResult,
+                            out completed);
+                        status.ThrowIfError();
+                        lastResult.Status.ThrowIfError();
+                        return checked((ulong)completed.ToUInt64());
+                    }));
+        }
+
         public void Close()
         {
             EnsureOpen();
@@ -3753,13 +3921,14 @@ namespace Nnrp.NativeBridge
             string? artifactPath = null,
             string? artifactRoot = null,
             NnrpNativePlatform? platform = null,
-            RuntimeCapabilitiesInvoker? runtimeCapabilities = null)
+            RuntimeCapabilitiesInvoker? runtimeCapabilities = null,
+            uint requiredTransportSlots = RequiredTransportSlots)
         {
             string resolvedPath = string.IsNullOrWhiteSpace(artifactPath) ? Resolve(artifactRoot, platform) : artifactPath!;
             NnrpRuntimeCapabilities capabilities = runtimeCapabilities == null
                 ? ReadRuntimeCapabilities(resolvedPath)
                 : runtimeCapabilities();
-            ValidateRuntimeCapabilities(capabilities);
+            ValidateRuntimeCapabilities(capabilities, requiredTransportSlots);
             return new NnrpNativeProbeResult(
                 resolvedPath,
                 capabilities.AbiMajor,
@@ -3776,7 +3945,7 @@ namespace Nnrp.NativeBridge
                 capabilities.FeatureFlags);
         }
 
-        private static void ValidateRuntimeCapabilities(NnrpRuntimeCapabilities capabilities)
+        private static void ValidateRuntimeCapabilities(NnrpRuntimeCapabilities capabilities, uint requiredTransportSlots)
         {
             if (capabilities.AbiMajor != ExpectedAbiMajor || capabilities.AbiMinor < MinimumAbiMinor)
             {
@@ -3814,7 +3983,7 @@ namespace Nnrp.NativeBridge
                     "Native artifact is missing required runtime feature flags: 0x" + missingFeatures.ToString("x16"));
             }
 
-            uint missingTransportSlots = RequiredTransportSlots & ~capabilities.TransportSlots;
+            uint missingTransportSlots = requiredTransportSlots & ~capabilities.TransportSlots;
             if (missingTransportSlots != 0)
             {
                 throw new NnrpNativeArtifactException(

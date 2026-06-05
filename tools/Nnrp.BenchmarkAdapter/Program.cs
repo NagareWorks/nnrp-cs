@@ -4,6 +4,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Core;
+using Nnrp.NativeBridge;
+using Nnrp.Transport.Quic;
+using Nnrp.Transport.Tcp;
 
 namespace Nnrp.BenchmarkAdapter;
 
@@ -11,6 +14,7 @@ public static class Program
 {
     private const string ResultsSchemaUrl = "https://raw.githubusercontent.com/NagareWorks/nnrp-conformance/main/schemas/benchmark-results.schema.json";
     private const string DefaultSkipMessage = "This benchmark scenario is not implemented in the current C# baseline runner.";
+    private const string NativeArtifactPathEnvironmentVariable = "NNRP_BENCHMARK_NATIVE_ARTIFACT_PATH";
     private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private static int Main(string[] args)
@@ -343,23 +347,25 @@ public static class Program
 
     private static BenchmarkScenarioResult RunRuntimeProbe(string id, JsonElement workload)
     {
+        var artifactPath = ResolveNativeArtifactPath();
+        if (artifactPath == null)
+        {
+            return NativeUnavailableResult(id);
+        }
+
         var iterations = GetPositiveInt(workload, "iterations", 100_000);
         var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
 
+        using var entrypoints = NnrpNativeRuntimeEntrypoints.Load(artifactPath);
+
         void Operation()
         {
-            var environment = BuildEnvironment();
-            var capabilities = new[]
+            var version = entrypoints.CurrentProtocolVersion();
+            var capabilities = entrypoints.RuntimeCapabilities();
+            if (version.Major != NnrpHeader.CurrentVersionMajor
+                || (capabilities.TransportSlots & NnrpNativeArtifact.TransportSlotTcp) == 0)
             {
-                "benchmark.header",
-                "benchmark.metadata",
-                "benchmark.submit_result",
-                "benchmark.transport.tcp",
-                "benchmark.transport.quic",
-            };
-            if (string.IsNullOrWhiteSpace(environment.Os) || !capabilities.Contains("benchmark.header", StringComparer.Ordinal))
-            {
-                throw new InvalidOperationException("Runtime probe benchmark mismatch.");
+                throw new InvalidOperationException("Native runtime probe benchmark mismatch.");
             }
         }
 
@@ -373,21 +379,25 @@ public static class Program
 
     private static BenchmarkScenarioResult RunSessionLifecycle(string id, JsonElement workload)
     {
+        var artifactPath = ResolveNativeArtifactPath();
+        if (artifactPath == null)
+        {
+            return NativeUnavailableResult(id);
+        }
+
         var iterations = GetPositiveInt(workload, "iterations", 100_000);
         var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
-        var close = CloseMessage.Create(sessionId: 41, reason: string.Empty).ToArray();
+        var nextConnectionId = 1UL;
+        var nextSessionId = 41U;
 
         void Operation()
         {
-            var stateMachine = new NnrpSessionStateMachine();
-            if (!stateMachine.TryBeginNegotiation(out _)
-                || !stateMachine.TryActivate(out _)
-                || !CloseMessage.TryParse(close, out var closeMessage, out _)
-                || closeMessage.Header.MessageType != MessageType.Close
-                || !stateMachine.TryClose(out _))
-            {
-                throw new InvalidOperationException("Session lifecycle benchmark mismatch.");
-            }
+            using var host = OpenNativeSessionHost(
+                artifactPath,
+                NnrpNativeArtifact.TransportSlotTcp,
+                nextConnectionId++,
+                nextSessionId++);
+            host.Close();
         }
 
         for (var index = 0; index < warmupIterations; index += 1)
@@ -400,23 +410,44 @@ public static class Program
 
     private static BenchmarkScenarioResult RunSubmitResultLoop(string id, JsonElement workload)
     {
+        var artifactPath = ResolveNativeArtifactPath();
+        if (artifactPath == null)
+        {
+            return NativeUnavailableResult(id);
+        }
+
         var durationSeconds = GetPositiveDouble(workload, "duration_seconds", 10.0);
         var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", 1_000);
-        var (submitPacket, resultPacket) = BuildSubmitResultPackets();
+        var batchSize = GetPositiveInt(workload, "batch_size", 1024);
+        var payloadBytes = GetPositiveInt(workload, "payload_bytes", 1024);
+        var payload = new byte[payloadBytes];
+        Array.Fill(payload, (byte)'x');
+        var nextOperationId = 1UL;
+        var nextFrameId = 1U;
+        using var host = OpenNativeSessionHost(
+            artifactPath,
+            NnrpNativeArtifact.TransportSlotTcp,
+            connectionId: 1,
+            sessionId: 41);
 
-        void Operation()
+        long Operation()
         {
-            if (!FrameSubmitMessage.TryParse(submitPacket, out var submit, out var submitError)
-                || submit.Header.MessageType != MessageType.FrameSubmit)
+            var completed = host.SubmitResultCompactBatch(
+                nextOperationId,
+                nextFrameId,
+                frameIdStride: 1,
+                payload,
+                payload,
+                maxEvents: batchSize * 2,
+                iterations: batchSize);
+            if (completed != (ulong)batchSize)
             {
-                throw new InvalidOperationException($"Submit benchmark parse mismatch: {submitError}.");
+                throw new InvalidOperationException("Native submit/result batch completed an unexpected number of operations.");
             }
 
-            if (!ResultPushMessage.TryParse(resultPacket, out var result, out var resultError)
-                || result.Header.MessageType != MessageType.ResultPush)
-            {
-                throw new InvalidOperationException($"Result benchmark parse mismatch: {resultError}.");
-            }
+            nextOperationId += completed;
+            nextFrameId += (uint)completed;
+            return (long)completed;
         }
 
         for (var index = 0; index < warmupIterations; index += 1)
@@ -424,57 +455,50 @@ public static class Program
             Operation();
         }
 
-        return MeasuredThroughputResult(id, MeasureThroughputOpsPerSecond(Operation, durationSeconds));
+        return MeasuredThroughputResult(id, MeasureThroughputItemsPerSecond(Operation, durationSeconds));
     }
 
     private static BenchmarkScenarioResult RunTransportLoopback(string id, JsonElement workload)
     {
         var durationSeconds = GetPositiveDouble(workload, "duration_seconds", 10.0);
         var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", 1_000);
-        var probePayloadBytes = GetPositiveInt(workload, "probe_payload_bytes", 32 * 1024);
-        var probePayload = new byte[probePayloadBytes];
-        Array.Fill(probePayload, (byte)'x');
-        var probe = new TransportProbeMessage(
-            new NnrpHeader(
-                NnrpHeader.CurrentVersionMajor,
-                MessageType.TransportProbe,
-                HeaderFlags.None,
-                TransportProbeMetadata.MetadataLength,
-                (uint)probePayload.Length,
-                sessionId: 0,
-                frameId: 0,
-                viewId: 0,
-                routeId: 0,
-                traceId: 19),
-            new TransportProbeMetadata(7, (uint)probePayload.Length, 123000),
-            probePayload).ToArray();
-        var ack = new TransportProbeAckMessage(
-            new NnrpHeader(
-                NnrpHeader.CurrentVersionMajor,
-                MessageType.TransportProbeAck,
-                HeaderFlags.None,
-                TransportProbeAckMetadata.MetadataLength,
-                0,
-                sessionId: 0,
-                frameId: 0,
-                viewId: 0,
-                routeId: 0,
-                traceId: 19),
-            new TransportProbeAckMetadata(7, 0, 123456)).ToArray();
-
-        void Operation()
+        var batchSize = GetPositiveInt(workload, "batch_size", 1024);
+        var payloadBytes = GetPositiveInt(workload, "payload_bytes", GetPositiveInt(workload, "probe_payload_bytes", 1024));
+        var payload = new byte[payloadBytes];
+        Array.Fill(payload, (byte)'x');
+        var transportSlot = NativeTransportSlot(workload);
+        var artifactPath = ResolveNativeArtifactPath(transportSlot);
+        if (artifactPath == null)
         {
-            if (!TransportProbeMessage.TryParse(probe, out var decodedProbe, out var probeError)
-                || decodedProbe.Header.MessageType != MessageType.TransportProbe)
+            return NativeUnavailableResult(id);
+        }
+
+        var nextOperationId = 1UL;
+        var nextFrameId = 1U;
+        using var host = OpenNativeSessionHost(
+            artifactPath,
+            transportSlot,
+            connectionId: transportSlot == NnrpNativeArtifact.TransportSlotQuic ? 2UL : 1UL,
+            sessionId: transportSlot == NnrpNativeArtifact.TransportSlotQuic ? 42U : 41U);
+
+        long Operation()
+        {
+            var completed = host.SubmitResultCompactBatch(
+                nextOperationId,
+                nextFrameId,
+                frameIdStride: 1,
+                payload,
+                payload,
+                maxEvents: batchSize * 2,
+                iterations: batchSize);
+            if (completed != (ulong)batchSize)
             {
-                throw new InvalidOperationException($"Transport probe benchmark parse mismatch: {probeError}.");
+                throw new InvalidOperationException("Native transport benchmark completed an unexpected number of operations.");
             }
 
-            if (!TransportProbeAckMessage.TryParse(ack, out var decodedAck, out var ackError)
-                || decodedAck.Header.MessageType != MessageType.TransportProbeAck)
-            {
-                throw new InvalidOperationException($"Transport ack benchmark parse mismatch: {ackError}.");
-            }
+            nextOperationId += completed;
+            nextFrameId += (uint)completed;
+            return (long)completed;
         }
 
         for (var index = 0; index < warmupIterations; index += 1)
@@ -482,7 +506,7 @@ public static class Program
             Operation();
         }
 
-        return MeasuredThroughputResult(id, MeasureThroughputOpsPerSecond(Operation, durationSeconds));
+        return MeasuredThroughputResult(id, MeasureThroughputItemsPerSecond(Operation, durationSeconds));
     }
 
     private static (byte[] SubmitPacket, byte[] ResultPacket) BuildSubmitResultPackets()
@@ -550,6 +574,123 @@ public static class Program
         }
 
         return completed / durationSeconds;
+    }
+
+    private static double MeasureThroughputItemsPerSecond(Func<long> operation, double durationSeconds)
+    {
+        var deadline = Stopwatch.GetTimestamp() + (long)(durationSeconds * Stopwatch.Frequency);
+        var completed = 0L;
+        while (Stopwatch.GetTimestamp() < deadline)
+        {
+            completed += operation();
+        }
+
+        return completed / durationSeconds;
+    }
+
+    private static string? ResolveNativeArtifactPath(uint? transportSlot = null)
+    {
+        if (transportSlot == NnrpNativeArtifact.TransportSlotTcp)
+        {
+            var tcpPath = Environment.GetEnvironmentVariable("NNRP_BENCHMARK_NATIVE_TCP_ARTIFACT_PATH");
+            if (!string.IsNullOrWhiteSpace(tcpPath) && File.Exists(tcpPath))
+            {
+                return tcpPath;
+            }
+        }
+        else if (transportSlot == NnrpNativeArtifact.TransportSlotQuic)
+        {
+            var quicPath = Environment.GetEnvironmentVariable("NNRP_BENCHMARK_NATIVE_QUIC_ARTIFACT_PATH");
+            if (!string.IsNullOrWhiteSpace(quicPath) && File.Exists(quicPath))
+            {
+                return quicPath;
+            }
+        }
+
+        foreach (var variable in new[]
+        {
+            NativeArtifactPathEnvironmentVariable,
+            "NNRP_NATIVE_ARTIFACT_PATH",
+            "NNRP_NATIVE_LIBRARY",
+        })
+        {
+            var configured = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+            {
+                return configured;
+            }
+        }
+
+        try
+        {
+            var resolved = NnrpNativeArtifact.Resolve(
+                Environment.GetEnvironmentVariable(NnrpNativeArtifact.ArtifactRootEnvironmentVariable));
+            return File.Exists(resolved) ? resolved : null;
+        }
+        catch (NnrpNativeArtifactException)
+        {
+            return null;
+        }
+    }
+
+    private static BenchmarkScenarioResult NativeUnavailableResult(string id)
+    {
+        return new BenchmarkScenarioResult
+        {
+            Id = id,
+            Outcome = "skip",
+            Message = "Native benchmark artifact is required; set NNRP_BENCHMARK_NATIVE_ARTIFACT_PATH or NNRP_NATIVE_ARTIFACT_ROOT.",
+        };
+    }
+
+    private static NnrpNativeRuntimeSessionHost OpenNativeSessionHost(
+        string artifactPath,
+        uint transportSlot,
+        ulong connectionId,
+        uint sessionId)
+    {
+        if (transportSlot == NnrpNativeArtifact.TransportSlotQuic)
+        {
+            return NnrpNativeQuicRuntime.OpenSessionHost(
+                new NnrpNativeQuicRuntimeSessionHostOptions(
+                    connectionId,
+                    connectionGeneration: 1,
+                    sessionId,
+                    sessionGeneration: 1,
+                    profileId: 0,
+                    schemaId: 0,
+                    schemaVersion: 0)
+                {
+                    ArtifactPath = artifactPath,
+                });
+        }
+
+        return NnrpNativeTcpRuntime.OpenSessionHost(
+            new NnrpNativeTcpRuntimeSessionHostOptions(
+                connectionId,
+                connectionGeneration: 1,
+                sessionId,
+                sessionGeneration: 1,
+                profileId: 0,
+                schemaId: 0,
+                schemaVersion: 0)
+            {
+                ArtifactPath = artifactPath,
+            });
+    }
+
+    private static uint NativeTransportSlot(JsonElement workload)
+    {
+        if (!workload.TryGetProperty("transport", out var property)
+            || property.ValueKind != JsonValueKind.String)
+        {
+            return NnrpNativeArtifact.TransportSlotTcp;
+        }
+
+        var value = property.GetString();
+        return string.Equals(value, "quic", StringComparison.OrdinalIgnoreCase)
+            ? NnrpNativeArtifact.TransportSlotQuic
+            : NnrpNativeArtifact.TransportSlotTcp;
     }
 
     private static BenchmarkScenarioResult MeasuredLatencyResult(string id, List<double> samples)

@@ -24,7 +24,8 @@
 - [x] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
 - [x] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
 - [x] Run the pre-migration benchmark suite and record the baseline in `doc/benchmarks/rs-native-artifacts-migration.md`.
-- [ ] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
+- [x] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
 
-Note: preview3 C# now has transport-owned package/API boundaries for TCP and QUIC. Physical transport-scoped Rust
-native/wasm artifacts are not marked complete here because they require an `nnrp-rs` module/package split first.
+Note: preview3 C# now has transport-owned package/API boundaries for TCP and QUIC. Split transport-scoped Rust native
+artifacts are accepted by the NativeBridge loader through selected transport-slot validation and covered by the benchmark
+adapter rows.

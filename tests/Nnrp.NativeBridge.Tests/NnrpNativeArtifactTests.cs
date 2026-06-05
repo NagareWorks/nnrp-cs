@@ -246,6 +246,29 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void ProbeCanRequireSelectedTransportSlotForSplitProviderArtifacts()
+        {
+            var result = NnrpNativeArtifact.Probe(
+                "fake-path",
+                runtimeCapabilities: () => MatchingCapabilities(transportSlots: NnrpNativeArtifact.TransportSlotQuic),
+                requiredTransportSlots: NnrpNativeArtifact.TransportSlotQuic);
+
+            Assert.Equal(NnrpNativeArtifact.TransportSlotQuic, result.TransportSlots);
+        }
+
+        [Fact]
+        public void ProbeRejectsWhenSelectedTransportSlotIsMissing()
+        {
+            var error = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.Probe(
+                    "fake-path",
+                    runtimeCapabilities: () => MatchingCapabilities(transportSlots: NnrpNativeArtifact.TransportSlotTcp),
+                    requiredTransportSlots: NnrpNativeArtifact.TransportSlotQuic));
+
+            Assert.Contains("required transport slots", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ProbeDoesNotRequireQuicTransportSlot()
         {
             var result = NnrpNativeArtifact.Probe(
@@ -452,6 +475,15 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((uint)2, recoveryOutcome.ResumeWindowMilliseconds);
             Assert.True(entrypoints.Submit(MatchingSubmitRequest(), out handle).Succeeded);
             Assert.True(entrypoints.ClientSubmit(MatchingSubmitRequest(), out handle).Succeeded);
+            NnrpCompactResult compactResult;
+            UIntPtr completed;
+            Assert.True(entrypoints.ClientSubmitResultCompactBatch(
+                MatchingBatchSubmitResultRequest(),
+                out compactResult,
+                out completed).Succeeded);
+            Assert.Equal(new UIntPtr(3), completed);
+            Assert.Equal((ulong)5, compactResult.OperationId);
+            Assert.Equal((uint)7, compactResult.FrameId);
             Assert.True(entrypoints.SessionClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
             Assert.True(entrypoints.ClientClose(new NnrpHandle(NnrpHandleKind.Session, 3, 1)).Succeeded);
             Assert.True(entrypoints.ConnectionClose(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)).Succeeded);
@@ -2535,6 +2567,46 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((ulong)11, connection.Handle.Handle.Id);
         }
 
+        [Fact]
+        public void NativeRuntimeSessionSubmitResultCompactBatchReturnsCompletedOperations()
+        {
+            var host = NnrpNativeRuntimeSessionHost.Open(
+                new NnrpNativeRuntimeClient(CreateEntrypoints()),
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+
+            using (host)
+            {
+                var completed = host.SubmitResultCompactBatch(
+                    operationIdStart: 5,
+                    frameIdStart: 7,
+                    frameIdStride: 2,
+                    submitPayload: new byte[] { 1, 2, 3 },
+                    resultPayload: new byte[] { 4, 5 },
+                    maxEvents: 6,
+                    iterations: 3);
+
+                Assert.Equal((ulong)3, completed);
+            }
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionSubmitResultCompactBatchRejectsInvalidArguments()
+        {
+            var host = NnrpNativeRuntimeSessionHost.Open(
+                new NnrpNativeRuntimeClient(CreateEntrypoints()),
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+
+            using (host)
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() =>
+                    host.SubmitResultCompactBatch(5, 7, 0, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty, 1, 1));
+                Assert.Throws<ArgumentOutOfRangeException>(() =>
+                    host.SubmitResultCompactBatch(5, 7, 1, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty, -1, 1));
+                Assert.Throws<ArgumentOutOfRangeException>(() =>
+                    host.SubmitResultCompactBatch(5, 7, 1, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty, 1, 0));
+            }
+        }
+
         private static string CreateTempDirectory()
         {
             string path = Path.Combine(Path.GetTempPath(), "nnrp-native-artifact-" + Guid.NewGuid().ToString("N"));
@@ -2610,7 +2682,8 @@ namespace Nnrp.NativeBridge.Tests
                 cacheQuery: CacheQuery,
                 cacheTouch: CacheTouch,
                 cachePrefetch: CachePrefetch,
-                cacheRelease: CacheRelease);
+                cacheRelease: CacheRelease,
+                clientSubmitResultCompactBatch: ClientSubmitResultCompactBatch);
         }
 
         private static byte[] CopyBufferView(NnrpBufferView view)
@@ -2698,10 +2771,44 @@ namespace Nnrp.NativeBridge.Tests
             return new NnrpFfiSubmitRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 5, 7, NnrpBufferView.Empty);
         }
 
+        private static NnrpClientSubmitResultBatchRequest MatchingBatchSubmitResultRequest()
+        {
+            return new NnrpClientSubmitResultBatchRequest(
+                new NnrpHandle(NnrpHandleKind.Session, 3, 1),
+                5,
+                7,
+                1,
+                NnrpBufferView.Empty,
+                NnrpBufferView.Empty,
+                new UIntPtr(6),
+                new UIntPtr(3));
+        }
+
         private static NnrpFfiStatus Submit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
         {
             operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
             return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ClientSubmitResultCompactBatch(
+            NnrpClientSubmitResultBatchRequest request,
+            out NnrpCompactResult lastResult,
+            out UIntPtr completed)
+        {
+            completed = request.Iterations;
+            lastResult = new NnrpCompactResult(
+                NnrpFfiStatus.Ok,
+                1,
+                6,
+                1,
+                new NnrpHandle(NnrpHandleKind.Operation, request.OperationIdStart, 1),
+                request.OperationIdStart,
+                request.FrameIdStart,
+                request.ResultPayload,
+                new NnrpFfiDiagnostic(NnrpFfiStatus.Ok));
+            return request.Session.Kind == NnrpHandleKind.Session && request.FrameIdStride > 0
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
         }
 
         private static NnrpFfiStatus HandleStatus(NnrpHandle handle)

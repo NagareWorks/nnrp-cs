@@ -30,16 +30,16 @@ namespace Nnrp.Core.Tests
             Assert.True(headerResult.GetProperty("metrics").GetProperty("p99_us").GetDouble() >= 0);
 
             var submitResult = results.Single(result => result.GetProperty("id").GetString() == "l4.submit_result.inline_tensor.throughput");
-            Assert.Equal("measured", submitResult.GetProperty("outcome").GetString());
-            Assert.True(submitResult.GetProperty("metrics").GetProperty("throughput_ops_per_sec").GetDouble() > 0);
+            Assert.Equal("skip", submitResult.GetProperty("outcome").GetString());
+            Assert.Contains("Native benchmark artifact", submitResult.GetProperty("message").GetString(), StringComparison.Ordinal);
 
             AssertMeasured(results, "l4.metadata.session_open_ack.latency");
             AssertMeasured(results, "l4.metadata.submit_result.latency");
             AssertMeasured(results, "l4.typed_payload.tensor_pack_unpack.latency");
-            AssertMeasured(results, "l4.runtime.probe.latency");
-            AssertMeasured(results, "l4.session.lifecycle.latency");
-            AssertMeasured(results, "l4.transport.tcp.loopback.throughput");
-            AssertMeasured(results, "l4.transport.quic.loopback.throughput");
+            AssertNativeSkipped(results, "l4.runtime.probe.latency");
+            AssertNativeSkipped(results, "l4.session.lifecycle.latency");
+            AssertNativeSkipped(results, "l4.transport.tcp.loopback.throughput");
+            AssertNativeSkipped(results, "l4.transport.quic.loopback.throughput");
         }
 
         [Fact]
@@ -80,6 +80,13 @@ namespace Nnrp.Core.Tests
         {
             var result = results.Single(entry => entry.GetProperty("id").GetString() == id);
             Assert.Equal("measured", result.GetProperty("outcome").GetString());
+        }
+
+        private static void AssertNativeSkipped(JsonElement[] results, string id)
+        {
+            var result = results.Single(entry => entry.GetProperty("id").GetString() == id);
+            Assert.Equal("skip", result.GetProperty("outcome").GetString());
+            Assert.Contains("Native benchmark artifact", result.GetProperty("message").GetString(), StringComparison.Ordinal);
         }
 
         [Fact]

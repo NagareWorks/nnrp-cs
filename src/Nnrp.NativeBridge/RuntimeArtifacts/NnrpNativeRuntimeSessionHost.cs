@@ -91,7 +91,8 @@ namespace Nnrp.NativeBridge
                 options.ArtifactRoot,
                 options.Platform,
                 options.FallbackBackend,
-                options.FallbackPolicy);
+                options.FallbackPolicy,
+                options.TransportId);
             return Open(backend, options);
         }
 
@@ -227,6 +228,26 @@ namespace Nnrp.NativeBridge
                 operationGroupId,
                 state,
                 maxEvents);
+        }
+
+        public ulong SubmitResultCompactBatch(
+            ulong operationIdStart,
+            uint frameIdStart,
+            uint frameIdStride,
+            ReadOnlyMemory<byte> submitPayload,
+            ReadOnlyMemory<byte> resultPayload,
+            int maxEvents,
+            int iterations)
+        {
+            EnsureOpen();
+            return Session.SubmitResultCompactBatch(
+                operationIdStart,
+                frameIdStart,
+                frameIdStride,
+                submitPayload,
+                resultPayload,
+                maxEvents,
+                iterations);
         }
 
         public NnrpNativeRuntimeResult PollResult(

@@ -171,6 +171,11 @@ jobs:
             exit 0
           fi
 
+          if [ "$head_ref" = "develop" ] && [ "$base_ref" = "main" ]; then
+            echo "Develop-to-main integration PR detected; preserving reviewed integration history is allowed."
+            exit 0
+          fi
+
           commit_count='${{ github.event.pull_request.commits }}'
           if [ "$commit_count" -ne 1 ]; then
             echo "Normal PRs from feature/fix/docs/chore branches must contain exactly one commit before review. Current PR has $commit_count commits. Squash the history before requesting review."

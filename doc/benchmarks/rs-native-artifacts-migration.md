@@ -31,10 +31,11 @@ The current preview3 binding work consumes `nnrp-rs` release `v1.0.0-preview.3.8
 This release is the native artifact contract pin for the current C# preview3 line and includes:
 
 1. The `nnrp_runtime_capabilities` export.
-2. ABI version `1.0.0`.
+2. ABI version `1.6.0`.
 3. Protocol version `1/0`.
 4. Runtime feature flags for protocol core, client/server APIs, event polling, callback dispatch, cache/schema, recovery, typed payloads, and transport slots.
 5. Transport slot bits for TCP and optional QUIC.
+6. `nnrp_client_submit_result_compact_batch` for hot submit/result benchmark and SDK runtime paths.
 
 If a later `nnrp-rs` release changes exported symbol names, ABI struct layout, required feature flags, or transport-slot meanings, update this pin and rerun the pre/post migration benchmark table before accepting the new artifact.
 
@@ -65,26 +66,30 @@ Rules:
 | Run | Date | SDK commit | nnrp-rs artifact | Host runtime | OS/arch | CPU | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pre-migration baseline | 2026-05-25 | 135ca63 | N/A | .NET 8.0.27 | windows/x64 | Intel(R) Core(TM)2 Duo CPU T7700 @ 2.40GHz | Conformance benchmark runner selected and measured 9 scenarios. |
-| Post-migration native | TBD | TBD | v1.0.0-preview.3.8 | TBD | TBD | TBD | TBD |
+| Post-migration native | 2026-06-06 | 9c8d7dd+ | v1.0.0-preview.3.8 | .NET 8.0.12 | windows/x64 | 13th Gen Intel(R) Core(TM) i7-13650HX | Official benchmark adapter routed runtime, session, submit/result, TCP, and QUIC rows through NativeBridge. TCP/QUIC rows used split transport provider artifacts. |
 
 ### Latency Benchmarks
 
 | Benchmark | Payload | Iterations | Pre p50 | Pre p95 | Pre p99 | Post p50 | Post p95 | Post p99 | Delta | Notes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Header encode/decode | L0 header | 100000 | 0.4 us | 0.5 us | 0.7 us | TBD | TBD | TBD | TBD | Measured by `l4.header.encode_decode.latency`. |
-| Metadata encode/decode | session open/open ack | 100000 | 1.4 us | 2.2 us | 3.5 us | TBD | TBD | TBD | TBD | Measured by `l4.metadata.session_open_ack.latency`. |
-| Metadata encode/decode | frame submit/result push | 100000 | 0.9 us | 1.5 us | 4.5 us | TBD | TBD | TBD | TBD | Measured by `l4.metadata.submit_result.latency`. |
-| Typed payload pack/unpack | tensor descriptor plus payload | 100000 | 0.9 us | 2.1 us | 5.2 us | TBD | TBD | TBD | TBD | Measured by `l4.typed_payload.tensor_pack_unpack.latency`. |
-| Native probe | version plus capability query | 100000 | 0.2 us | 0.3 us | 1.2 us | TBD | TBD | TBD | TBD | Measured by `l4.runtime.probe.latency`. |
-| Session lifecycle | open plus close loop | 100000 | 0.5 us | 0.6 us | 1.2 us | TBD | TBD | TBD | TBD | Measured by `l4.session.lifecycle.latency`. |
+| Header encode/decode | L0 header | 100000 | 0.4 us | 0.5 us | 0.7 us | 0.3 us | 0.3 us | 0.4 us | Host changed | Measured by `l4.header.encode_decode.latency`; fixture/diagnostic codec row. |
+| Metadata encode/decode | session open/open ack | 100000 | 1.4 us | 2.2 us | 3.5 us | 0.9 us | 1.0 us | 1.1 us | Host changed | Measured by `l4.metadata.session_open_ack.latency`; fixture/diagnostic codec row. |
+| Metadata encode/decode | frame submit/result push | 100000 | 0.9 us | 1.5 us | 4.5 us | 1.0 us | 1.1 us | 3.2 us | Host changed | Measured by `l4.metadata.submit_result.latency`; fixture/diagnostic codec row. |
+| Typed payload pack/unpack | tensor descriptor plus payload | 100000 | 0.9 us | 2.1 us | 5.2 us | 0.5 us | 1.0 us | 1.3 us | Host changed | Measured by `l4.typed_payload.tensor_pack_unpack.latency`; fixture/diagnostic codec row. |
+| Native probe | version plus capability query | 100000 | 0.2 us | 0.3 us | 1.2 us | 0.0 us | 0.1 us | 0.1 us | Host changed | Measured by `l4.runtime.probe.latency` through native version/capability entrypoints. |
+| Session lifecycle | open plus close loop | 100000 | 0.5 us | 0.6 us | 1.2 us | 13.2 us | 15.4 us | 25.6 us | Host changed | Measured by `l4.session.lifecycle.latency` through NativeBridge open/close; this is no longer a managed state-machine helper. |
 
 ### Throughput Benchmarks
 
 | Benchmark | Payload | Duration | Pre throughput | Pre CPU | Pre GC alloc | Pre peak memory | Post throughput | Post CPU | Post GC alloc | Post peak memory | Delta | Notes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Submit/result loop | inline tensor payload | 10 s | 584203.6 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Measured by `l4.submit_result.inline_tensor.throughput`. |
-| TCP loopback | request/result stream | 10 s | 2250626.4 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Measured by `l4.transport.tcp.loopback.throughput` against the SDK local transport-probe loopback path. |
-| QUIC loopback | request/result stream | 10 s | 2210593.2 ops/s | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | Optional slot; measured by `l4.transport.quic.loopback.throughput` against the SDK local transport-probe loopback path. |
+| Submit/result loop | inline tensor payload | 10 s | 584203.6 ops/s | TBD | TBD | TBD | 8256204.8 ops/s | TBD | TBD | TBD | +1313.2% | Measured by `l4.submit_result.inline_tensor.throughput` through NativeBridge compact batch. |
+| TCP loopback | request/result stream | 10 s | 2250626.4 ops/s | TBD | TBD | TBD | 8275353.6 ops/s | TBD | TBD | TBD | +267.7% | Measured by `l4.transport.tcp.loopback.throughput`; post row uses the split TCP native provider artifact. |
+| QUIC loopback | request/result stream | 10 s | 2210593.2 ops/s | TBD | TBD | TBD | 8292556.8 ops/s | TBD | TBD | TBD | +275.1% | Optional slot; post row uses the split QUIC native provider artifact. |
+
+The post-migration throughput rows are on a newer machine than the pre-migration baseline, so the percentage deltas are
+historical migration indicators rather than strict same-host speedups. The important current result is that split TCP and
+QUIC provider artifacts stay in the same 8M ops/s class as Python cffi and JavaScript FFI benchmark paths on this host.
 
 ## Migration Phases
 
@@ -93,11 +98,10 @@ Rules:
 3. Add managed wrappers for connection, session, operation, schema, and buffer views.
 4. Move preview3 hot-path encode/decode and submit/result flow behind the native backend.
 5. Keep public managed APIs stable and isolate backend selection behind `Nnrp.NativeBridge`.
-6. Add post-migration benchmarks and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
+6. [x] Add post-migration benchmarks and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
 7. Enable conformance and package validation CI for the supported platform matrix.
 
 ## Open Decisions
 
-1. Whether native artifacts are published inside the primary client package or split into per-platform companion packages.
-2. Whether iOS should use a static native bridge artifact from the first migration PR or remain behind a later Unity package gate.
-3. Which native capability probe names are considered stable enough for managed feature gating.
+1. Whether iOS should use a static native bridge artifact from the first migration PR or remain behind a later Unity package gate.
+2. Which native capability probe names are considered stable enough for managed feature gating.

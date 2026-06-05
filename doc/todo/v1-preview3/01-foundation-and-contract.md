@@ -9,11 +9,11 @@
   - [x] Expose artifact-loading native server host facade so server hosts do not need direct entrypoint wiring.
   - [x] Make native-backed host facade selection native-required by default with diagnostic fallback available only by explicit policy.
   - [x] Quarantine remaining managed hot-path wire/session helpers behind fixture, diagnostic, or explicitly unsupported-runtime paths.
-- [ ] Finalize which preview3 surfaces stay as managed convenience models versus native-handle-backed wrappers.
+- [x] Finalize which preview3 surfaces stay as managed convenience models versus native-handle-backed wrappers.
   - [x] Keep host-facing connection/session/runtime host facades as managed wrappers over native handles.
   - [x] Keep host-facing server/session runtime host facades as managed wrappers over native handles.
   - [x] Keep result/event payload snapshots exposed as managed read-only views rather than raw native buffers.
-  - [ ] Decide the final public/internal split for schema handles, stable borrowed buffer views, Unity callback handles, and future zero-copy result views.
+  - [x] Decide the final public/internal split for schema handles, stable borrowed buffer views, Unity callback handles, and future zero-copy result views.
 - [x] Finalize the preview3 public C# surface as the next in-place `NNRP/1` update without retaining superseded preview-era shims.
   - [x] Redirect preview helper call sites to Rust-backed facades for bootstrap, submit/result, cancel/control, and adapter smoke execution.
   - [x] Mark managed client/server/TCP package surfaces as diagnostic or unsupported-runtime helpers rather than preview3 hot-path defaults.
@@ -30,11 +30,11 @@
   - [x] Choose event queue as the default managed delivery model for preview3.
   - [x] Add callback-registration lifetime and dispatch rules once native callback subscription handles are exposed.
 - [x] Map stable preview3 error families into managed exception/result surfaces without collapsing family/code information.
-- [ ] Enforce buffer ownership and bounded-copy rules on the managed side.
+- [x] Enforce buffer ownership and bounded-copy rules on the managed side.
   - [x] Snapshot polled native event/result payloads before returning them to callers.
   - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views.
   - [x] Replace remaining submit/control payload pinning with borrowed or pooled lifetime helpers where the Rust ABI can keep the boundary observable.
-  - [ ] Define future zero-copy result/body borrowed-buffer rules.
+  - [x] Define future zero-copy result/body borrowed-buffer rules.
 
 ## Protocol Contract Adoption
 
@@ -50,7 +50,7 @@
   - [x] Route schema registry install, lookup, invalidation, and binding validation through native-owned helpers exposed by the bridge.
   - [x] Route cache lease query, touch, prefetch, and release through native-owned helpers exposed by the bridge.
   - [x] Keep cache dependency validation native-core-owned without advertising a standalone dependency-validation bridge ABI.
-- [ ] Consume Rust-generated conformance fixtures as the only canonical preview3 protocol baseline.
+- [x] Consume Rust-generated conformance fixtures as the only canonical preview3 protocol baseline.
 
 ## Packaging Strategy
 
