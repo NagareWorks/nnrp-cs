@@ -77,6 +77,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
 
         self.assertNotIn("..\\Nnrp.Client\\Nnrp.Client.csproj", project_text)
         self.assertNotIn("..\\Nnrp.Transport.Tcp\\Nnrp.Transport.Tcp.csproj", project_text)
+        self.assertNotIn("nnrp_quic_bridge", project_text)
 
         source_root = REPO_ROOT / "src" / "Nnrp.NativeBridge"
         source_text = "\n".join(
@@ -88,6 +89,8 @@ class UpmPackageMetadataTests(unittest.TestCase):
         self.assertNotIn("using Nnrp.Client;", source_text)
         self.assertNotIn("using Nnrp.Transport.Tcp;", source_text)
         self.assertNotIn("NnrpAutoTransport", source_text)
+        self.assertNotIn("NnrpQuicClient", source_text)
+        self.assertNotIn("NnrpNativeQuicClient", source_text)
 
     def test_stable_guid_normalizes_paths(self) -> None:
         first = packaging.stable_guid("Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll")

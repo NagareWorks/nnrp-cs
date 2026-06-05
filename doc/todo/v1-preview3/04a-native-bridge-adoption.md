@@ -5,7 +5,7 @@
   - [x] Add a native-backed client/session facade for connect, bootstrap, open-session, submit, cancel, control, event polling, and close.
   - [x] Add a native-backed server/session facade for bind, accept, receive-submit, send-result, flow update, control, and close.
   - [x] Add artifact-loading native server host facade so host code does not wire server entrypoints directly.
-  - [ ] Replace managed runtime calls with the bound native entrypoints.
+  - [x] Replace managed runtime calls with the bound native entrypoints.
 - [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
 - [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
@@ -29,4 +29,5 @@
 - [x] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
   - [x] Remove the NativeBridge auto-transport client that mixed native QUIC with managed TCP/session packet handling.
   - [x] Drop NativeBridge package references to managed client and TCP adapter packages.
+  - [x] Remove the legacy `nnrp_quic_bridge` wrapper and package assets so `Nnrp.NativeBridge` only ships the preview3 `nnrp_ffi` runtime contract.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.
