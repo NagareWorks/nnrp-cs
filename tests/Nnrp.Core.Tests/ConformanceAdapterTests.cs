@@ -92,6 +92,46 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void BuildResultsJsonAcceptsFullSuiteSelectedExecutionPlanShape()
+        {
+            var reportJson = AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview3",
+                  "suite_version": "1.0.0-preview.3",
+                  "implementation_name": "nnrp-cs",
+                  "artifacts": {
+                    "results_path": "artifacts/adapter-results.json",
+                    "evidence_dir": "artifacts/evidence"
+                  },
+                  "cases": [
+                    {
+                      "id": "l0.header.roundtrip.basic",
+                      "layer": "L0",
+                      "status": "mandatory",
+                      "feature": "header",
+                      "required_capabilities": ["core"],
+                      "description": "Common header roundtrip."
+                    },
+                    {
+                      "id": "l1.cache.error_code.schema_mismatch.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "cache",
+                      "required_capabilities": ["cache"],
+                      "description": "Schema mismatch error mapping."
+                    }
+                  ]
+                }
+                """);
+
+            using var document = JsonDocument.Parse(reportJson);
+            var results = document.RootElement.GetProperty("results").EnumerateArray().ToArray();
+            Assert.Equal(2, results.Length);
+            Assert.All(results, result => Assert.Equal("pass", result.GetProperty("outcome").GetString()));
+        }
+
+        [Fact]
         public void RunReadsPathsFromEnvironmentAndWritesResultsReport()
         {
             var tempDirectory = Path.Combine(Path.GetTempPath(), $"nnrp-adapter-{Guid.NewGuid():N}");
@@ -123,6 +163,64 @@ namespace Nnrp.Core.Tests
                 var result = document.RootElement.GetProperty("results").EnumerateArray().Single();
                 Assert.Equal("l1.handshake.basic", result.GetProperty("id").GetString());
                 Assert.Equal("pass", result.GetProperty("outcome").GetString());
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_PLAN", originalPlanPath);
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS", originalOutputPath);
+                if (Directory.Exists(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, recursive: true);
+                }
+            }
+        }
+
+        [Fact]
+        public void RunUsesSuiteArtifactResultsPathWhenOutputIsNotProvided()
+        {
+            var tempDirectory = Path.Combine(Path.GetTempPath(), $"nnrp-adapter-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDirectory);
+            var originalPlanPath = Environment.GetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_PLAN");
+            var originalOutputPath = Environment.GetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS");
+
+            try
+            {
+                var planPath = Path.Combine(tempDirectory, "adapter-plan.json");
+                File.WriteAllText(
+                    planPath,
+                    """
+                    {
+                      "protocol_version": "nnrp-1-preview3",
+                      "suite_version": "1.0.0-preview.3",
+                      "implementation_name": "nnrp-cs",
+                      "artifacts": {
+                        "results_path": "artifacts/adapter-results.json",
+                        "evidence_dir": "artifacts/evidence"
+                      },
+                      "cases": [
+                        {
+                          "id": "l1.handshake.basic",
+                          "layer": "L1",
+                          "status": "mandatory",
+                          "feature": "handshake",
+                          "required_capabilities": ["core"],
+                          "description": "Handshake validation."
+                        }
+                      ]
+                    }
+                    """);
+
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_PLAN", planPath);
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS", null);
+
+                Assert.Equal(0, AdapterProgram.Run(Array.Empty<string>()));
+
+                var outputPath = Path.Combine(tempDirectory, "artifacts", "adapter-results.json");
+                using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
+                var result = document.RootElement.GetProperty("results").EnumerateArray().Single();
+                Assert.Equal("l1.handshake.basic", result.GetProperty("id").GetString());
+                Assert.Equal("pass", result.GetProperty("outcome").GetString());
+                Assert.True(Directory.Exists(Path.Combine(tempDirectory, "artifacts", "evidence")));
             }
             finally
             {
@@ -182,7 +280,7 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void RunRejectsMissingRequiredArgumentsWithClearMessages()
+        public void RunRejectsMissingPlanArgumentWithClearMessage()
         {
             var originalPlanPath = Environment.GetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_PLAN");
             var originalOutputPath = Environment.GetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS");
@@ -194,14 +292,47 @@ namespace Nnrp.Core.Tests
 
                 var missingPlanError = Assert.Throws<ArgumentException>(() => AdapterProgram.Run(Array.Empty<string>()));
                 Assert.Contains("--plan", missingPlanError.Message, StringComparison.Ordinal);
-
-                var missingOutputError = Assert.Throws<ArgumentException>(() => AdapterProgram.Run(["--plan", "adapter-plan.json"]));
-                Assert.Contains("--output", missingOutputError.Message, StringComparison.Ordinal);
             }
             finally
             {
                 Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_PLAN", originalPlanPath);
                 Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS", originalOutputPath);
+            }
+        }
+
+        [Fact]
+        public void RunRejectsMissingOutputWhenPlanHasNoArtifactResultsPath()
+        {
+            var tempDirectory = Path.Combine(Path.GetTempPath(), $"nnrp-adapter-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempDirectory);
+            var originalOutputPath = Environment.GetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS");
+
+            try
+            {
+                var planPath = Path.Combine(tempDirectory, "adapter-plan.json");
+                File.WriteAllText(
+                    planPath,
+                    """
+                    {
+                      "protocol_version": "nnrp-1-preview3",
+                      "cases": [
+                        { "id": "l1.handshake.basic" }
+                      ]
+                    }
+                    """);
+
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS", null);
+
+                var error = Assert.Throws<ArgumentException>(() => AdapterProgram.Run(["--plan", planPath]));
+                Assert.Contains("artifacts.results_path", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("NNRP_CONFORMANCE_ADAPTER_RESULTS", originalOutputPath);
+                if (Directory.Exists(tempDirectory))
+                {
+                    Directory.Delete(tempDirectory, recursive: true);
+                }
             }
         }
 
@@ -241,6 +372,42 @@ namespace Nnrp.Core.Tests
         public void BuildResultsJsonRejectsInvalidPlanShapes(string rawPlan, string expectedMessageFragment)
         {
             var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(rawPlan));
+            Assert.Contains(expectedMessageFragment, error.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("\"L5\"", "\"mandatory\"", "[\"core\"]", "layer")]
+        [InlineData("\"L1\"", "\"unknown\"", "[\"core\"]", "status")]
+        [InlineData("\"L1\"", "\"mandatory\"", "[1]", "required_capabilities")]
+        public void BuildResultsJsonRejectsInvalidFullSuiteCaseMetadata(
+            string layer,
+            string status,
+            string capabilities,
+            string expectedMessageFragment)
+        {
+            var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(
+                $$"""
+                {
+                  "protocol_version": "nnrp-1-preview3",
+                  "suite_version": "1.0.0-preview.3",
+                  "implementation_name": "nnrp-cs",
+                  "artifacts": {
+                    "results_path": "artifacts/adapter-results.json",
+                    "evidence_dir": "artifacts/evidence"
+                  },
+                  "cases": [
+                    {
+                      "id": "l1.handshake.basic",
+                      "layer": {{layer}},
+                      "status": {{status}},
+                      "feature": "handshake",
+                      "required_capabilities": {{capabilities}},
+                      "description": "Handshake validation."
+                    }
+                  ]
+                }
+                """));
+
             Assert.Contains(expectedMessageFragment, error.Message, StringComparison.Ordinal);
         }
 

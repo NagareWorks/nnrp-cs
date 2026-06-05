@@ -19,20 +19,36 @@ public static class Program
     public static int Run(string[] args)
     {
         var options = ParseArguments(args);
-        var outputDirectory = Path.GetDirectoryName(options.OutputPath);
-        if (!string.IsNullOrWhiteSpace(outputDirectory))
-        {
-            Directory.CreateDirectory(outputDirectory);
-        }
-
         if (!File.Exists(options.PlanPath))
         {
             throw new ArgumentException($"Plan file does not exist: {options.PlanPath}");
         }
 
-        var reportJson = BuildResultsJson(File.ReadAllText(options.PlanPath, Utf8WithoutBom));
+        var rawPlan = File.ReadAllText(options.PlanPath, Utf8WithoutBom);
+        var plan = ReadExecutionPlan(rawPlan);
+        var requestedOutputPath = string.IsNullOrWhiteSpace(options.OutputPath)
+            ? plan.Artifacts?.ResultsPath
+            : options.OutputPath;
+        var outputPath = ResolveArtifactPath(options.PlanPath, requestedOutputPath);
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("--output, NNRP_CONFORMANCE_ADAPTER_RESULTS, or artifacts.results_path is required.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(plan.Artifacts?.EvidenceDirectory))
+        {
+            Directory.CreateDirectory(ResolveArtifactPath(options.PlanPath, plan.Artifacts.EvidenceDirectory));
+        }
+
+        var outputDirectory = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            Directory.CreateDirectory(outputDirectory);
+        }
+
+        var reportJson = BuildResultsJson(rawPlan);
         File.WriteAllText(
-            options.OutputPath,
+            outputPath,
             reportJson + Environment.NewLine,
             Utf8WithoutBom);
         return 0;
@@ -73,11 +89,6 @@ public static class Program
             throw new ArgumentException("--plan or NNRP_CONFORMANCE_ADAPTER_PLAN is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(outputPath))
-        {
-            throw new ArgumentException("--output or NNRP_CONFORMANCE_ADAPTER_RESULTS is required.");
-        }
-
         return new AdapterOptions(planPath, outputPath);
     }
 
@@ -94,6 +105,20 @@ public static class Program
 
     private static AdapterCaseResultsReport BuildResultsReport(string rawPlan)
     {
+        var plan = ReadExecutionPlan(rawPlan);
+        var cases = plan.Cases.Select(planCase => RunCase(planCase.Id)).ToList();
+
+        return new AdapterCaseResultsReport
+        {
+            Schema = ResultsSchemaUrl,
+            ProtocolVersion = plan.ProtocolVersion,
+            ImplementationName = DefaultImplementationName,
+            Results = cases,
+        };
+    }
+
+    private static AdapterExecutionPlan ReadExecutionPlan(string rawPlan)
+    {
         using var document = JsonDocument.Parse(rawPlan);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object)
@@ -102,6 +127,20 @@ public static class Program
         }
 
         var protocolVersion = GetRequiredString(root, "protocol_version");
+        var isFullSuitePlan = root.TryGetProperty("suite_version", out _)
+            || root.TryGetProperty("implementation_name", out _)
+            || root.TryGetProperty("artifacts", out _);
+        AdapterPlanArtifacts? artifacts = null;
+        if (isFullSuitePlan)
+        {
+            _ = GetRequiredString(root, "suite_version");
+            _ = GetRequiredString(root, "implementation_name");
+            var artifactsElement = GetRequiredObject(root, "artifacts");
+            artifacts = new AdapterPlanArtifacts(
+                GetRequiredString(artifactsElement, "results_path"),
+                GetRequiredString(artifactsElement, "evidence_dir"));
+        }
+
         var cases = GetRequiredArray(root, "cases")
             .EnumerateArray()
             .Select(element =>
@@ -111,17 +150,57 @@ public static class Program
                     throw new ArgumentException("Adapter execution plan cases must be JSON objects.");
                 }
 
-                return RunCase(GetRequiredString(element, "id"));
+                return ParsePlanCase(element, isFullSuitePlan);
             })
             .ToList();
 
-        return new AdapterCaseResultsReport
+        return new AdapterExecutionPlan(protocolVersion, artifacts, cases);
+    }
+
+    private static AdapterPlanCase ParsePlanCase(JsonElement element, bool requireSuiteMetadata)
+    {
+        var id = GetRequiredString(element, "id");
+        if (!requireSuiteMetadata)
         {
-            Schema = ResultsSchemaUrl,
-            ProtocolVersion = protocolVersion,
-            ImplementationName = DefaultImplementationName,
-            Results = cases,
-        };
+            return new AdapterPlanCase(id);
+        }
+
+        ValidateEnumValue(GetRequiredString(element, "layer"), "layer", ["L0", "L1", "L2", "L3", "L4"]);
+        ValidateEnumValue(
+            GetRequiredString(element, "status"),
+            "status",
+            ["mandatory", "optional", "experimental", "deprecated"]);
+        _ = GetRequiredString(element, "feature");
+        _ = GetRequiredString(element, "description");
+        foreach (var capability in GetRequiredArray(element, "required_capabilities").EnumerateArray())
+        {
+            if (capability.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(capability.GetString()))
+            {
+                throw new ArgumentException("Adapter execution document field 'required_capabilities' must contain only non-empty strings.");
+            }
+        }
+
+        return new AdapterPlanCase(id);
+    }
+
+    private static void ValidateEnumValue(string value, string propertyName, IReadOnlyCollection<string> allowedValues)
+    {
+        if (!allowedValues.Contains(value))
+        {
+            throw new ArgumentException($"Adapter execution document field '{propertyName}' contains unsupported value '{value}'.");
+        }
+    }
+
+    private static string ResolveArtifactPath(string planPath, string? artifactPath)
+    {
+        if (string.IsNullOrWhiteSpace(artifactPath))
+        {
+            return string.Empty;
+        }
+
+        return Path.IsPathRooted(artifactPath)
+            ? artifactPath
+            : Path.GetFullPath(artifactPath, Path.GetDirectoryName(Path.GetFullPath(planPath)) ?? Directory.GetCurrentDirectory());
     }
 
     private static AdapterCaseResult RunCase(string caseId)
@@ -1911,7 +1990,26 @@ public static class Program
         return property;
     }
 
-    private sealed record AdapterOptions(string PlanPath, string OutputPath);
+    private static JsonElement GetRequiredObject(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.Object)
+        {
+            throw new ArgumentException($"Adapter execution document field '{propertyName}' must be an object.");
+        }
+
+        return property;
+    }
+
+    private sealed record AdapterOptions(string PlanPath, string? OutputPath);
+
+    private sealed record AdapterExecutionPlan(
+        string ProtocolVersion,
+        AdapterPlanArtifacts? Artifacts,
+        List<AdapterPlanCase> Cases);
+
+    private sealed record AdapterPlanArtifacts(string ResultsPath, string EvidenceDirectory);
+
+    private sealed record AdapterPlanCase(string Id);
 
     private sealed class AdapterCaseResultsReport
     {
