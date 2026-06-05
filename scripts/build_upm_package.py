@@ -14,6 +14,7 @@ MANAGED_ASSEMBLIES = [
     "Nnrp.Core",
     "Nnrp.Client",
     "Nnrp.Transport.Tcp",
+    "Nnrp.Transport.Quic",
     "Nnrp.NativeBridge",
 ]
 
@@ -293,6 +294,7 @@ def build_release_readme(version: str) -> str:
         - Nnrp.Core
         - Nnrp.Client
         - Nnrp.Transport.Tcp
+        - Nnrp.Transport.Quic
         - Nnrp.NativeBridge
 
         Included native plugins are placed under Runtime/Plugins for Windows, macOS, Linux, Android, iOS,

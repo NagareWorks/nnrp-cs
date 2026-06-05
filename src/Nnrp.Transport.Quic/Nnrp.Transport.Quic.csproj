@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
-    <PackageId>Nnrp.Transport.Tcp</PackageId>
-    <Description>TCP native transport entry surface and managed diagnostic helpers for NNRP preview3 hosts.</Description>
+    <PackageId>Nnrp.Transport.Quic</PackageId>
+    <Description>QUIC native transport entry surface for NNRP preview3 hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

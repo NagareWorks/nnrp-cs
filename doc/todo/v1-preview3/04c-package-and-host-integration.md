@@ -11,6 +11,7 @@
 - [x] Define CI-owned package layouts for NuGet-style server, NuGet-style client, and Unity-style client distribution.
   - [x] Define deterministic NuGet native runtime asset paths for the native bridge package.
   - [x] Split CI package outputs into NuGet server, NuGet client, and Unity client artifacts.
+  - [x] Split TCP and QUIC transport entry surfaces into separate NuGet packages so installing a transport package owns the transport-specific native runtime API instead of acting as a config flag.
 - [x] Map every supported native artifact to a deterministic NuGet `runtimes/<rid>/native` path.
 - [x] Map every supported native artifact to deterministic Unity plugin importer settings.
 - [x] Implement a deterministic package-generation step that emits Unity `.meta` files for folders, managed assemblies, and native plugin entries.
@@ -24,3 +25,6 @@
 - [x] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
 - [x] Run the pre-migration benchmark suite and record the baseline in `doc/benchmarks/rs-native-artifacts-migration.md`.
 - [ ] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
+
+Note: preview3 C# now has transport-owned package/API boundaries for TCP and QUIC. Physical transport-scoped Rust
+native/wasm artifacts are not marked complete here because they require an `nnrp-rs` module/package split first.

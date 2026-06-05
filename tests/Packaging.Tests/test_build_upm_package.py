@@ -37,8 +37,12 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "server",
             ],
             "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": [
-                "managed diagnostic",
-                "unsupported-runtime",
+                "tcp",
+                "native transport",
+            ],
+            "src/Nnrp.Transport.Quic/Nnrp.Transport.Quic.csproj": [
+                "quic",
+                "native transport",
             ],
             "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": [
                 "rust-backed",
@@ -57,7 +61,14 @@ class UpmPackageMetadataTests(unittest.TestCase):
         expected_references = {
             "src/Nnrp.Client/Nnrp.Client.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "src/Nnrp.Server/Nnrp.Server.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
-            "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+            },
+            "src/Nnrp.Transport.Quic/Nnrp.Transport.Quic.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+            },
             "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "tools/Nnrp.BenchmarkAdapter/Nnrp.BenchmarkAdapter.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj": {
@@ -77,6 +88,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
 
         self.assertNotIn("..\\Nnrp.Client\\Nnrp.Client.csproj", project_text)
         self.assertNotIn("..\\Nnrp.Transport.Tcp\\Nnrp.Transport.Tcp.csproj", project_text)
+        self.assertNotIn("..\\Nnrp.Transport.Quic\\Nnrp.Transport.Quic.csproj", project_text)
         self.assertNotIn("nnrp_quic_bridge", project_text)
 
         source_root = REPO_ROOT / "src" / "Nnrp.NativeBridge"
@@ -88,6 +100,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
 
         self.assertNotIn("using Nnrp.Client;", source_text)
         self.assertNotIn("using Nnrp.Transport.Tcp;", source_text)
+        self.assertNotIn("using Nnrp.Transport.Quic;", source_text)
         self.assertNotIn("NnrpAutoTransport", source_text)
         self.assertNotIn("NnrpQuicClient", source_text)
         self.assertNotIn("NnrpNativeQuicClient", source_text)
