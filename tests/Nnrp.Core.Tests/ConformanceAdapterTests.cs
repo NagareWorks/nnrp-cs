@@ -132,6 +132,102 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void BuildResultsJsonPinsValidationBundleCases()
+        {
+            var reportJson = AdapterProgram.BuildResultsJson(
+                $$"""
+                {
+                  "protocol_version": "{{ProtocolVersion}}",
+                  "suite_version": "{{SuiteVersion}}",
+                  "implementation_name": "nnrp-cs",
+                  "artifacts": {
+                    "results_path": "artifacts/adapter-results.json",
+                    "evidence_dir": "artifacts/evidence"
+                  },
+                  "cases": [
+                    {
+                      "id": "l1.cache.error_code.lease_expired.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "cache",
+                      "required_capabilities": ["cache.lifecycle"],
+                      "description": "Cache lease expiry error vocabulary."
+                    },
+                    {
+                      "id": "l1.cache.error_code.schema_mismatch.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "cache",
+                      "required_capabilities": ["cache.lifecycle", "schema.registry"],
+                      "description": "Cache schema mismatch error vocabulary."
+                    },
+                    {
+                      "id": "l1.operation.cancel_scope.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "operation",
+                      "required_capabilities": ["operation.cancel_scope"],
+                      "description": "Operation cancel scope boundaries."
+                    },
+                    {
+                      "id": "l1.session.open.fixed_metadata.validation",
+                      "layer": "L1",
+                      "status": "mandatory",
+                      "feature": "session",
+                      "required_capabilities": ["session.open_close"],
+                      "description": "Session priority class fixed metadata validation."
+                    },
+                    {
+                      "id": "l1.flow_update.session.scope.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "flow_update",
+                      "required_capabilities": ["flow_update"],
+                      "description": "Session-scoped flow control validation."
+                    },
+                    {
+                      "id": "l1.flow_update.operation.scope.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "flow_update",
+                      "required_capabilities": ["flow_update"],
+                      "description": "Operation-scoped flow control validation."
+                    },
+                    {
+                      "id": "l1.flow_update.credit_epoch.monotonicity.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "flow_update",
+                      "required_capabilities": ["flow_update"],
+                      "description": "Flow update epoch monotonicity validation."
+                    },
+                    {
+                      "id": "l1.flow_update.{{ProtocolSuffix}}",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "flow_update",
+                      "required_capabilities": ["flow_update"],
+                      "description": "Protocol-specific flow update semantic validation."
+                    },
+                    {
+                      "id": "l1.operation.lifecycle.terminal_resolution.validation",
+                      "layer": "L1",
+                      "status": "optional",
+                      "feature": "operation",
+                      "required_capabilities": ["operation.lifecycle"],
+                      "description": "Operation terminal lifecycle validation."
+                    }
+                  ]
+                }
+                """);
+
+            using var document = JsonDocument.Parse(reportJson);
+            var results = document.RootElement.GetProperty("results").EnumerateArray().ToArray();
+            Assert.Equal(9, results.Length);
+            Assert.All(results, result => Assert.Equal("pass", result.GetProperty("outcome").GetString()));
+        }
+
+        [Fact]
         public void RunReadsPathsFromEnvironmentAndWritesResultsReport()
         {
             var tempDirectory = Path.Combine(Path.GetTempPath(), $"nnrp-adapter-{Guid.NewGuid():N}");
@@ -412,6 +508,8 @@ namespace Nnrp.Core.Tests
         }
 
         private static string ProtocolVersion => string.Concat("nnrp-1-", "pre", "view3");
+
+        private static string SuiteVersion => string.Concat("1.0.0-", "pre", "view.3");
 
         private static string ProtocolSuffix => string.Concat("pre", "view3");
     }
