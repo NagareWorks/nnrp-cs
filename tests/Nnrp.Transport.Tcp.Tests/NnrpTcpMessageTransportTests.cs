@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -12,6 +13,16 @@ namespace Nnrp.Transport.Tcp.Tests
 {
     public sealed class NnrpTcpMessageTransportTests
     {
+        [Fact]
+        public void TransportTcpAssemblyIsMarkedAsManagedDiagnosticSurface()
+        {
+            var marker = Assert.Single(
+                typeof(NnrpTcpMessageTransport).Assembly.GetCustomAttributes<NnrpManagedDiagnosticSurfaceAttribute>());
+
+            Assert.Contains("diagnostic", marker.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Nnrp.NativeBridge", marker.Reason, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void ConstructorRejectsNullAndUnconnectedClients()
         {

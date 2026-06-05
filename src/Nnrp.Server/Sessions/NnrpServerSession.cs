@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
 
+[assembly: NnrpManagedDiagnosticSurface("Managed server helpers are diagnostic or unsupported-runtime surfaces; preview3 host traffic should use Nnrp.NativeBridge.")]
+
 namespace Nnrp.Server
 {
     public sealed class NnrpServerSession : INnrpServerSession

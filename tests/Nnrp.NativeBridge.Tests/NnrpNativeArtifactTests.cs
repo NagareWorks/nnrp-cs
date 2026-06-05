@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nnrp.Core;
 using Nnrp.NativeBridge;
 using Xunit;
 
@@ -10,6 +12,13 @@ namespace Nnrp.NativeBridge.Tests
 {
     public sealed class NnrpNativeArtifactTests
     {
+        [Fact]
+        public void NativeBridgeAssemblyIsNotMarkedAsManagedDiagnosticSurface()
+        {
+            Assert.Empty(
+                typeof(NnrpNativeArtifact).Assembly.GetCustomAttributes<NnrpManagedDiagnosticSurfaceAttribute>());
+        }
+
         [Theory]
         [InlineData("windows", "nnrp_ffi.dll")]
         [InlineData("win32", "nnrp_ffi.dll")]

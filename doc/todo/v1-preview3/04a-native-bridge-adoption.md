@@ -26,7 +26,7 @@
   - [x] Add connection-level lifetime guards once native connection close/dispose is exposed.
   - [ ] Add callback-registration ownership guards once native callback subscription handles are exposed.
 - [x] Map stable Rust error codes into managed exception and result surfaces.
-- [ ] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
+- [x] Keep managed codec helpers limited to fixture inspection, diagnostics, and explicitly unsupported runtime combinations.
   - [x] Remove the NativeBridge auto-transport client that mixed native QUIC with managed TCP/session packet handling.
   - [x] Drop NativeBridge package references to managed client and TCP adapter packages.
 - [x] Add loader and probe tests for each supported RID using fake or fixture native artifacts where real artifacts are unavailable.

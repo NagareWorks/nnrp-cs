@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
 
+[assembly: NnrpManagedDiagnosticSurface("Managed client helpers are diagnostic or unsupported-runtime surfaces; preview3 host traffic should use Nnrp.NativeBridge.")]
+
 namespace Nnrp.Client
 {
     public sealed class NnrpClient
