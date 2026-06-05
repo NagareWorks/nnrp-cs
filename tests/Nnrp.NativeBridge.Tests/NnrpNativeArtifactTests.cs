@@ -780,6 +780,167 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeSessionHostOpensAndSubmitsThroughNativeBackend()
+        {
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                Control,
+                PollEmpty,
+                DispatchEvent);
+            var options = new NnrpNativeRuntimeSessionHostOptions(
+                12,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp,
+                41,
+                3,
+                4,
+                5,
+                6);
+
+            var client = new NnrpNativeRuntimeClient(entrypoints);
+            using (var host = NnrpNativeRuntimeSessionHost.Open(client, options))
+            {
+                var operation = host.SubmitOperation(99, 7, parentOperationId: 1, operationGroupId: 2);
+                var polled = host.PollResult(operation, maxEvents: 1);
+                var events = host.PollAvailableEvents(1);
+                var result = host.SubmitAndPollResult(99, 7, new byte[] { 1, 2, 3 }, maxEvents: 1);
+
+                Assert.Same(client, host.Backend);
+                Assert.Equal((ulong)99, operation.OperationId);
+                Assert.Equal((uint)7, operation.FrameId);
+                Assert.Equal((ulong)99, polled.OperationId);
+                Assert.Single(events);
+                Assert.Equal((ulong)99, result.OperationId);
+                Assert.Equal((uint)7, result.FrameId);
+                Assert.Equal(new byte[] { 1, 2, 3 }, result.Payload);
+                Assert.Equal(options, host.Options);
+                Assert.Equal((ulong)12, host.Connection.Handle.Handle.Id);
+                Assert.Equal((uint)41, host.Session.Handle.Handle.Id);
+            }
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionHostBootstrapsControlsCancelsAndCloses()
+        {
+            uint cancelledFrameId = 0;
+            uint controlCode = 0;
+            UIntPtr controlPayloadLength = UIntPtr.Zero;
+
+            NnrpFfiStatus CaptureCancel(NnrpClientCancelRequest request)
+            {
+                cancelledFrameId = request.FrameId;
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlCode = request.ControlCode;
+                controlPayloadLength = request.Payload.Length;
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                CaptureCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+            var options = new NnrpNativeRuntimeSessionHostOptions(
+                12,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp,
+                41,
+                3,
+                4,
+                5,
+                6)
+            {
+                BootstrapConnection = true
+            };
+            var host = NnrpNativeRuntimeSessionHost.Open(new NnrpNativeRuntimeClient(entrypoints), options);
+
+            host.Cancel(71);
+            host.Control(17, new byte[] { 1, 2 });
+            host.Close();
+
+            Assert.Equal((uint)71, cancelledFrameId);
+            Assert.Equal((uint)17, controlCode);
+            Assert.Equal(new UIntPtr(2), controlPayloadLength);
+            Assert.True(host.IsClosed);
+            Assert.True(host.Session.IsClosed);
+            Assert.True(host.Connection.IsClosed);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => host.Cancel(72));
+            host.Dispose();
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(null!));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open((INnrpNativeRuntimeBackend)null!, options));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(new NnrpNativeRuntimeClient(CreateEntrypoints()), null!));
+        }
+
+        [Fact]
+        public void NativeRuntimeSessionHostSelectsFallbackBackendWhenArtifactIsUnavailable()
+        {
+            var fallback = new NnrpNativeRuntimeClient(CreateEntrypoints());
+            var options = new NnrpNativeRuntimeSessionHostOptions(
+                12,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp,
+                41,
+                3,
+                4,
+                5,
+                6)
+            {
+                ArtifactPath = "missing-native-runtime.dll",
+                ArtifactRoot = "unused-native-root",
+                Platform = new NnrpNativePlatform("windows", "x86_64"),
+                FallbackBackend = fallback
+            };
+
+            using (var host = NnrpNativeRuntimeSessionHost.Open(options))
+            {
+                Assert.Same(fallback, host.Backend);
+                Assert.Equal("missing-native-runtime.dll", host.Options.ArtifactPath);
+                Assert.Equal("unused-native-root", host.Options.ArtifactRoot);
+                Assert.Equal(new NnrpNativePlatform("windows", "x86_64"), host.Options.Platform);
+                Assert.Same(fallback, host.Options.FallbackBackend);
+                Assert.False(host.Options.RequireNative);
+            }
+        }
+
+        [Fact]
         public void NativeRuntimeSessionRaisesWhenResultIsNotAvailable()
         {
             var session = new NnrpNativeRuntimeClient(CreateEntrypoints())
