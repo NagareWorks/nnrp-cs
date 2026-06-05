@@ -5,6 +5,7 @@
 - [x] Keep backend selection behind `Nnrp.NativeBridge` so tests can run against managed fixtures and native artifacts.
 - [ ] Avoid per-frame managed allocation on the hot submit/result path; use spans, pooled buffers, or safe borrowed views where the ABI allows it.
   - [x] Expose read-only payload views for native event/result snapshots so callers do not allocate another array for read-only inspection.
+  - [x] Add borrowed `ReadOnlyMemory<byte>` hot-path overloads for client submit/control and server receive/result/control so array-backed pooled slices can cross the native boundary without first copying into a fresh managed array.
   - [ ] Replace remaining submit payload pin/copy paths with borrowed or pooled views where the Rust ABI can keep the lifetime explicit.
 - [x] Define cancellation and disposal behavior when a managed task is cancelled while a native operation is active.
 - [x] Define CI-owned package layouts for NuGet-style server, NuGet-style client, and Unity-style client distribution.

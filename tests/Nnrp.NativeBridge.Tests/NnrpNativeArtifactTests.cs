@@ -736,7 +736,7 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 HandleStatus,
                 ClientCancel,
-                AwaitEvent,
+                AwaitEventWithPayload,
                 ServerBind,
                 ServerAccept,
                 ServerReceiveSubmit,
@@ -833,6 +833,182 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((ulong)99, operationScope.ParentOperationId);
             Assert.Equal((ulong)1234, operationScope.OperationGroupId);
             Assert.Throws<ArgumentNullException>(() => session.SubmitOperation(101, 9, (NnrpNativeBuffer)null!));
+        }
+
+        [Fact]
+        public void NativeRuntimeClientBorrowsArrayBackedMemoryPayloadSlices()
+        {
+            var submittedPayload = Array.Empty<byte>();
+            var controlledPayload = Array.Empty<byte>();
+            var pendingEvents = new Queue<Func<NnrpHandle, NnrpPollResult>>();
+
+            NnrpFfiStatus CaptureSubmit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+            {
+                submittedPayload = CopyBufferView(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return NnrpFfiStatus.Ok;
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlledPayload = CopyBufferView(request.Payload);
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus AwaitQueuedEvent(NnrpHandle connection, out NnrpPollResult result)
+            {
+                if (pendingEvents.Count == 0)
+                {
+                    result = EmptyPollResult();
+                    return NnrpFfiStatus.Ok;
+                }
+
+                result = pendingEvents.Dequeue()(connection);
+                return connection.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                CaptureSubmit,
+                CaptureSubmit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitQueuedEvent,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+            using var host = NnrpNativeRuntimeSessionHost.Open(
+                new NnrpNativeRuntimeClient(entrypoints),
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+            var source = new byte[] { 0, 1, 2, 3, 4 };
+            var payload = source.AsMemory(1, 3);
+
+            var operation = host.SubmitOperation(99, 7, payload);
+            pendingEvents.Enqueue(connection => new NnrpPollResult(
+                NnrpFfiStatus.Ok,
+                1,
+                new NnrpEvent(
+                    6,
+                    connection,
+                    new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                    new NnrpHandle(NnrpHandleKind.Operation, 100, 1),
+                    8,
+                    NnrpBufferView.Empty,
+                    new NnrpFfiDiagnostic(NnrpFfiStatus.Ok))));
+            pendingEvents.Enqueue(connection => new NnrpPollResult(
+                NnrpFfiStatus.Ok,
+                1,
+                new NnrpEvent(
+                    6,
+                    connection,
+                    new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                    new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                    7,
+                    new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length)),
+                    new NnrpFfiDiagnostic(NnrpFfiStatus.Ok))));
+            var polledResult = host.SubmitAndPollResult(99, 7, payload, maxEvents: 2);
+            host.Control(10, payload);
+
+            Assert.Equal((ulong)99, operation.OperationId);
+            Assert.Equal((ulong)99, polledResult.OperationId);
+            Assert.Equal((uint)7, polledResult.FrameId);
+            Assert.Equal(new byte[] { 1, 2, 3 }, polledResult.Payload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, submittedPayload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, controlledPayload);
+        }
+
+        [Fact]
+        public async Task NativeRuntimeClientBorrowedMemoryOverloadsCoverAsyncAndPollingPaths()
+        {
+            var submitCount = 0;
+            var submittedPayload = Array.Empty<byte>();
+            var controlledPayload = Array.Empty<byte>();
+
+            NnrpFfiStatus CaptureSubmit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+            {
+                submitCount++;
+                submittedPayload = CopyBufferView(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return NnrpFfiStatus.Ok;
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlledPayload = CopyBufferView(request.Payload);
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                CaptureSubmit,
+                CaptureSubmit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEventWithPayload,
+                ServerBind,
+                ServerAccept,
+                ServerReceiveSubmit,
+                ServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+            using var connectionHost = NnrpNativeRuntimeConnectionHost.Open(
+                new NnrpNativeRuntimeClient(entrypoints),
+                new NnrpNativeRuntimeConnectionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp));
+            var session = connectionHost.OpenSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
+            var source = new byte[] { 0, 1, 2, 3, 4 };
+            var payload = source.AsMemory(1, 3);
+
+            var submitHandle = session.Submit(98, 6, payload);
+            var operation = await session.SubmitOperationAsync(99, 7, payload);
+            var result = connectionHost.SubmitAndPollResult(41, 99, 7, payload, maxEvents: 1);
+            connectionHost.SubmitOperation(41, 100, 8, payload);
+            connectionHost.Control(41, 10, payload);
+            connectionHost.Connection.Control(11, payload);
+
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            await Assert.ThrowsAsync<TaskCanceledException>(() => session.SubmitOperationAsync(101, 9, payload, cancellationToken: cancelled.Token));
+
+            Assert.Equal((ulong)98, submitHandle.Handle.Id);
+            Assert.Equal((ulong)99, operation.OperationId);
+            Assert.Equal((ulong)99, result.OperationId);
+            Assert.True(submitCount >= 4);
+            Assert.Equal(new byte[] { 1, 2, 3 }, submittedPayload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, controlledPayload);
+        }
+
+        [Fact]
+        public void NativeRuntimeBorrowedMemoryRejectsInvalidHelperInputs()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                NnrpNativeRuntimeSession.WithBorrowedView<int>(ReadOnlyMemory<byte>.Empty, null!));
+
+            var visitedEmpty = NnrpNativeRuntimeSession.WithBorrowedView(
+                ReadOnlyMemory<byte>.Empty,
+                view => view.Length == UIntPtr.Zero);
+
+            Assert.True(visitedEmpty);
         }
 
         [Fact]
@@ -1908,6 +2084,71 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeServerHostBorrowsArrayBackedMemoryPayloadSlices()
+        {
+            var receivedPayload = Array.Empty<byte>();
+            var resultPayload = Array.Empty<byte>();
+            var controlledPayload = Array.Empty<byte>();
+
+            NnrpFfiStatus CaptureServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+            {
+                receivedPayload = CopyBufferView(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerSendResult(NnrpServerSendResultRequest request)
+            {
+                resultPayload = CopyBufferView(request.Payload);
+                return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlledPayload = CopyBufferView(request.Payload);
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                CaptureServerReceiveSubmit,
+                CaptureServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+            using var host = NnrpNativeRuntimeServerHost.Open(
+                entrypoints,
+                new NnrpNativeRuntimeServerHostOptions(50, 2, NnrpNativeArtifact.TransportSlotTcp));
+            host.AcceptSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
+            var source = new byte[] { 0, 1, 2, 3, 4 };
+            var payload = source.AsMemory(1, 3);
+
+            var operation = host.ReceiveSubmit(41, 99, 7, payload);
+            host.SendResult(41, operation, payload);
+            host.Control(41, 10, payload);
+
+            Assert.Throws<ArgumentNullException>(() => host.SendResult(41, null!, payload));
+            Assert.Equal(new byte[] { 1, 2, 3 }, receivedPayload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, resultPayload);
+            Assert.Equal(new byte[] { 1, 2, 3 }, controlledPayload);
+        }
+
+        [Fact]
         public void NativeRuntimeServerHostRoutesSchemaAndCacheLeaseHelpers()
         {
             var entrypoints = CreateEntrypoints();
@@ -2089,6 +2330,23 @@ namespace Nnrp.NativeBridge.Tests
                 cacheTouch: CacheTouch,
                 cachePrefetch: CachePrefetch,
                 cacheRelease: CacheRelease);
+        }
+
+        private static byte[] CopyBufferView(NnrpBufferView view)
+        {
+            if (view.Length == UIntPtr.Zero)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (view.Pointer == IntPtr.Zero)
+            {
+                throw new ArgumentException("Non-empty buffer view has a null pointer.", nameof(view));
+            }
+
+            var bytes = new byte[checked((int)view.Length.ToUInt64())];
+            Marshal.Copy(view.Pointer, bytes, 0, bytes.Length);
+            return bytes;
         }
 
         private static NnrpProtocolVersion CurrentProtocolVersion()

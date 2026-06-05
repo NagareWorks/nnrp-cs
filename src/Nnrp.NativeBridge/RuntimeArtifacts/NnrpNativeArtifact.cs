@@ -2787,6 +2787,27 @@ namespace Nnrp.NativeBridge
             }
         }
 
+        public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, ReadOnlyMemory<byte> payload)
+        {
+            EnsureOpen();
+            return NnrpNativeRuntimeSession.WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    NnrpHandle operation;
+                    var status = Entrypoints.ServerReceiveSubmit(
+                        new NnrpServerReceiveSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
+                        out operation);
+                    status.ThrowIfError();
+                    return new NnrpNativeRuntimeOperation(
+                        Entrypoints,
+                        Handle,
+                        new NnrpOperationHandle(operation),
+                        operationId,
+                        frameId);
+                });
+        }
+
         public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, NnrpNativeBuffer payload)
         {
             if (payload == null)
@@ -2836,6 +2857,24 @@ namespace Nnrp.NativeBridge
                     payloadHandle.Free();
                 }
             }
+        }
+
+        public void SendResult(NnrpNativeRuntimeOperation operation, ReadOnlyMemory<byte> payload)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            EnsureOpen();
+            NnrpNativeRuntimeSession.WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    Entrypoints.ServerSendResult(
+                        new NnrpServerSendResultRequest(operation.Handle.Handle, payloadView)).ThrowIfError();
+                    return true;
+                });
         }
 
         public void SendResult(NnrpNativeRuntimeOperation operation, NnrpNativeBuffer payload)
@@ -2913,6 +2952,12 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Control(uint controlCode, ReadOnlyMemory<byte> payload)
         {
             EnsureOpen();
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
@@ -3068,6 +3113,12 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
         }
 
+        public void Control(uint controlCode, ReadOnlyMemory<byte> payload)
+        {
+            EnsureOpen();
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
         public void Control(uint controlCode, NnrpNativeBuffer payload)
         {
             EnsureOpen();
@@ -3205,6 +3256,12 @@ namespace Nnrp.NativeBridge
             return SubmitOperation(operationId, frameId, payload).Handle;
         }
 
+        public NnrpOperationHandle Submit(ulong operationId, uint frameId, ReadOnlyMemory<byte> payload)
+        {
+            EnsureOpen();
+            return SubmitOperation(operationId, frameId, payload).Handle;
+        }
+
         public NnrpOperationHandle Submit(ulong operationId, uint frameId, NnrpNativeBuffer payload)
         {
             EnsureOpen();
@@ -3255,6 +3312,34 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
             uint frameId,
+            ReadOnlyMemory<byte> payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            EnsureOpen();
+            return WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    NnrpHandle operation;
+                    var status = Entrypoints.ClientSubmit(
+                        new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
+                        out operation);
+                    status.ThrowIfError();
+                    return new NnrpNativeRuntimeOperation(
+                        Entrypoints,
+                        Handle,
+                        new NnrpOperationHandle(operation),
+                        operationId,
+                        frameId,
+                        parentOperationId,
+                        operationGroupId);
+                });
+        }
+
+        public NnrpNativeRuntimeOperation SubmitOperation(
+            ulong operationId,
+            uint frameId,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
@@ -3284,6 +3369,33 @@ namespace Nnrp.NativeBridge
             ulong operationId,
             uint frameId,
             byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+            EnsureOpen();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Cancel(frameId);
+                return Task.FromCanceled<NnrpNativeRuntimeOperation>(cancellationToken);
+            }
+
+            using (cancellationToken.Register(() => Cancel(frameId)))
+            {
+                var operation = SubmitOperation(
+                    operationId,
+                    frameId,
+                    payload,
+                    parentOperationId,
+                    operationGroupId);
+                return Task.FromResult(operation);
+            }
+        }
+
+        public Task<NnrpNativeRuntimeOperation> SubmitOperationAsync(
+            ulong operationId,
+            uint frameId,
+            ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
             CancellationToken cancellationToken = default(CancellationToken))
@@ -3375,6 +3487,24 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
             uint frameId,
+            ReadOnlyMemory<byte> payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            var operation = SubmitOperation(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId);
+            return PollResult(operation, state, maxEvents);
+        }
+
+        public NnrpNativeRuntimeResult SubmitAndPollResult(
+            ulong operationId,
+            uint frameId,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -3404,6 +3534,12 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Control(uint controlCode, ReadOnlyMemory<byte> payload)
         {
             EnsureOpen();
             SendControl(Entrypoints, Handle.Handle, controlCode, payload);
@@ -3497,6 +3633,21 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpHandle handle,
             uint controlCode,
+            ReadOnlyMemory<byte> payload)
+        {
+            WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    entrypoints.Control(new NnrpControlRequest(handle, controlCode, payloadView)).ThrowIfError();
+                    return true;
+                });
+        }
+
+        internal static void SendControl(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpHandle handle,
+            uint controlCode,
             NnrpNativeBuffer payload)
         {
             if (payload == null)
@@ -3505,6 +3656,39 @@ namespace Nnrp.NativeBridge
             }
 
             entrypoints.Control(new NnrpControlRequest(handle, controlCode, payload.BorrowView())).ThrowIfError();
+        }
+
+        internal static T WithBorrowedView<T>(ReadOnlyMemory<byte> payload, Func<NnrpBufferView, T> action)
+        {
+            if (action == null)
+            {
+                throw new ArgumentNullException(nameof(action));
+            }
+
+            if (payload.Length == 0)
+            {
+                return action(NnrpBufferView.Empty);
+            }
+
+            if (!MemoryMarshal.TryGetArray(payload, out var segment) || segment.Array == null)
+            {
+                throw new NotSupportedException("Borrowed native payload views require array-backed ReadOnlyMemory<byte>. Use NnrpNativeBuffers.AcquireCopy for non-array-backed memory.");
+            }
+
+            GCHandle payloadHandle = default(GCHandle);
+            try
+            {
+                payloadHandle = GCHandle.Alloc(segment.Array, GCHandleType.Pinned);
+                var pointer = IntPtr.Add(payloadHandle.AddrOfPinnedObject(), segment.Offset);
+                return action(new NnrpBufferView(pointer, new UIntPtr((uint)segment.Count)));
+            }
+            finally
+            {
+                if (payloadHandle.IsAllocated)
+                {
+                    payloadHandle.Free();
+                }
+            }
         }
 
         private static bool EventMatchesOperation(
