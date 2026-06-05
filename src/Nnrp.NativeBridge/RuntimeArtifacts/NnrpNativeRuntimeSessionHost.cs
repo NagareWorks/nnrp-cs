@@ -137,10 +137,46 @@ namespace Nnrp.NativeBridge
                 operationGroupId);
         }
 
+        public NnrpNativeRuntimeOperation SubmitOperation(
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            EnsureOpen();
+            return Session.SubmitOperation(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId);
+        }
+
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
             uint frameId,
             byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            EnsureOpen();
+            return Session.SubmitAndPollResult(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId,
+                state,
+                maxEvents);
+        }
+
+        public NnrpNativeRuntimeResult SubmitAndPollResult(
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
             NnrpNativeOperationLifecycle? state = null,
@@ -222,6 +258,12 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            Session.Control(controlCode, payload);
+        }
+
+        public void Control(uint controlCode, NnrpNativeBuffer payload)
         {
             EnsureOpen();
             Session.Control(controlCode, payload);
@@ -430,6 +472,22 @@ namespace Nnrp.NativeBridge
                 operationGroupId);
         }
 
+        public NnrpNativeRuntimeOperation SubmitOperation(
+            uint sessionId,
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            return GetSession(sessionId).SubmitOperation(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId);
+        }
+
         public NnrpNativeRuntimeResult PollResult(
             uint sessionId,
             NnrpNativeRuntimeOperation operation,
@@ -444,6 +502,26 @@ namespace Nnrp.NativeBridge
             ulong operationId,
             uint frameId,
             byte[]? payload = null,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            return GetSession(sessionId).SubmitAndPollResult(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId,
+                state,
+                maxEvents);
+        }
+
+        public NnrpNativeRuntimeResult SubmitAndPollResult(
+            uint sessionId,
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
             NnrpNativeOperationLifecycle? state = null,
@@ -520,6 +598,11 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint sessionId, uint controlCode, byte[]? payload = null)
+        {
+            GetSession(sessionId).Control(controlCode, payload);
+        }
+
+        public void Control(uint sessionId, uint controlCode, NnrpNativeBuffer payload)
         {
             GetSession(sessionId).Control(controlCode, payload);
         }
@@ -711,7 +794,21 @@ namespace Nnrp.NativeBridge
             return GetSession(sessionId).ReceiveSubmit(operationId, frameId, payload);
         }
 
+        public NnrpNativeRuntimeOperation ReceiveSubmit(
+            uint sessionId,
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload)
+        {
+            return GetSession(sessionId).ReceiveSubmit(operationId, frameId, payload);
+        }
+
         public void SendResult(uint sessionId, NnrpNativeRuntimeOperation operation, byte[]? payload = null)
+        {
+            GetSession(sessionId).SendResult(operation, payload);
+        }
+
+        public void SendResult(uint sessionId, NnrpNativeRuntimeOperation operation, NnrpNativeBuffer payload)
         {
             GetSession(sessionId).SendResult(operation, payload);
         }
@@ -771,6 +868,11 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint sessionId, uint controlCode, byte[]? payload = null)
+        {
+            GetSession(sessionId).Control(controlCode, payload);
+        }
+
+        public void Control(uint sessionId, uint controlCode, NnrpNativeBuffer payload)
         {
             GetSession(sessionId).Control(controlCode, payload);
         }

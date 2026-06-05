@@ -1261,16 +1261,22 @@ namespace Nnrp.NativeBridge
 
         public byte[] CopyToArray()
         {
-            EnsureOpen();
-            if (View.Length == UIntPtr.Zero)
+            var view = BorrowView();
+            if (view.Length == UIntPtr.Zero)
             {
                 return Array.Empty<byte>();
             }
 
-            var length = checked((int)View.Length.ToUInt64());
+            var length = checked((int)view.Length.ToUInt64());
             var copy = new byte[length];
-            Marshal.Copy(View.Pointer, copy, 0, length);
+            Marshal.Copy(view.Pointer, copy, 0, length);
             return copy;
+        }
+
+        public NnrpBufferView BorrowView()
+        {
+            EnsureOpen();
+            return View;
         }
 
         public void Release()
@@ -2757,6 +2763,27 @@ namespace Nnrp.NativeBridge
             }
         }
 
+        public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, NnrpNativeBuffer payload)
+        {
+            if (payload == null)
+            {
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            EnsureOpen();
+            NnrpHandle operation;
+            var status = Entrypoints.ServerReceiveSubmit(
+                new NnrpServerReceiveSubmitRequest(Handle.Handle, operationId, frameId, payload.BorrowView()),
+                out operation);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeOperation(
+                Entrypoints,
+                Handle,
+                new NnrpOperationHandle(operation),
+                operationId,
+                frameId);
+        }
+
         public void SendResult(NnrpNativeRuntimeOperation operation, byte[]? payload = null)
         {
             if (operation == null)
@@ -2785,6 +2812,23 @@ namespace Nnrp.NativeBridge
                     payloadHandle.Free();
                 }
             }
+        }
+
+        public void SendResult(NnrpNativeRuntimeOperation operation, NnrpNativeBuffer payload)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            if (payload == null)
+            {
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            EnsureOpen();
+            Entrypoints.ServerSendResult(
+                new NnrpServerSendResultRequest(operation.Handle.Handle, payload.BorrowView())).ThrowIfError();
         }
 
         public void SendFlowUpdate(uint frameId)
@@ -2845,6 +2889,12 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Control(uint controlCode, NnrpNativeBuffer payload)
         {
             EnsureOpen();
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
@@ -2994,6 +3044,12 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
         }
 
+        public void Control(uint controlCode, NnrpNativeBuffer payload)
+        {
+            EnsureOpen();
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
         public void Close()
         {
             EnsureOpen();
@@ -3125,6 +3181,12 @@ namespace Nnrp.NativeBridge
             return SubmitOperation(operationId, frameId, payload).Handle;
         }
 
+        public NnrpOperationHandle Submit(ulong operationId, uint frameId, NnrpNativeBuffer payload)
+        {
+            EnsureOpen();
+            return SubmitOperation(operationId, frameId, payload).Handle;
+        }
+
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
             uint frameId,
@@ -3164,6 +3226,34 @@ namespace Nnrp.NativeBridge
                     payloadHandle.Free();
                 }
             }
+        }
+
+        public NnrpNativeRuntimeOperation SubmitOperation(
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null)
+        {
+            if (payload == null)
+            {
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            EnsureOpen();
+            NnrpHandle operation;
+            var status = Entrypoints.ClientSubmit(
+                new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payload.BorrowView()),
+                out operation);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeOperation(
+                Entrypoints,
+                Handle,
+                new NnrpOperationHandle(operation),
+                operationId,
+                frameId,
+                parentOperationId,
+                operationGroupId);
         }
 
         public Task<NnrpNativeRuntimeOperation> SubmitOperationAsync(
@@ -3258,6 +3348,24 @@ namespace Nnrp.NativeBridge
             return PollResult(operation, state, maxEvents);
         }
 
+        public NnrpNativeRuntimeResult SubmitAndPollResult(
+            ulong operationId,
+            uint frameId,
+            NnrpNativeBuffer payload,
+            ulong? parentOperationId = null,
+            ulong? operationGroupId = null,
+            NnrpNativeOperationLifecycle? state = null,
+            int maxEvents = 0)
+        {
+            var operation = SubmitOperation(
+                operationId,
+                frameId,
+                payload,
+                parentOperationId,
+                operationGroupId);
+            return PollResult(operation, state, maxEvents);
+        }
+
         public void Close()
         {
             EnsureOpen();
@@ -3272,6 +3380,12 @@ namespace Nnrp.NativeBridge
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Control(uint controlCode, NnrpNativeBuffer payload)
         {
             EnsureOpen();
             SendControl(Entrypoints, Handle.Handle, controlCode, payload);
@@ -3353,6 +3467,20 @@ namespace Nnrp.NativeBridge
                     payloadHandle.Free();
                 }
             }
+        }
+
+        internal static void SendControl(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpHandle handle,
+            uint controlCode,
+            NnrpNativeBuffer payload)
+        {
+            if (payload == null)
+            {
+                throw new ArgumentNullException(nameof(payload));
+            }
+
+            entrypoints.Control(new NnrpControlRequest(handle, controlCode, payload.BorrowView())).ThrowIfError();
         }
 
         private static bool EventMatchesOperation(

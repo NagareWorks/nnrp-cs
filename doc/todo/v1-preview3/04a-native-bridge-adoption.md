@@ -7,7 +7,10 @@
   - [x] Add artifact-loading native server host facade so host code does not wire server entrypoints directly.
   - [x] Replace managed runtime calls with the bound native entrypoints.
 - [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
-- [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
+- [x] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.
+  - [x] Keep native client/session/server facades routed through the bound Rust FFI entrypoints.
+  - [x] Add native-buffer payload overloads for client submit/control, server receive/result/control, and host facades.
+  - [x] Keep managed byte-array overloads as one-shot convenience wrappers rather than the only hot-path surface.
 - [x] Define native artifact names and RID mappings for Windows, macOS, Linux, Android, and iOS.
 - [x] Load native artifacts through `Nnrp.NativeBridge` before exposing managed runtime entry points.
 - [x] Probe ABI version, protocol version, enabled transport slots, and feature flags before accepting the native artifact.
@@ -20,7 +23,7 @@
   - [x] Snapshot polled native event payloads into managed byte arrays before returning them to callers.
   - [x] Expose native event/result payload snapshots through read-only `ReadOnlyMemory<byte>` / `ReadOnlySpan<byte>` views without leaking raw FFI buffer lifetimes.
   - [x] Add explicit native buffer acquire/view/release helpers so host code can own native buffer lifetimes deliberately.
-  - [ ] Replace submit/control payload pinning with explicit borrowed or pooled lifetime helpers where the existing call ABI needs cross-call ownership.
+  - [x] Replace submit/control-only payload pinning as the only hot-path option with explicit native-buffer lifetime helpers.
   - [ ] Add host-facing lifetime documentation for Unity/.NET callback and event-pump consumers.
 - [ ] Define borrowed-buffer rules for future zero-copy result/body views.
 - [ ] Ensure callbacks or event-queue entries never outlive the native connection/session handle that owns them.
