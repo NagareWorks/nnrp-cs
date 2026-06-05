@@ -16,7 +16,7 @@
 - [ ] Keep any remaining managed codec logic limited to migration-time diagnostics while the preview3 Rust-backed path replaces the prior managed preview surface.
   - [x] Keep native bridge backend selection separate from managed fixture/test paths.
   - [x] Drop NativeBridge build-time dependency on managed client and TCP transport packages.
-  - [x] Add package-boundary regression coverage so NativeBridge, source packages, and tool adapters cannot re-import managed runtime packages outside their declared boundaries.
+  - [x] Add project-reference and package-metadata boundary regression coverage so NativeBridge, source packages, and tool adapters cannot re-import or advertise managed runtime packages outside their declared boundaries.
   - [ ] Audit preview3 runtime call sites and move remaining managed codec helpers behind fixture/diagnostic paths.
 - [x] Add host-facing submit/result/control helpers that compose native preview3 handles rather than rebuilding packet logic in C#.
   - [x] Add client-side native submit/result/control helpers.

@@ -26,6 +26,33 @@ packaging = load_packaging_module()
 
 
 class UpmPackageMetadataTests(unittest.TestCase):
+    def test_runtime_package_descriptions_keep_preview3_boundary_visible(self) -> None:
+        expected_descriptions = {
+            "src/Nnrp.Client/Nnrp.Client.csproj": [
+                "managed diagnostic",
+                "client",
+            ],
+            "src/Nnrp.Server/Nnrp.Server.csproj": [
+                "managed diagnostic",
+                "server",
+            ],
+            "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": [
+                "managed diagnostic",
+                "unsupported-runtime",
+            ],
+            "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": [
+                "rust-backed",
+                "preview3",
+                "native bridge",
+            ],
+        }
+
+        for project_path, required_fragments in expected_descriptions.items():
+            with self.subTest(project=project_path):
+                description = self.read_project_description(REPO_ROOT / project_path).lower()
+                for fragment in required_fragments:
+                    self.assertIn(fragment, description)
+
     def test_preview3_project_references_stay_on_declared_boundaries(self) -> None:
         expected_references = {
             "src/Nnrp.Client/Nnrp.Client.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
@@ -216,6 +243,15 @@ class UpmPackageMetadataTests(unittest.TestCase):
             references.add(reference_path.relative_to(REPO_ROOT).as_posix())
 
         return references
+
+    @staticmethod
+    def read_project_description(project_file: Path) -> str:
+        project = ET.parse(project_file).getroot()
+        description = project.find(".//Description")
+        if description is None or description.text is None:
+            raise AssertionError(f"Project is missing a package description: {project_file}")
+
+        return description.text
 
 
 if __name__ == "__main__":

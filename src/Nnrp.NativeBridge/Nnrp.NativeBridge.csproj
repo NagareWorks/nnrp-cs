@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>Nnrp.NativeBridge</PackageId>
-    <Description>Managed bindings and packaged native assets for NNRP transport bridges.</Description>
+    <Description>Rust-backed preview3 native bridge facade and packaged native assets for NNRP hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NativeBridgeArtifactRoot Condition="'$(NativeBridgeArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native</NativeBridgeArtifactRoot>
   </PropertyGroup>
