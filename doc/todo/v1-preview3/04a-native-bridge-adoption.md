@@ -4,6 +4,7 @@
   - [x] Bind and load the frozen preview3 runtime delegate table and request/event structs behind `Nnrp.NativeBridge`.
   - [x] Add a native-backed client/session facade for connect, bootstrap, open-session, submit, cancel, control, event polling, and close.
   - [x] Add a native-backed server/session facade for bind, accept, receive-submit, send-result, flow update, control, and close.
+  - [x] Add artifact-loading native server host facade so host code does not wire server entrypoints directly.
   - [ ] Replace managed runtime calls with the bound native entrypoints.
 - [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.

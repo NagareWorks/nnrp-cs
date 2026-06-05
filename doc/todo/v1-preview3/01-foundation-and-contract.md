@@ -6,10 +6,12 @@
   - [x] Load and probe the pinned Rust native artifact before accepting native-backed preview3 entry points.
   - [x] Route client connection/session/submit/result/control helpers through Rust-backed facades when artifacts are present.
   - [x] Route server bind/accept/receive-submit/send-result/flow-update helpers through Rust-backed facades.
+  - [x] Expose artifact-loading native server host facade so server hosts do not need direct entrypoint wiring.
   - [x] Make native-backed host facade selection native-required by default with diagnostic fallback available only by explicit policy.
   - [ ] Quarantine remaining managed hot-path wire/session helpers behind fixture, diagnostic, or explicitly unsupported-runtime paths.
 - [ ] Finalize which preview3 surfaces stay as managed convenience models versus native-handle-backed wrappers.
   - [x] Keep host-facing connection/session/runtime host facades as managed wrappers over native handles.
+  - [x] Keep host-facing server/session runtime host facades as managed wrappers over native handles.
   - [x] Keep result/event payload snapshots exposed as managed read-only views rather than raw native buffers.
   - [ ] Decide the final public/internal split for schema handles, stable borrowed buffer views, Unity callback handles, and future zero-copy result views.
 - [ ] Finalize the preview3 public C# surface as the next in-place `NNRP/1` update without retaining superseded preview-era shims.

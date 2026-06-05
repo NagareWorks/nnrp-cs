@@ -43,6 +43,26 @@ options.FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnosti
 Native-backed server session:
 
 ```csharp
+var serverOptions = new NnrpNativeRuntimeServerHostOptions(
+    serverId: 1,
+    serverGeneration: 1,
+    transportId: NnrpNativeArtifact.TransportSlotTcp);
+
+using var serverHost = NnrpNativeRuntimeServerHost.Open(serverOptions);
+var session = serverHost.AcceptSession(new NnrpNativeRuntimeSessionOptions(
+    sessionId: 1,
+    sessionGeneration: 1,
+    profileId: 1,
+    schemaId: 1,
+    schemaVersion: 1));
+
+var operation = serverHost.ReceiveSubmit(sessionId: 1, operationId: 1, frameId: 1);
+serverHost.SendResult(sessionId: 1, operation, payload: Array.Empty<byte>());
+```
+
+Tests and diagnostics can still inject entrypoints directly:
+
+```csharp
 using var server = NnrpNativeRuntimeServer.Bind(
     entrypoints,
     serverId: 1,

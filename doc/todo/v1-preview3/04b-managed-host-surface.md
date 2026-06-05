@@ -18,4 +18,5 @@
 - [x] Add host-facing submit/result/control helpers that compose native preview3 handles rather than rebuilding packet logic in C#.
   - [x] Add client-side native submit/result/control helpers.
   - [x] Add server-side native receive-submit/send-result/flow-update/control helpers.
+  - [x] Add server-side native host session registry and routing helpers.
 - [x] Preserve distinctions among `partial`, `degraded`, `stale_reuse`, `cancelled`, `failed`, and `completed` on host-facing APIs.

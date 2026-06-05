@@ -483,4 +483,206 @@ namespace Nnrp.NativeBridge
             }
         }
     }
+
+    public sealed class NnrpNativeRuntimeServerHostOptions
+    {
+        public NnrpNativeRuntimeServerHostOptions(
+            ulong serverId,
+            uint serverGeneration,
+            uint transportId)
+        {
+            ServerId = serverId;
+            ServerGeneration = serverGeneration;
+            TransportId = transportId;
+        }
+
+        public ulong ServerId { get; }
+
+        public uint ServerGeneration { get; }
+
+        public uint TransportId { get; }
+
+        public string? ArtifactPath { get; set; }
+
+        public string? ArtifactRoot { get; set; }
+
+        public NnrpNativePlatform? Platform { get; set; }
+    }
+
+    public sealed class NnrpNativeRuntimeServerHost : IDisposable
+    {
+        private readonly Dictionary<uint, NnrpNativeRuntimeServerSession> sessions =
+            new Dictionary<uint, NnrpNativeRuntimeServerSession>();
+
+        private NnrpNativeRuntimeServerHost(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpNativeRuntimeServerHostOptions options,
+            NnrpNativeRuntimeServer server)
+        {
+            Entrypoints = entrypoints;
+            Options = options;
+            Server = server;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpNativeRuntimeServerHostOptions Options { get; }
+
+        public NnrpNativeRuntimeServer Server { get; }
+
+        public IReadOnlyDictionary<uint, NnrpNativeRuntimeServerSession> Sessions => sessions;
+
+        public bool IsClosed { get; private set; }
+
+        public static NnrpNativeRuntimeServerHost Open(NnrpNativeRuntimeServerHostOptions options)
+        {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            var entrypoints = NnrpNativeRuntimeEntrypoints.Load(
+                options.ArtifactPath,
+                options.ArtifactRoot,
+                options.Platform);
+            return Open(entrypoints, options);
+        }
+
+        public static NnrpNativeRuntimeServerHost Open(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpNativeRuntimeServerHostOptions options)
+        {
+            if (entrypoints == null)
+            {
+                throw new ArgumentNullException(nameof(entrypoints));
+            }
+
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            var server = NnrpNativeRuntimeServer.Bind(
+                entrypoints,
+                options.ServerId,
+                options.ServerGeneration,
+                options.TransportId);
+            return new NnrpNativeRuntimeServerHost(entrypoints, options, server);
+        }
+
+        public NnrpNativeRuntimeServerSession AcceptSession(NnrpNativeRuntimeSessionOptions options)
+        {
+            EnsureOpen();
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            if (sessions.ContainsKey(options.SessionId))
+            {
+                throw new InvalidOperationException("A server session with the same id is already registered.");
+            }
+
+            var session = Server.AcceptSession(
+                options.SessionId,
+                options.SessionGeneration,
+                options.ProfileId,
+                options.SchemaId,
+                options.SchemaVersion);
+            sessions.Add(options.SessionId, session);
+            return session;
+        }
+
+        public bool TryGetSession(uint sessionId, out NnrpNativeRuntimeServerSession? session)
+        {
+            EnsureOpen();
+            return sessions.TryGetValue(sessionId, out session);
+        }
+
+        public NnrpNativeRuntimeServerSession GetSession(uint sessionId)
+        {
+            EnsureOpen();
+            if (!sessions.TryGetValue(sessionId, out var session))
+            {
+                throw new KeyNotFoundException("No registered server session matches the requested id.");
+            }
+
+            return session;
+        }
+
+        public NnrpNativeRuntimeOperation ReceiveSubmit(
+            uint sessionId,
+            ulong operationId,
+            uint frameId,
+            byte[]? payload = null)
+        {
+            return GetSession(sessionId).ReceiveSubmit(operationId, frameId, payload);
+        }
+
+        public void SendResult(uint sessionId, NnrpNativeRuntimeOperation operation, byte[]? payload = null)
+        {
+            GetSession(sessionId).SendResult(operation, payload);
+        }
+
+        public void SendFlowUpdate(uint sessionId, uint frameId)
+        {
+            GetSession(sessionId).SendFlowUpdate(frameId);
+        }
+
+        public void Control(uint sessionId, uint controlCode, byte[]? payload = null)
+        {
+            GetSession(sessionId).Control(controlCode, payload);
+        }
+
+        public bool CloseSession(uint sessionId)
+        {
+            EnsureOpen();
+            if (!sessions.TryGetValue(sessionId, out var session))
+            {
+                return false;
+            }
+
+            if (!session.IsClosed)
+            {
+                session.Close();
+            }
+
+            sessions.Remove(sessionId);
+            return true;
+        }
+
+        public void Close()
+        {
+            EnsureOpen();
+            foreach (var session in new List<NnrpNativeRuntimeServerSession>(sessions.Values))
+            {
+                if (!session.IsClosed)
+                {
+                    session.Close();
+                }
+            }
+
+            sessions.Clear();
+            Server.Close();
+            IsClosed = true;
+        }
+
+        public void Dispose()
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+
+            Close();
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsClosed)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
+        }
+    }
 }
