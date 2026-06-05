@@ -79,6 +79,16 @@ var routed = connectionHost.SubmitAndPollResult(
     payload: Array.Empty<byte>());
 ```
 
+Unity event pump and dispatch rules:
+
+The current host surface is polling/event-queue based. Drive one polling owner per native connection, normally from a Unity `Update` loop or from a single managed worker that posts completed work back to Unity's main thread. Do not let multiple Unity behaviours independently poll the same connection; use `NnrpNativeRuntimeConnectionHost` as the shared connection/session registry and route results by session and operation id.
+
+Use `SubmitOperation` when submit and result delivery need to be decoupled. Then call `PollResult` for an operation-specific terminal or partial result, or call `PollAvailableEvents` when the host wants to drain connection-level events and route them itself. `PollResult` buffers unrelated events on the connection so a later session or operation poll can still observe them in order.
+
+Unity APIs must only be touched from Unity's main thread. Native event payloads are copied into managed snapshots before they are returned, so `PayloadMemory` and `PayloadSpan` are safe for read-only inspection after the native poll call returns. If a worker thread polls results, enqueue only the managed snapshot or an application-level DTO back to the main thread.
+
+Close the session or connection after the owner loop has stopped polling. `Dispose` closes the native handles and clears buffered connection events; callbacks or queued work owned by the application should be cancelled before disposing the host facade. Native callback subscription handles are not part of the public surface yet; when they are exposed, they must follow the same ownership rule: callbacks may enqueue managed snapshots, but Unity object mutation remains main-thread dispatch only.
+
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
