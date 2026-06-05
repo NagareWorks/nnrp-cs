@@ -1012,6 +1012,199 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeHotPathUsesBorrowedNativeBufferViews()
+        {
+            var submittedViews = new List<NnrpBufferView>();
+            var receivedViews = new List<NnrpBufferView>();
+            var resultViews = new List<NnrpBufferView>();
+            var controlViews = new List<NnrpBufferView>();
+
+            NnrpFfiStatus CaptureSubmit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+            {
+                submittedViews.Add(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+            {
+                receivedViews.Add(request.Payload);
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerSendResult(NnrpServerSendResultRequest request)
+            {
+                resultViews.Add(request.Payload);
+                return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlViews.Add(request.Payload);
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                CaptureSubmit,
+                CaptureSubmit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                CaptureServerReceiveSubmit,
+                CaptureServerSendResult,
+                ServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent,
+                bufferAcquireCopy: BufferAcquireCopy,
+                bufferView: BufferView,
+                bufferRelease: HandleStatus);
+
+            using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[] { 1, 2, 3 });
+            var borrowed = nativePayload.BorrowView();
+            var client = new NnrpNativeRuntimeClient(entrypoints);
+            var connection = client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var session = connection.OpenSession(41, 3, 4, 5, 6);
+            session.SubmitOperation(99, 7, nativePayload);
+            session.Control(17, nativePayload);
+
+            using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var serverSession = server.AcceptSession(41, 3, 4, 5, 6);
+            var operation = serverSession.ReceiveSubmit(100, 8, nativePayload);
+            serverSession.SendResult(operation, nativePayload);
+            serverSession.Control(18, nativePayload);
+
+            AssertBorrowedView(borrowed, Assert.Single(submittedViews));
+            AssertBorrowedView(borrowed, Assert.Single(receivedViews));
+            AssertBorrowedView(borrowed, Assert.Single(resultViews));
+            Assert.Collection(
+                controlViews,
+                view => AssertBorrowedView(borrowed, view),
+                view => AssertBorrowedView(borrowed, view));
+        }
+
+        [Fact]
+        public void NativeRuntimeNativeBufferSubmitAndResultLoopDoesNotAllocatePayloadCopies()
+        {
+            const int PayloadBytes = 64 * 1024;
+            const int Iterations = 32;
+            var completedEvents = new Queue<NnrpPollResult>();
+            var submittedPayloadBytes = 0UL;
+            var resultPayloadBytes = 0UL;
+            var nativePayloadBacking = new byte[PayloadBytes];
+            var nativePayloadHandle = GCHandle.Alloc(nativePayloadBacking, GCHandleType.Pinned);
+
+            NnrpFfiStatus CaptureSubmit(NnrpFfiSubmitRequest request, out NnrpHandle operation)
+            {
+                submittedPayloadBytes += request.Payload.Length.ToUInt64();
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                completedEvents.Enqueue(CreatePollResult(
+                    new NnrpHandle(NnrpHandleKind.Connection, 11, 2),
+                    request.Session,
+                    operation,
+                    request.FrameId));
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus AwaitCompletedEvent(NnrpHandle connection, out NnrpPollResult result)
+            {
+                result = completedEvents.Dequeue();
+                return connection.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+            {
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerSendResult(NnrpServerSendResultRequest request)
+            {
+                resultPayloadBytes += request.Payload.Length.ToUInt64();
+                return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureBufferAcquireCopy(NnrpBufferView source, out NnrpHandle buffer, out NnrpBufferView view)
+            {
+                buffer = new NnrpHandle(NnrpHandleKind.Buffer, 90, 1);
+                view = new NnrpBufferView(nativePayloadHandle.AddrOfPinnedObject(), new UIntPtr(PayloadBytes));
+                return source.Pointer != IntPtr.Zero || source.Length == UIntPtr.Zero
+                    ? NnrpFfiStatus.Ok
+                    : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+            }
+
+            try
+            {
+                var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                    CurrentProtocolVersion,
+                    () => MatchingCapabilities(),
+                    ConnectionBootstrap,
+                    ClientConnect,
+                    SessionOpen,
+                    SessionOpen,
+                    CaptureSubmit,
+                    CaptureSubmit,
+                    HandleStatus,
+                    HandleStatus,
+                    ClientCancel,
+                    AwaitCompletedEvent,
+                    ServerBind,
+                    ServerAccept,
+                    CaptureServerReceiveSubmit,
+                    CaptureServerSendResult,
+                    ServerFlowUpdate,
+                    HandleStatus,
+                    Control,
+                    PollEmpty,
+                    DispatchEvent,
+                    bufferAcquireCopy: CaptureBufferAcquireCopy,
+                    bufferView: BufferView,
+                    bufferRelease: HandleStatus);
+                using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[PayloadBytes]);
+                var clientSession = new NnrpNativeRuntimeClient(entrypoints)
+                    .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
+                    .OpenSession(41, 3, 4, 5, 6);
+                using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+                var serverSession = server.AcceptSession(42, 3, 4, 5, 6);
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                for (var index = 0; index < Iterations; index += 1)
+                {
+                    clientSession.SubmitAndPollResult((ulong)(100 + index), (uint)(10 + index), nativePayload, maxEvents: 1);
+                    var operation = serverSession.ReceiveSubmit((ulong)(200 + index), (uint)(20 + index), nativePayload);
+                    serverSession.SendResult(operation, nativePayload);
+                }
+
+                var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                var payloadBytesPerLoop = (long)PayloadBytes * Iterations;
+
+                Assert.Equal((ulong)PayloadBytes * Iterations, submittedPayloadBytes);
+                Assert.Equal((ulong)PayloadBytes * Iterations, resultPayloadBytes);
+                Assert.True(
+                    allocated < payloadBytesPerLoop / 4,
+                    $"Expected native-buffer loops not to allocate payload copies; allocated {allocated} bytes for {payloadBytesPerLoop} payload bytes.");
+            }
+            finally
+            {
+                nativePayloadHandle.Free();
+            }
+        }
+
+        [Fact]
         public void NativeRuntimeConnectionClosesThroughNativeEntrypointAndGuardsChildren()
         {
             var closeCount = 0;
@@ -2347,6 +2540,12 @@ namespace Nnrp.NativeBridge.Tests
             var bytes = new byte[checked((int)view.Length.ToUInt64())];
             Marshal.Copy(view.Pointer, bytes, 0, bytes.Length);
             return bytes;
+        }
+
+        private static void AssertBorrowedView(NnrpBufferView expected, NnrpBufferView actual)
+        {
+            Assert.Equal(expected.Pointer, actual.Pointer);
+            Assert.Equal(expected.Length, actual.Length);
         }
 
         private static NnrpProtocolVersion CurrentProtocolVersion()
