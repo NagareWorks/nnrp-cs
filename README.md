@@ -40,6 +40,8 @@ Unity package generation is also CI owned. The Unity package is expected to cont
 
 The common preview3 native platform scope is Windows, macOS, Linux, Android, and iOS across the RIDs represented in the package layout.
 
+Reviewer-facing packaging policy and CI-owned release rules are documented in [doc/packaging/ci-first-package-strategy.md](./doc/packaging/ci-first-package-strategy.md).
+
 ## Native Session Example
 
 ```csharp
