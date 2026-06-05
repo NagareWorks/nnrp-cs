@@ -13,7 +13,7 @@
 - [x] Keep conformance integration adapter-first: C# declares capabilities and executes suite-owned plans rather than maintaining an SDK vector exporter.
 - [x] Add native smoke coverage for multiple preview3 sessions on one live connection facade.
 - [x] Add native smoke coverage for routed multi-session preview3 result delivery on one live connection.
-- [ ] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
+- [x] Add validation for cache lease expiry, schema mismatch, operation cancellation, priority-aware flow updates, and resume behavior.
   - [x] Add native bridge unit coverage for resume, recovery validators, schema descriptor helpers, and buffer acquire/view/release routing.
   - [x] Add integration coverage for resume behavior against a live native artifact.
 - [x] Keep `dotnet test Nnrp.sln` green while preview3 bindings are staged.
