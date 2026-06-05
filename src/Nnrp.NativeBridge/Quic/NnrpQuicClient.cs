@@ -1,5 +1,4 @@
 using System;
-using Nnrp.Client;
 using Nnrp.Core;
 
 namespace Nnrp.NativeBridge
@@ -178,11 +177,6 @@ namespace Nnrp.NativeBridge
         {
         }
 
-        public NnrpQuicClient(ClientProfile profile, NnrpQuicClientOptions options)
-            : this(profile, options, NnrpNativeQuicRuntime.Instance)
-        {
-        }
-
         internal NnrpQuicClient(
             NnrpQuicClientOptions options,
             INnrpQuicRuntime runtime)
@@ -192,29 +186,7 @@ namespace Nnrp.NativeBridge
             ActiveModelName = string.Empty;
         }
 
-        internal NnrpQuicClient(
-            ClientProfile profile,
-            NnrpQuicClientOptions options,
-            INnrpQuicRuntime runtime)
-            : this(options, runtime)
-        {
-            if (profile == null)
-            {
-                throw new ArgumentNullException(nameof(profile));
-            }
-
-            if (profile.TransportProfile != NnrpTransportProfile.Quic)
-            {
-                throw new InvalidOperationException(
-                    $"ClientProfile.TransportProfile must be {NnrpTransportProfile.Quic} to create {nameof(NnrpQuicClient)}.");
-            }
-
-            Profile = profile;
-        }
-
         public NnrpQuicClientOptions Options { get; }
-
-        public ClientProfile? Profile { get; }
 
         public bool IsConnected => Handle != 0;
 

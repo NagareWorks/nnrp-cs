@@ -6,7 +6,7 @@ Use this package when you want client connection/session bootstrap, submit/resul
 
 The default preview3 path is native-backed and fails fast when the packaged artifact is missing or incompatible. Managed fallback backends are explicit diagnostic or unsupported-runtime hooks; set `FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics` only for tests, fixture inspection, or hosts that intentionally run without native artifacts.
 
-This package depends on Nnrp.Core, Nnrp.Client, and Nnrp.Transport.Tcp, and may include runtime-specific native binaries when they are present during packing.
+This package depends on `Nnrp.Core` and may include runtime-specific native binaries when they are present during packing. It does not depend on the managed client/server or managed TCP adapter packages for the preview3 runtime path.
 
 Install:
 

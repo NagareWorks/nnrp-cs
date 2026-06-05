@@ -9,11 +9,13 @@
     - [x] Redirect adapter conformance execution from placeholder reports to native-backed smoke case execution.
   - [ ] Remove or quarantine superseded managed hot-path wire/session implementations.
     - [ ] Keep managed codecs only for fixture inspection, diagnostics, and unsupported runtime combinations.
+    - [x] Remove the NativeBridge auto-transport facade that exposed managed TCP packet/session handling as a NativeBridge entry point.
     - [x] Make native-backed paths required by default when the host opens a preview3 native facade.
     - [x] Add a named native runtime fallback policy so diagnostic fallback cannot be mistaken for the production path.
     - [x] Mark managed client/server packages as diagnostic or unsupported-runtime surfaces in package metadata and README copy.
 - [ ] Keep any remaining managed codec logic limited to migration-time diagnostics while the preview3 Rust-backed path replaces the prior managed preview surface.
   - [x] Keep native bridge backend selection separate from managed fixture/test paths.
+  - [x] Drop NativeBridge build-time dependency on managed client and TCP transport packages.
   - [ ] Audit preview3 runtime call sites and move remaining managed codec helpers behind fixture/diagnostic paths.
 - [x] Add host-facing submit/result/control helpers that compose native preview3 handles rather than rebuilding packet logic in C#.
   - [x] Add client-side native submit/result/control helpers.

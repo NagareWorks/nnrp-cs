@@ -1,5 +1,4 @@
 using System;
-using Nnrp.Client;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
 using Xunit;
@@ -66,45 +65,6 @@ namespace Nnrp.NativeBridge.Tests
             var options = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41);
 
             Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(options, (INnrpQuicRuntime)null!));
-        }
-
-        [Fact]
-        public void ProfileBoundConstructorRequiresNonNullQuicProfile()
-        {
-            var options = new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41);
-
-            Assert.Throws<ArgumentNullException>(() => new NnrpQuicClient(null!, options, new TestQuicRuntime(
-                openConnection: OpenConnection,
-                submitFrame: SubmitFrame,
-                submitPacket: SubmitOutcomeBytes,
-                pingRoundTrip: PingRoundTrip,
-                cancelFrame: CancelFrame,
-                closeConnection: CloseConnection)));
-
-            var error = Assert.Throws<InvalidOperationException>(() =>
-                new NnrpQuicClient(
-                    new ClientProfile { TransportProfile = NnrpTransportProfile.ControlEvidence },
-                    options,
-                    new TestQuicRuntime(
-                        openConnection: OpenConnection,
-                        submitFrame: SubmitFrame,
-                        submitPacket: SubmitOutcomeBytes,
-                        pingRoundTrip: PingRoundTrip,
-                        cancelFrame: CancelFrame,
-                        closeConnection: CloseConnection)));
-            Assert.Contains("TransportProfile must be Quic", error.Message, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void ProfileBoundConstructorAcceptsQuicTransportProfile()
-        {
-            var profile = new ClientProfile { TransportProfile = NnrpTransportProfile.Quic };
-            var client = new NnrpQuicClient(
-                profile,
-                new NnrpQuicClientOptions("127.0.0.1", 50072, "localhost", "engine-sr", 41));
-
-            Assert.Same(profile, client.Profile);
-            Assert.Equal(NnrpTransportProfile.Quic, client.Profile?.TransportProfile);
         }
 
         [Fact]

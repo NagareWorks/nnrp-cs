@@ -99,36 +99,4 @@ namespace Nnrp.NativeBridge.Tests
             closeConnection(handle);
         }
     }
-
-    internal sealed class TestAutoTransportRuntime : INnrpAutoTransportRuntime
-    {
-        private readonly Func<NnrpQuicClientOptions, NnrpQuicClient> quicClientFactory;
-        private readonly Func<string, ushort, string, byte[], NnrpQuicCertificateVerificationMode, string?, byte[]> quicProbe;
-
-        public TestAutoTransportRuntime(
-            Func<NnrpQuicClientOptions, NnrpQuicClient>? quicClientFactory = null,
-            Func<string, ushort, string, byte[], byte[]>? quicProbe = null,
-            Func<string, ushort, string, byte[], NnrpQuicCertificateVerificationMode, string?, byte[]>? quicProbeWithCertificateOptions = null)
-        {
-            this.quicClientFactory = quicClientFactory ?? (_ => throw new NotSupportedException("CreateQuicClient was not configured for this test runtime."));
-            var fallbackQuicProbe = quicProbe ?? ((_, _, _, _) => throw new NotSupportedException("ProbeQuic was not configured for this test runtime."));
-            this.quicProbe = quicProbeWithCertificateOptions ?? ((host, port, tlsServerName, probePacket, _, _) => fallbackQuicProbe(host, port, tlsServerName, probePacket));
-        }
-
-        public NnrpQuicClient CreateQuicClient(NnrpQuicClientOptions options)
-        {
-            return quicClientFactory(options);
-        }
-
-        public byte[] ProbeQuic(
-            string host,
-            ushort port,
-            string tlsServerName,
-            byte[] probePacket,
-            NnrpQuicCertificateVerificationMode certificateVerificationMode,
-            string? caCertificatePath)
-        {
-            return quicProbe(host, port, tlsServerName, probePacket, certificateVerificationMode, caCertificatePath);
-        }
-    }
 }

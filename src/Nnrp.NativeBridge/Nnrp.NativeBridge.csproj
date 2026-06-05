@@ -13,8 +13,6 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
-    <ProjectReference Include="..\Nnrp.Client\Nnrp.Client.csproj" />
-    <ProjectReference Include="..\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
