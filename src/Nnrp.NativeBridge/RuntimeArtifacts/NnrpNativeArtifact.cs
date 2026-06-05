@@ -1478,6 +1478,8 @@ namespace Nnrp.NativeBridge
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpCallbackSink
     {
+        public static NnrpCallbackSink None => new NnrpCallbackSink(IntPtr.Zero, IntPtr.Zero);
+
         public NnrpCallbackSink(IntPtr userData, IntPtr onEvent)
         {
             UserData = userData;
@@ -1487,6 +1489,28 @@ namespace Nnrp.NativeBridge
         public readonly IntPtr UserData;
 
         public readonly IntPtr OnEvent;
+
+        public bool IsEmpty => UserData == IntPtr.Zero && OnEvent == IntPtr.Zero;
+
+        public bool HasDispatcher => OnEvent != IntPtr.Zero;
+
+        public static NnrpCallbackSink Create(IntPtr userData, IntPtr onEvent)
+        {
+            if (onEvent == IntPtr.Zero)
+            {
+                throw new ArgumentException("Callback sinks must carry a non-empty dispatcher pointer.", nameof(onEvent));
+            }
+
+            return new NnrpCallbackSink(userData, onEvent);
+        }
+
+        public void EnsureDispatchable()
+        {
+            if (!HasDispatcher)
+            {
+                throw new InvalidOperationException("Callback sink is not bound to a dispatcher.");
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

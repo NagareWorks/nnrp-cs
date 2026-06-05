@@ -363,6 +363,25 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void CallbackSinksRequireBoundDispatchersForManagedUse()
+        {
+            var empty = NnrpCallbackSink.None;
+
+            Assert.True(empty.IsEmpty);
+            Assert.False(empty.HasDispatcher);
+            Assert.Throws<InvalidOperationException>(() => empty.EnsureDispatchable());
+            Assert.Throws<ArgumentException>(() => NnrpCallbackSink.Create(new IntPtr(0x1000), IntPtr.Zero));
+
+            var sink = NnrpCallbackSink.Create(new IntPtr(0x1000), new IntPtr(0x2000));
+
+            sink.EnsureDispatchable();
+            Assert.False(sink.IsEmpty);
+            Assert.True(sink.HasDispatcher);
+            Assert.Equal(new IntPtr(0x1000), sink.UserData);
+            Assert.Equal(new IntPtr(0x2000), sink.OnEvent);
+        }
+
+        [Fact]
         public void NativeStatusKeepsStableFfiShapeAndValueEquality()
         {
             var left = new NnrpFfiStatus(NnrpFfiStatusCode.ProtocolError, NnrpErrorFamily.Cache, 7, 9);
