@@ -237,12 +237,45 @@ jobs:
           }
           Compress-Archive -Path artifacts/packages/*.nupkg -DestinationPath $nugetZip -Force
 
+          function Compress-PackageBundle {
+            param(
+              [string] $Name,
+              [string[]] $PackageIds
+            )
+
+            $bundlePath = Join-Path (Resolve-Path 'artifacts').Path ("{0}-{1}.zip" -f $Name, $version)
+            if (Test-Path $bundlePath) {
+              Remove-Item $bundlePath -Force
+            }
+
+            $packagePaths = @()
+            foreach ($packageId in $PackageIds) {
+              $matches = @(Get-ChildItem artifacts/packages -Filter ("{0}.{1}.nupkg" -f $packageId, $version))
+              if ($matches.Count -ne 1) {
+                throw "Expected exactly one package for $packageId $version, found $($matches.Count)."
+              }
+
+              $packagePaths += $matches[0].FullName
+            }
+
+            Compress-Archive -Path $packagePaths -DestinationPath $bundlePath -Force
+          }
+
+          Compress-PackageBundle `
+            -Name 'nnrp-cs-client-nuget' `
+            -PackageIds @('Nnrp.Core', 'Nnrp.Client', 'Nnrp.Transport.Tcp', 'Nnrp.NativeBridge')
+          Compress-PackageBundle `
+            -Name 'nnrp-cs-server-nuget' `
+            -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.NativeBridge')
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6
         with:
           name: nnrp-cs-release-${{ steps.version.outputs.package_version }}
           path: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-client-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-server-nuget-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
           if-no-files-found: error
@@ -256,6 +289,8 @@ jobs:
           name: nnrp-cs v${{ steps.version.outputs.package_version }}
           files: |
             artifacts/nnrp-cs-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-client-nuget-${{ steps.version.outputs.package_version }}.zip
+            artifacts/nnrp-cs-server-nuget-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
             artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
 

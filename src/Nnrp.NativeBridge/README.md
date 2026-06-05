@@ -133,6 +133,32 @@ connectionHost.ReleaseCacheLease(new NnrpCacheLeaseHandle(lease.LeaseHandle));
 
 Use the same pattern on `NnrpNativeRuntimeServerHost` when server-side hosts need schema registration or cache lease operations. Lease policy, schema binding validation, and version mismatch behavior remain delegated to the native runtime; the managed wrapper carries handles, descriptors, and result snapshots without re-implementing those policies in C#.
 
+Public handle split:
+
+The public Unity/.NET entry surface is the high-level host facade: `NnrpNativeRuntimeSessionHost`, `NnrpNativeRuntimeConnectionHost`, `NnrpNativeRuntimeServer`, and `NnrpNativeRuntimeServerHost`. These own connection/session routing, polling, cancellation, and disposal.
+
+Typed native handles such as `NnrpConnectionHandle`, `NnrpSessionHandle`, `NnrpOperationHandle`, `NnrpSchemaRegistryHandle`, `NnrpBufferHandle`, and `NnrpCacheLeaseHandle` stay public as value wrappers because host code may need to carry identities across diagnostics, cache/schema operations, or native interop boundaries. Application code should not manufacture arbitrary handle values; create them from the native facade result that owns the lifetime.
+
+Borrowed `NnrpBufferView` values and callback sinks are low-level interop shapes. `NnrpNativeBuffer` is the public owner for submit/control/result hot paths that need an explicit native buffer lifetime. `NnrpCallbackSink` is public for the frozen FFI dispatch contract, but host code should use `NnrpCallbackSink.Create` and keep the sink scoped to the native owner that dispatches events.
+
+Profile and operation semantics:
+
+`profileId` is carried through connection/session options and native submit/result paths as a neutral protocol identity. `profileId = 0` means unspecified; it is not treated as an implicit tensor default. Tensor, token, and future standard profiles are peers at the C# boundary, while profile-local payload body interpretation remains owned by the native runtime and the profile contract. Managed hosts should pass descriptors, schema ids, and profile ids through the native facade instead of switching on profile-local body layouts in application plumbing.
+
+Use `SubmitOperation` when an operation should survive beyond one immediate result poll. The returned `NnrpNativeRuntimeOperation` is the stable managed handle for cancellation, routed polling, workflow grouping, and diagnostics. `SubmitAndPollResult` is a convenience wrapper for request-like cases where the caller expects a result within the same host turn. Result lifecycle states preserve the native distinction between completed, partial, degraded, stale reuse, cancelled, and failed; do not collapse these into a boolean success flag in host code.
+
+Unity multi-session orchestration:
+
+Use one `NnrpNativeRuntimeConnectionHost` per native connection when multiple Unity systems need sessions on the same transport. Register sessions through the connection host, submit work with session ids, and poll by `(sessionId, operation)` so unrelated events can remain buffered for the owning session. Avoid per-component native connections for routine in-scene work; that makes cancellation and cache lease ownership harder to reason about.
+
+Cache leases:
+
+Cache lease query, touch, prefetch, and release operations are native-owned. Treat `NnrpCacheLeaseHandle` as a scoped native identity returned by the bridge, not as an application cache key. A Unity or .NET host may store the object id and version for scheduling decisions, but it should release or refresh leases through the same native host facade that acquired them. Expiry, dependency invalidation, and schema mismatch policy stay delegated to the runtime.
+
+Cancellation:
+
+Operation cancellation is frame-scoped on the native session facade. If a managed task is cancelled while a native operation is active, call `Cancel(frameId)` and keep polling until the native runtime reports a terminal lifecycle state or the host decides to close the session. Closing the session/connection is a stronger action than cancelling one operation and should be reserved for host shutdown, transport loss, or unrecoverable protocol state.
+
 Unity event pump and dispatch rules:
 
 The current host surface is polling/event-queue based. Drive one polling owner per native connection, normally from a Unity `Update` loop or from a single managed worker that posts completed work back to Unity's main thread. Do not let multiple Unity behaviours independently poll the same connection; use `NnrpNativeRuntimeConnectionHost` as the shared connection/session registry and route results by session and operation id.

@@ -25,10 +25,10 @@
   - [x] Document native-backed server/session usage through `Nnrp.NativeBridge`.
 - [ ] Keep `doc/benchmarks/rs-native-artifacts-migration.md` updated with the native artifact plan, supported platform matrix, and pre/post migration benchmark results.
 - [x] Document the current connection/session model and how it replaces the earlier preview-era assumptions.
-- [ ] Document cache lease, schema registry, profile neutrality, and operation/workflow lifecycle semantics for hosts.
+- [x] Document cache lease, schema registry, profile neutrality, and operation/workflow lifecycle semantics for hosts.
   - [x] Document host-facing native schema registry and cache lease usage through `Nnrp.NativeBridge`.
-  - [ ] Document profile neutrality and operation/workflow lifecycle semantics for hosts.
+  - [x] Document profile neutrality and operation/workflow lifecycle semantics for hosts.
 - [x] Document how the Rust-backed APIs replace the prior helper surface within `NNRP/1`, without reintroducing parallel helper families.
 - [x] Document the CI-first package strategy so reviewers reject repo-staged DLL and Unity-package regressions.
-- [ ] Document the Unity `.meta` generation policy and the required plugin directory layout for a single multi-platform Unity package.
+- [x] Document the Unity `.meta` generation policy and the required plugin directory layout for a single multi-platform Unity package.
 - [x] Document the supported common-platform scope as Windows, macOS, Linux, Android, and iOS.
