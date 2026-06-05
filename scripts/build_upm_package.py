@@ -18,6 +18,11 @@ MANAGED_ASSEMBLIES = [
     "Nnrp.NativeBridge",
 ]
 
+NATIVE_TRANSPORTS = {
+    "tcp": "Tcp",
+    "quic": "Quic",
+}
+
 NATIVE_LAYOUT = {
     "win-x86": ("nnrp_ffi.dll", Path("Runtime/Plugins/Windows/x86/nnrp_ffi.dll")),
     "win-x64": ("nnrp_ffi.dll", Path("Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll")),
@@ -57,7 +62,9 @@ NATIVE_PLUGIN_SETTINGS = {
 }
 
 UNITY_NATIVE_PLUGIN_RIDS_BY_PATH = {
-    relative_output.as_posix(): rid for rid, (_, relative_output) in NATIVE_LAYOUT.items()
+    (Path("Runtime/Plugins/Transports") / transport_name / Path(*relative_output.parts[2:])).as_posix(): rid
+    for transport_name in NATIVE_TRANSPORTS.values()
+    for rid, (_, relative_output) in NATIVE_LAYOUT.items()
 }
 
 PACKAGE_NAME = "com.nnrp.client"
@@ -250,13 +257,15 @@ def copy_managed_artifacts(repo_root: Path, configuration: str, output_root: Pat
 
 
 def copy_native_artifacts(native_root: Path, output_root: Path) -> None:
-    for rid, (filename, relative_output) in NATIVE_LAYOUT.items():
-        source_path = native_root / rid / filename
-        if not source_path.exists():
-            continue
-        target_path = output_root / relative_output
-        ensure_parent(target_path)
-        shutil.copy2(source_path, target_path)
+    for transport_slug, transport_name in NATIVE_TRANSPORTS.items():
+        transport_root = native_root / f"transport-{transport_slug}"
+        for rid, (filename, relative_output) in NATIVE_LAYOUT.items():
+            source_path = transport_root / rid / filename
+            if not source_path.exists():
+                continue
+            target_path = output_root / "Runtime" / "Plugins" / "Transports" / transport_name / Path(*relative_output.parts[2:])
+            ensure_parent(target_path)
+            shutil.copy2(source_path, target_path)
 
 
 def build_package_manifest(version: str, repository_url: str) -> dict[str, object]:
@@ -297,8 +306,9 @@ def build_release_readme(version: str) -> str:
         - Nnrp.Transport.Quic
         - Nnrp.NativeBridge
 
-        Included native plugins are placed under Runtime/Plugins for Windows, macOS, Linux, Android, iOS,
-        and iOS simulator targets resolved from the pinned nnrp-rs release.
+        Included native plugins are placed under Runtime/Plugins/Transports/Tcp and
+        Runtime/Plugins/Transports/Quic for Windows, macOS, Linux, Android, iOS, and iOS simulator
+        targets resolved from the pinned nnrp-rs release.
 
         Full protocol and SDK documentation: {PACKAGE_DOCUMENTATION_URL}
         """

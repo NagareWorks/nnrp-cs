@@ -26,7 +26,7 @@ The existing C# SDK owns managed packet helpers, native bridge scaffolding, and 
 
 ## Pinned Native Contract
 
-The current preview3 binding work consumes `nnrp-rs` release `v1.0.0-preview.3.7`.
+The current preview3 binding work consumes `nnrp-rs` release `v1.0.0-preview.3.8`.
 
 This release is the native artifact contract pin for the current C# preview3 line and includes:
 
@@ -65,7 +65,7 @@ Rules:
 | Run | Date | SDK commit | nnrp-rs artifact | Host runtime | OS/arch | CPU | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pre-migration baseline | 2026-05-25 | 135ca63 | N/A | .NET 8.0.27 | windows/x64 | Intel(R) Core(TM)2 Duo CPU T7700 @ 2.40GHz | Conformance benchmark runner selected and measured 9 scenarios. |
-| Post-migration native | TBD | TBD | v1.0.0-preview.3.7 | TBD | TBD | TBD | TBD |
+| Post-migration native | TBD | TBD | v1.0.0-preview.3.8 | TBD | TBD | TBD | TBD |
 
 ### Latency Benchmarks
 

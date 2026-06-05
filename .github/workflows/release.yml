@@ -33,7 +33,7 @@ on:
       nnrp_rs_version:
         description: nnrp-rs native artifact version to package
         required: true
-        default: 1.0.0-preview.3.7
+        default: 1.0.0-preview.3.8
 
 permissions:
   contents: write
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ github.event_name == 'workflow_dispatch' && inputs.nnrp_rs_version || '1.0.0-preview.3.7' }}"
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.nnrp_rs_version || '1.0.0-preview.3.8' }}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Download nnrp-rs FFI artifacts

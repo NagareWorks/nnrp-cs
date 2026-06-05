@@ -7,110 +7,11 @@
     <PackageId>Nnrp.NativeBridge</PackageId>
     <Description>Rust-backed preview3 native bridge facade and packaged native assets for NNRP hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <NativeBridgeArtifactRoot Condition="'$(NativeBridgeArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native</NativeBridgeArtifactRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="$(NativeBridgeArtifactRoot)\win-x86\nnrp_ffi.dll"
-      Pack="true"
-      PackagePath="runtimes/win-x86/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\win-x86\nnrp_ffi.dll')" />
-    <None Include="$(NativeBridgeArtifactRoot)\win-x64\nnrp_ffi.dll"
-      Pack="true"
-      PackagePath="runtimes/win-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\win-x64\nnrp_ffi.dll')" />
-    <None Include="$(NativeBridgeArtifactRoot)\win-arm\nnrp_ffi.dll"
-      Pack="true"
-      PackagePath="runtimes/win-arm/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\win-arm\nnrp_ffi.dll')" />
-    <None Include="$(NativeBridgeArtifactRoot)\win-arm64\nnrp_ffi.dll"
-      Pack="true"
-      PackagePath="runtimes/win-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\win-arm64\nnrp_ffi.dll')" />
-    <None Include="$(NativeBridgeArtifactRoot)\osx-x86\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/osx-x86/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\osx-x86\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\osx-x64\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/osx-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\osx-x64\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\osx-arm\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/osx-arm/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\osx-arm\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\osx-arm64\libnnrp_ffi.dylib"
-      Pack="true"
-      PackagePath="runtimes/osx-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\osx-arm64\libnnrp_ffi.dylib')" />
-    <None Include="$(NativeBridgeArtifactRoot)\linux-x86\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/linux-x86/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\linux-x86\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\linux-x64\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/linux-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\linux-x64\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\linux-arm\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/linux-arm/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\linux-arm\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\linux-arm64\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/linux-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\linux-arm64\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\android-x86\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/android-x86/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\android-x86\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\android-x64\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/android-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\android-x64\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\android-arm\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/android-arm/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\android-arm\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\android-arm64\libnnrp_ffi.so"
-      Pack="true"
-      PackagePath="runtimes/android-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
-    <None Include="$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.a"
-      Pack="true"
-      PackagePath="runtimes/ios-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
-    <None Include="$(NativeBridgeArtifactRoot)\iossimulator-x64\libnnrp_ffi.a"
-      Pack="true"
-      PackagePath="runtimes/iossimulator-x64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
-    <None Include="$(NativeBridgeArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a"
-      Pack="true"
-      PackagePath="runtimes/iossimulator-arm64/native/"
-      Visible="false"
-      Condition="Exists('$(NativeBridgeArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
   </ItemGroup>
 
 </Project>

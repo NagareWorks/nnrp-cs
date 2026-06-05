@@ -11,37 +11,44 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class NativeArtifact:
+    transport: str
     asset_tag: str
     rid: str
     library_name: str
 
     def asset_name(self, version: str) -> str:
-        return f"nnrp-ffi-native-{self.asset_tag}-{version}.zip"
+        return f"nnrp-ffi-transport-{self.transport}-native-{self.asset_tag}-{version}.zip"
 
 
-NATIVE_ARTIFACTS = [
-    NativeArtifact("windows-x86", "win-x86", "nnrp_ffi.dll"),
-    NativeArtifact("windows-x86_64", "win-x64", "nnrp_ffi.dll"),
-    NativeArtifact("windows-aarch64", "win-arm64", "nnrp_ffi.dll"),
-    NativeArtifact("macos-x86_64", "osx-x64", "libnnrp_ffi.dylib"),
-    NativeArtifact("macos-aarch64", "osx-arm64", "libnnrp_ffi.dylib"),
-    NativeArtifact("linux-x86", "linux-x86", "libnnrp_ffi.so"),
-    NativeArtifact("linux-x86_64", "linux-x64", "libnnrp_ffi.so"),
-    NativeArtifact("linux-armv7", "linux-arm", "libnnrp_ffi.so"),
-    NativeArtifact("linux-aarch64", "linux-arm64", "libnnrp_ffi.so"),
-    NativeArtifact("android-x86", "android-x86", "libnnrp_ffi.so"),
-    NativeArtifact("android-x86_64", "android-x64", "libnnrp_ffi.so"),
-    NativeArtifact("android-armv7", "android-arm", "libnnrp_ffi.so"),
-    NativeArtifact("android-aarch64", "android-arm64", "libnnrp_ffi.so"),
-    NativeArtifact("ios-aarch64", "ios-arm64", "libnnrp_ffi.a"),
-    NativeArtifact("ios-aarch64-sim", "iossimulator-arm64", "libnnrp_ffi.a"),
-    NativeArtifact("ios-x86_64-sim", "iossimulator-x64", "libnnrp_ffi.a"),
-]
+def native_artifacts() -> list[NativeArtifact]:
+    artifacts: list[NativeArtifact] = []
+    for transport in ("tcp", "quic"):
+        artifacts.extend(
+            [
+                NativeArtifact(transport, "windows-x86", "win-x86", "nnrp_ffi.dll"),
+                NativeArtifact(transport, "windows-x86_64", "win-x64", "nnrp_ffi.dll"),
+                NativeArtifact(transport, "windows-aarch64", "win-arm64", "nnrp_ffi.dll"),
+                NativeArtifact(transport, "macos-x86_64", "osx-x64", "libnnrp_ffi.dylib"),
+                NativeArtifact(transport, "macos-aarch64", "osx-arm64", "libnnrp_ffi.dylib"),
+                NativeArtifact(transport, "linux-x86", "linux-x86", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "linux-x86_64", "linux-x64", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "linux-armv7", "linux-arm", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "linux-aarch64", "linux-arm64", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "android-x86", "android-x86", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "android-x86_64", "android-x64", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "android-armv7", "android-arm", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "android-aarch64", "android-arm64", "libnnrp_ffi.so"),
+                NativeArtifact(transport, "ios-aarch64", "ios-arm64", "libnnrp_ffi.a"),
+                NativeArtifact(transport, "ios-aarch64-sim", "iossimulator-arm64", "libnnrp_ffi.a"),
+                NativeArtifact(transport, "ios-x86_64-sim", "iossimulator-x64", "libnnrp_ffi.a"),
+            ]
+        )
+    return artifacts
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download nnrp-rs native FFI artifacts into C# package layout.")
-    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.3.7")
+    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.3.8")
     parser.add_argument("--repo", default="NagareWorks/nnrp-rs")
     parser.add_argument("--output", required=True)
     parser.add_argument("--include-headers", action="store_true")
@@ -70,7 +77,7 @@ def download_artifact(repo: str, version: str, artifact: NativeArtifact, downloa
 
 
 def extract_library(archive_path: Path, artifact: NativeArtifact, output_root: Path, include_headers: bool) -> Path:
-    rid_root = output_root / artifact.rid
+    rid_root = output_root / f"transport-{artifact.transport}" / artifact.rid
     rid_root.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
@@ -106,10 +113,10 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="nnrp-rs-artifacts-") as temp_dir:
         download_dir = Path(temp_dir)
-        for artifact in NATIVE_ARTIFACTS:
+        for artifact in native_artifacts():
             archive_path = download_artifact(args.repo, args.version, artifact, download_dir)
             target_path = extract_library(archive_path, artifact, output_root, args.include_headers)
-            print(f"{artifact.rid}: {target_path}")
+            print(f"{artifact.transport}/{artifact.rid}: {target_path}")
 
     return 0
 

@@ -6,12 +6,96 @@
     <PackageId>Nnrp.Transport.Tcp</PackageId>
     <Description>TCP native transport entry surface and managed diagnostic helpers for NNRP preview3 hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NnrpTcpTransportArtifactRoot Condition="'$(NnrpTcpTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-tcp</NnrpTcpTransportArtifactRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
     <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NnrpTcpTransportArtifactRoot)\win-x86\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-x86/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\win-x86\nnrp_ffi.dll')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\win-x64\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-x64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\win-x64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\win-arm64\nnrp_ffi.dll"
+      Pack="true"
+      PackagePath="runtimes/win-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\win-arm64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib"
+      Pack="true"
+      PackagePath="runtimes/osx-x64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib"
+      Pack="true"
+      PackagePath="runtimes/osx-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\linux-x86\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-x86/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\linux-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\linux-x64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-x64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\linux-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\linux-arm\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-arm/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\linux-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/linux-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\android-x86\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-x86/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\android-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\android-x64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-x64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\android-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\android-arm\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-arm/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\android-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\android-arm64\libnnrp_ffi.so"
+      Pack="true"
+      PackagePath="runtimes/android-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/ios-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-x64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpTcpTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a"
+      Pack="true"
+      PackagePath="runtimes/iossimulator-arm64/native/nnrp/transport/tcp/"
+      Visible="false"
+      Condition="Exists('$(NnrpTcpTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
   </ItemGroup>
 
 </Project>
