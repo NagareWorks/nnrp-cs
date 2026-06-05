@@ -4,6 +4,8 @@ Nnrp.NativeBridge provides the Rust-backed preview3 runtime entry point for C# h
 
 Use this package when you want client connection/session bootstrap, submit/result polling, cancellation, and control paths to run through the packaged `nnrp-rs` native artifacts. `NnrpNativeRuntimeSessionHost` is the recommended high-level facade when an application wants one native-backed session surface instead of manually assembling handles.
 
+The default preview3 path is native-backed and fails fast when the packaged artifact is missing or incompatible. Managed fallback backends are explicit diagnostic or unsupported-runtime hooks; set `FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics` only for tests, fixture inspection, or hosts that intentionally run without native artifacts.
+
 This package depends on Nnrp.Core, Nnrp.Client, and Nnrp.Transport.Tcp, and may include runtime-specific native binaries when they are present during packing.
 
 Install:
@@ -29,6 +31,33 @@ var options = new NnrpNativeRuntimeSessionHostOptions(
 
 using var host = NnrpNativeRuntimeSessionHost.Open(options);
 var result = host.SubmitAndPollResult(operationId: 1, frameId: 1, payload: Array.Empty<byte>());
+```
+
+Use an explicit diagnostic fallback:
+
+```csharp
+options.FallbackBackend = diagnosticBackend;
+options.FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics;
+```
+
+Native-backed server session:
+
+```csharp
+using var server = NnrpNativeRuntimeServer.Bind(
+    entrypoints,
+    serverId: 1,
+    generation: 1,
+    transportId: NnrpNativeArtifact.TransportSlotTcp);
+
+var session = server.AcceptSession(
+    sessionId: 1,
+    generation: 1,
+    profileId: 1,
+    schemaId: 1,
+    schemaVersion: 1);
+
+var operation = session.ReceiveSubmit(operationId: 1, frameId: 1);
+session.SendResult(operation, payload: Array.Empty<byte>());
 ```
 
 Native-backed multi-session routing:

@@ -51,7 +51,8 @@ namespace Nnrp.NativeBridge
 
         public INnrpNativeRuntimeBackend? FallbackBackend { get; set; }
 
-        public bool RequireNative { get; set; }
+        public NnrpNativeRuntimeFallbackPolicy FallbackPolicy { get; set; } =
+            NnrpNativeRuntimeFallbackPolicy.RequireNative;
     }
 
     public sealed class NnrpNativeRuntimeSessionHost : IDisposable
@@ -90,7 +91,7 @@ namespace Nnrp.NativeBridge
                 options.ArtifactRoot,
                 options.Platform,
                 options.FallbackBackend,
-                options.RequireNative);
+                options.FallbackPolicy);
             return Open(backend, options);
         }
 
@@ -238,7 +239,8 @@ namespace Nnrp.NativeBridge
 
         public INnrpNativeRuntimeBackend? FallbackBackend { get; set; }
 
-        public bool RequireNative { get; set; }
+        public NnrpNativeRuntimeFallbackPolicy FallbackPolicy { get; set; } =
+            NnrpNativeRuntimeFallbackPolicy.RequireNative;
     }
 
     public sealed class NnrpNativeRuntimeSessionOptions
@@ -305,7 +307,7 @@ namespace Nnrp.NativeBridge
                 options.ArtifactRoot,
                 options.Platform,
                 options.FallbackBackend,
-                options.RequireNative);
+                options.FallbackPolicy);
             return Open(backend, options);
         }
 

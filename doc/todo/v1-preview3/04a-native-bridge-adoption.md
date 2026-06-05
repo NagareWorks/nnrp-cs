@@ -3,6 +3,7 @@
 - [ ] Consume the frozen Rust-to-C# bridge contract for preview3.
   - [x] Bind and load the frozen preview3 runtime delegate table and request/event structs behind `Nnrp.NativeBridge`.
   - [x] Add a native-backed client/session facade for connect, bootstrap, open-session, submit, cancel, control, event polling, and close.
+  - [x] Add a native-backed server/session facade for bind, accept, receive-submit, send-result, flow update, control, and close.
   - [ ] Replace managed runtime calls with the bound native entrypoints.
 - [x] Pin the exact `nnrp-rs` commit, tag, or artifact version used by the C# package.
 - [ ] Replace SDK-owned hot-path wire/session behavior with the canonical `nnrp-rs` native backend.

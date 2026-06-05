@@ -931,7 +931,8 @@ namespace Nnrp.NativeBridge.Tests
                 ArtifactPath = "missing-native-runtime.dll",
                 ArtifactRoot = "unused-native-root",
                 Platform = new NnrpNativePlatform("windows", "x86_64"),
-                FallbackBackend = fallback
+                FallbackBackend = fallback,
+                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics
             };
 
             using (var host = NnrpNativeRuntimeSessionHost.Open(options))
@@ -941,7 +942,7 @@ namespace Nnrp.NativeBridge.Tests
                 Assert.Equal("unused-native-root", host.Options.ArtifactRoot);
                 Assert.Equal(new NnrpNativePlatform("windows", "x86_64"), host.Options.Platform);
                 Assert.Same(fallback, host.Options.FallbackBackend);
-                Assert.False(host.Options.RequireNative);
+                Assert.Equal(NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics, host.Options.FallbackPolicy);
             }
         }
 
@@ -1064,7 +1065,8 @@ namespace Nnrp.NativeBridge.Tests
                 ArtifactPath = "missing-native-runtime.dll",
                 ArtifactRoot = "unused-native-root",
                 Platform = new NnrpNativePlatform("windows", "x86_64"),
-                FallbackBackend = fallback
+                FallbackBackend = fallback,
+                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics
             };
             var host = NnrpNativeRuntimeConnectionHost.Open(options);
             var session = host.OpenSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
@@ -1295,25 +1297,148 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void NativeRuntimeBackendSelectorFallsBackWhenNativeArtifactIsUnavailable()
+        public void NativeRuntimeServerFacadeRoutesNativeSubmitResultFlowAndControl()
+        {
+            ulong receivedOperationId = 0;
+            uint receivedFrameId = 0;
+            UIntPtr receivedPayloadLength = UIntPtr.Zero;
+            UIntPtr resultPayloadLength = UIntPtr.Zero;
+            uint flowFrameId = 0;
+            uint controlCode = 0;
+            UIntPtr controlPayloadLength = UIntPtr.Zero;
+
+            NnrpFfiStatus CaptureServerReceiveSubmit(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation)
+            {
+                receivedOperationId = request.OperationId;
+                receivedFrameId = request.FrameId;
+                receivedPayloadLength = request.Payload.Length;
+                operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerSendResult(NnrpServerSendResultRequest request)
+            {
+                resultPayloadLength = request.Payload.Length;
+                return request.Operation.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureServerFlowUpdate(NnrpServerFlowUpdateRequest request)
+            {
+                flowFrameId = request.FrameId;
+                return request.Session.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            NnrpFfiStatus CaptureControl(NnrpControlRequest request)
+            {
+                controlCode = request.ControlCode;
+                controlPayloadLength = request.Payload.Length;
+                return request.Handle.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var entrypoints = new NnrpNativeRuntimeEntrypoints(
+                CurrentProtocolVersion,
+                () => MatchingCapabilities(),
+                ConnectionBootstrap,
+                ClientConnect,
+                SessionOpen,
+                SessionOpen,
+                Submit,
+                Submit,
+                HandleStatus,
+                HandleStatus,
+                ClientCancel,
+                AwaitEvent,
+                ServerBind,
+                ServerAccept,
+                CaptureServerReceiveSubmit,
+                CaptureServerSendResult,
+                CaptureServerFlowUpdate,
+                HandleStatus,
+                CaptureControl,
+                PollEmpty,
+                DispatchEvent);
+
+            using (var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp))
+            {
+                var session = server.AcceptSession(41, 3, 4, 5, 6);
+                var operation = session.ReceiveSubmit(99, 7, new byte[] { 1, 2, 3 });
+
+                session.SendResult(operation, new byte[] { 4, 5 });
+                session.SendFlowUpdate(7);
+                session.Control(17, new byte[] { 6 });
+                session.Close();
+                server.Close();
+
+                Assert.Equal((ulong)99, receivedOperationId);
+                Assert.Equal((uint)7, receivedFrameId);
+                Assert.Equal(new UIntPtr(3), receivedPayloadLength);
+                Assert.Equal(new UIntPtr(2), resultPayloadLength);
+                Assert.Equal((uint)7, flowFrameId);
+                Assert.Equal((uint)17, controlCode);
+                Assert.Equal(new UIntPtr(1), controlPayloadLength);
+                Assert.True(session.IsClosed);
+                Assert.True(server.IsClosed);
+                Assert.Throws<NnrpNativeInvalidStateException>(() => server.AcceptSession(42, 3, 4, 5, 6));
+            }
+
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServer.Bind(null!, 50, 2, NnrpNativeArtifact.TransportSlotTcp));
+        }
+
+        [Fact]
+        public void NativeRuntimeServerSessionRejectsUseAfterServerClose()
+        {
+            var server = NnrpNativeRuntimeServer.Bind(CreateEntrypoints(), 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var session = server.AcceptSession(41, 3, 4, 5, 6);
+
+            server.Close();
+
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.ReceiveSubmit(99, 7));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.SendFlowUpdate(7));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Control(17));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.Close());
+            server.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeBackendSelectorRequiresNativeByDefault()
+        {
+            Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeRuntimeBackendSelector.Select(
+                    artifactPath: "missing-native-artifact.dll",
+                    fallback: new FakeRuntimeBackend()));
+        }
+
+        [Fact]
+        public void NativeRuntimeBackendSelectorUsesFallbackOnlyForDiagnosticsPolicy()
         {
             var fallback = new FakeRuntimeBackend();
 
             var selected = NnrpNativeRuntimeBackendSelector.Select(
                 artifactPath: "missing-native-artifact.dll",
-                fallback: fallback);
+                fallback: fallback,
+                fallbackPolicy: NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics);
 
             Assert.Same(fallback, selected);
         }
 
         [Fact]
-        public void NativeRuntimeBackendSelectorCanRequireNativeArtifact()
+        public void NativeRuntimeBackendSelectorExplicitRequireNativeRejectsFallback()
         {
             Assert.Throws<NnrpNativeArtifactException>(() =>
                 NnrpNativeRuntimeBackendSelector.Select(
                     artifactPath: "missing-native-artifact.dll",
                     fallback: new FakeRuntimeBackend(),
-                    requireNative: true));
+                    fallbackPolicy: NnrpNativeRuntimeFallbackPolicy.RequireNative));
+        }
+
+        [Fact]
+        public void NativeRuntimeHostOptionsRequireNativeByDefault()
+        {
+            var sessionOptions = new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6);
+            var connectionOptions = new NnrpNativeRuntimeConnectionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.RequireNative, sessionOptions.FallbackPolicy);
+            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.RequireNative, connectionOptions.FallbackPolicy);
         }
 
         [Fact]

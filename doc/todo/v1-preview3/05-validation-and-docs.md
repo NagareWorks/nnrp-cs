@@ -19,6 +19,8 @@
 ## Documentation And Rollout
 
 - [ ] Document the C# SDK as a Rust-backed preview3 binding plus Unity/.NET host integration layer.
+  - [x] Document that `Nnrp.NativeBridge` is the preview3 native-backed host facade and that managed fallback is diagnostic or unsupported-runtime only.
+  - [x] Document native-backed server/session usage through `Nnrp.NativeBridge`.
 - [ ] Keep `doc/benchmarks/rs-native-artifacts-migration.md` updated with the native artifact plan, supported platform matrix, and pre/post migration benchmark results.
 - [ ] Document the current connection/session model and how it replaces the earlier preview-era assumptions.
 - [ ] Document cache lease, schema registry, profile neutrality, and operation/workflow lifecycle semantics for hosts.

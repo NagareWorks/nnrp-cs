@@ -1492,6 +1492,12 @@ namespace Nnrp.NativeBridge
         NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId);
     }
 
+    public enum NnrpNativeRuntimeFallbackPolicy
+    {
+        RequireNative = 0,
+        UseFallbackForDiagnostics = 1,
+    }
+
     public static class NnrpNativeRuntimeBackendSelector
     {
         public static INnrpNativeRuntimeBackend Select(
@@ -1499,7 +1505,7 @@ namespace Nnrp.NativeBridge
             string? artifactRoot = null,
             NnrpNativePlatform? platform = null,
             INnrpNativeRuntimeBackend? fallback = null,
-            bool requireNative = false)
+            NnrpNativeRuntimeFallbackPolicy fallbackPolicy = NnrpNativeRuntimeFallbackPolicy.RequireNative)
         {
             try
             {
@@ -1508,7 +1514,7 @@ namespace Nnrp.NativeBridge
             }
             catch (NnrpNativeArtifactException)
             {
-                if (fallback == null || requireNative)
+                if (fallback == null || fallbackPolicy == NnrpNativeRuntimeFallbackPolicy.RequireNative)
                 {
                     throw;
                 }
@@ -1545,6 +1551,205 @@ namespace Nnrp.NativeBridge
                 out connection);
             status.ThrowIfError();
             return new NnrpNativeRuntimeConnection(Entrypoints, new NnrpConnectionHandle(connection));
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeServer : IDisposable
+    {
+        public NnrpNativeRuntimeServer(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Handle = handle;
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpConnectionHandle Handle { get; }
+
+        public bool IsClosed { get; private set; }
+
+        public static NnrpNativeRuntimeServer Bind(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            ulong serverId,
+            uint generation,
+            uint transportId)
+        {
+            if (entrypoints == null)
+            {
+                throw new ArgumentNullException(nameof(entrypoints));
+            }
+
+            NnrpHandle server;
+            var status = entrypoints.ServerBind(new NnrpServerBindRequest(serverId, generation, transportId), out server);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeServer(entrypoints, new NnrpConnectionHandle(server));
+        }
+
+        public NnrpNativeRuntimeServerSession AcceptSession(
+            uint sessionId,
+            uint generation,
+            ushort profileId,
+            uint schemaId,
+            uint schemaVersion)
+        {
+            EnsureOpen();
+            NnrpHandle session;
+            var status = Entrypoints.ServerAccept(
+                new NnrpServerAcceptRequest(
+                    Handle.Handle,
+                    sessionId,
+                    generation,
+                    profileId,
+                    schemaId,
+                    schemaVersion),
+                out session);
+            status.ThrowIfError();
+            return new NnrpNativeRuntimeServerSession(
+                Entrypoints,
+                Handle,
+                new NnrpSessionHandle(session),
+                () => IsClosed);
+        }
+
+        public void Close()
+        {
+            EnsureOpen();
+            Entrypoints.ServerClose(Handle.Handle).ThrowIfError();
+            IsClosed = true;
+        }
+
+        public void Dispose()
+        {
+            if (IsClosed)
+            {
+                return;
+            }
+
+            Close();
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsClosed)
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
+        }
+    }
+
+    public sealed class NnrpNativeRuntimeServerSession
+    {
+        public NnrpNativeRuntimeServerSession(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpConnectionHandle server,
+            NnrpSessionHandle handle,
+            Func<bool>? isServerClosed = null)
+        {
+            Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
+            Server = server;
+            Handle = handle;
+            IsServerClosed = isServerClosed ?? (() => false);
+        }
+
+        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+
+        public NnrpConnectionHandle Server { get; }
+
+        public NnrpSessionHandle Handle { get; }
+
+        public bool IsClosed { get; private set; }
+
+        private Func<bool> IsServerClosed { get; }
+
+        public NnrpNativeRuntimeOperation ReceiveSubmit(ulong operationId, uint frameId, byte[]? payload = null)
+        {
+            EnsureOpen();
+            GCHandle payloadHandle = default(GCHandle);
+            try
+            {
+                var payloadView = NnrpBufferView.Empty;
+                if (payload != null && payload.Length > 0)
+                {
+                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
+                }
+
+                NnrpHandle operation;
+                var status = Entrypoints.ServerReceiveSubmit(
+                    new NnrpServerReceiveSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
+                    out operation);
+                status.ThrowIfError();
+                return new NnrpNativeRuntimeOperation(
+                    Entrypoints,
+                    Handle,
+                    new NnrpOperationHandle(operation),
+                    operationId,
+                    frameId);
+            }
+            finally
+            {
+                if (payloadHandle.IsAllocated)
+                {
+                    payloadHandle.Free();
+                }
+            }
+        }
+
+        public void SendResult(NnrpNativeRuntimeOperation operation, byte[]? payload = null)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            EnsureOpen();
+            GCHandle payloadHandle = default(GCHandle);
+            try
+            {
+                var payloadView = NnrpBufferView.Empty;
+                if (payload != null && payload.Length > 0)
+                {
+                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                    payloadView = new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length));
+                }
+
+                Entrypoints.ServerSendResult(
+                    new NnrpServerSendResultRequest(operation.Handle.Handle, payloadView)).ThrowIfError();
+            }
+            finally
+            {
+                if (payloadHandle.IsAllocated)
+                {
+                    payloadHandle.Free();
+                }
+            }
+        }
+
+        public void SendFlowUpdate(uint frameId)
+        {
+            EnsureOpen();
+            Entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(Handle.Handle, frameId)).ThrowIfError();
+        }
+
+        public void Control(uint controlCode, byte[]? payload = null)
+        {
+            EnsureOpen();
+            NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public void Close()
+        {
+            EnsureOpen();
+            Entrypoints.SessionClose(Handle.Handle).ThrowIfError();
+            IsClosed = true;
+        }
+
+        private void EnsureOpen()
+        {
+            if (IsClosed || IsServerClosed())
+            {
+                throw new NnrpNativeInvalidStateException(new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState));
+            }
         }
     }
 
