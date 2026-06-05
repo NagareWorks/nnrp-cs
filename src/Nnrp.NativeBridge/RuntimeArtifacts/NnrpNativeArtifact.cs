@@ -2247,6 +2247,57 @@ namespace Nnrp.NativeBridge
             Entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(Handle.Handle, frameId)).ThrowIfError();
         }
 
+        public NnrpCacheLeaseResult QueryCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Query(
+                new NnrpCacheLeaseRequest(
+                    Handle.Handle,
+                    objectId,
+                    expectedVersion,
+                    nowMilliseconds,
+                    ttlMilliseconds));
+        }
+
+        public NnrpCacheLeaseResult TouchCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Touch(
+                new NnrpCacheLeaseRequest(
+                    Handle.Handle,
+                    objectId,
+                    expectedVersion,
+                    nowMilliseconds,
+                    ttlMilliseconds));
+        }
+
+        public NnrpCacheLeaseResult[] PrefetchCacheLeases(
+            NnrpCacheObjectId[] objects,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Prefetch(
+                Handle.Handle,
+                objects,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult ReleaseCacheLease(NnrpCacheLeaseHandle lease)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Release(lease);
+        }
+
         public void Control(uint controlCode, byte[]? payload = null)
         {
             EnsureOpen();
@@ -2647,6 +2698,57 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             SendControl(Entrypoints, Handle.Handle, controlCode, payload);
+        }
+
+        public NnrpCacheLeaseResult QueryCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Query(
+                new NnrpCacheLeaseRequest(
+                    Handle.Handle,
+                    objectId,
+                    expectedVersion,
+                    nowMilliseconds,
+                    ttlMilliseconds));
+        }
+
+        public NnrpCacheLeaseResult TouchCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Touch(
+                new NnrpCacheLeaseRequest(
+                    Handle.Handle,
+                    objectId,
+                    expectedVersion,
+                    nowMilliseconds,
+                    ttlMilliseconds));
+        }
+
+        public NnrpCacheLeaseResult[] PrefetchCacheLeases(
+            NnrpCacheObjectId[] objects,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Prefetch(
+                Handle.Handle,
+                objects,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult ReleaseCacheLease(NnrpCacheLeaseHandle lease)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Release(lease);
         }
 
         internal static void SendControl(

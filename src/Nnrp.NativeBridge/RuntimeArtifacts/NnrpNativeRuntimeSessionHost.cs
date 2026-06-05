@@ -166,6 +166,49 @@ namespace Nnrp.NativeBridge
             return Session.PollResult(operation, state, maxEvents);
         }
 
+        public NnrpCacheLeaseResult QueryCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return Session.QueryCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult TouchCacheLease(
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return Session.TouchCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult[] PrefetchCacheLeases(
+            NnrpCacheObjectId[] objects,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            EnsureOpen();
+            return Session.PrefetchCacheLeases(objects, nowMilliseconds, ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult ReleaseCacheLease(NnrpCacheLeaseHandle lease)
+        {
+            EnsureOpen();
+            return Session.ReleaseCacheLease(lease);
+        }
+
         public IReadOnlyList<NnrpNativeRuntimeEvent> PollAvailableEvents(int maxEvents = 0)
         {
             EnsureOpen();
@@ -416,6 +459,55 @@ namespace Nnrp.NativeBridge
                 maxEvents);
         }
 
+        public NnrpNativeSchemaRegistry CreateSchemaRegistry()
+        {
+            EnsureOpen();
+            return NnrpNativeSchemaRegistry.Create(Connection.Entrypoints);
+        }
+
+        public NnrpCacheLeaseResult QueryCacheLease(
+            uint sessionId,
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).QueryCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult TouchCacheLease(
+            uint sessionId,
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).TouchCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult[] PrefetchCacheLeases(
+            uint sessionId,
+            NnrpCacheObjectId[] objects,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).PrefetchCacheLeases(objects, nowMilliseconds, ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult ReleaseCacheLease(NnrpCacheLeaseHandle lease)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Connection.Entrypoints).Release(lease);
+        }
+
         public IReadOnlyList<NnrpNativeRuntimeEvent> PollAvailableEvents(int maxEvents = 0)
         {
             EnsureOpen();
@@ -627,6 +719,55 @@ namespace Nnrp.NativeBridge
         public void SendFlowUpdate(uint sessionId, uint frameId)
         {
             GetSession(sessionId).SendFlowUpdate(frameId);
+        }
+
+        public NnrpNativeSchemaRegistry CreateSchemaRegistry()
+        {
+            EnsureOpen();
+            return NnrpNativeSchemaRegistry.Create(Entrypoints);
+        }
+
+        public NnrpCacheLeaseResult QueryCacheLease(
+            uint sessionId,
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).QueryCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult TouchCacheLease(
+            uint sessionId,
+            NnrpCacheObjectId objectId,
+            ulong expectedVersion,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).TouchCacheLease(
+                objectId,
+                expectedVersion,
+                nowMilliseconds,
+                ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult[] PrefetchCacheLeases(
+            uint sessionId,
+            NnrpCacheObjectId[] objects,
+            ulong nowMilliseconds,
+            uint ttlMilliseconds)
+        {
+            return GetSession(sessionId).PrefetchCacheLeases(objects, nowMilliseconds, ttlMilliseconds);
+        }
+
+        public NnrpCacheLeaseResult ReleaseCacheLease(NnrpCacheLeaseHandle lease)
+        {
+            EnsureOpen();
+            return new NnrpNativeCacheLeases(Entrypoints).Release(lease);
         }
 
         public void Control(uint sessionId, uint controlCode, byte[]? payload = null)

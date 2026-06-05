@@ -1059,7 +1059,11 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 CaptureControl,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                cacheQuery: CacheQuery,
+                cacheTouch: CacheTouch,
+                cachePrefetch: CachePrefetch,
+                cacheRelease: CacheRelease);
             var options = new NnrpNativeRuntimeSessionHostOptions(
                 12,
                 2,
@@ -1073,14 +1077,23 @@ namespace Nnrp.NativeBridge.Tests
                 BootstrapConnection = true
             };
             var host = NnrpNativeRuntimeSessionHost.Open(new NnrpNativeRuntimeClient(entrypoints), options);
+            var objectId = MatchingCacheObjectId();
 
             host.Cancel(71);
             host.Control(17, new byte[] { 1, 2 });
+            var query = host.QueryCacheLease(objectId, 9, 1000, 500);
+            var touch = host.TouchCacheLease(objectId, 9, 1000, 500);
+            var prefetch = host.PrefetchCacheLeases(new[] { objectId }, 1000, 500);
+            var release = host.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
             host.Close();
 
             Assert.Equal((uint)71, cancelledFrameId);
             Assert.Equal((uint)17, controlCode);
             Assert.Equal(new UIntPtr(2), controlPayloadLength);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
+            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Single(prefetch);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
             Assert.True(host.IsClosed);
             Assert.True(host.Session.IsClosed);
             Assert.True(host.Connection.IsClosed);
@@ -1271,6 +1284,45 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(null!));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open((INnrpNativeRuntimeBackend)null!, options));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(new NnrpNativeRuntimeClient(CreateEntrypoints()), null!));
+        }
+
+        [Fact]
+        public void NativeRuntimeConnectionHostRoutesSchemaAndCacheLeaseHelpers()
+        {
+            var entrypoints = CreateEntrypoints();
+            var host = NnrpNativeRuntimeConnectionHost.Open(
+                new NnrpNativeRuntimeClient(entrypoints),
+                new NnrpNativeRuntimeConnectionHostOptions(
+                    12,
+                    2,
+                    NnrpNativeArtifact.TransportSlotTcp));
+            var session = host.OpenSession(new NnrpNativeRuntimeSessionOptions(3, 1, 4, 0x1001, 3));
+            var objectId = MatchingCacheObjectId();
+
+            using (var registry = host.CreateSchemaRegistry())
+            {
+                Assert.Equal(NnrpSchemaRegistryAction.Installed, registry.Install(TokenSchemaDescriptor()));
+                registry.ValidateBinding(MatchingTypedPayloadDescriptor());
+                Assert.Equal((uint)0x1001, registry.Lookup(0x1001, 3).SchemaId);
+            }
+
+            var query = host.QueryCacheLease(3, objectId, 9, 1000, 500);
+            var touch = host.TouchCacheLease(3, objectId, 9, 1000, 500);
+            var prefetch = host.PrefetchCacheLeases(3, new[] { objectId }, 1000, 500);
+            var release = host.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
+
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
+            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Single(prefetch);
+            Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
+
+            host.Close();
+
+            Assert.True(host.IsClosed);
+            Assert.True(session.IsClosed);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => host.CreateSchemaRegistry());
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.QueryCacheLease(objectId, 9, 1000, 500));
         }
 
         [Fact]
@@ -1669,6 +1721,47 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open((NnrpNativeRuntimeServerHostOptions)null!));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open((NnrpNativeRuntimeEntrypoints)null!, options));
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open(entrypoints, null!));
+        }
+
+        [Fact]
+        public void NativeRuntimeServerHostRoutesSchemaAndCacheLeaseHelpers()
+        {
+            var entrypoints = CreateEntrypoints();
+            var host = NnrpNativeRuntimeServerHost.Open(
+                entrypoints,
+                new NnrpNativeRuntimeServerHostOptions(
+                    50,
+                    2,
+                    NnrpNativeArtifact.TransportSlotTcp));
+            var session = host.AcceptSession(new NnrpNativeRuntimeSessionOptions(3, 1, 4, 0x1001, 3));
+            var objectId = MatchingCacheObjectId();
+
+            using (var registry = host.CreateSchemaRegistry())
+            {
+                Assert.Equal(NnrpSchemaRegistryAction.Installed, registry.Install(TokenSchemaDescriptor()));
+                registry.ValidateBinding(MatchingTypedPayloadDescriptor());
+                Assert.Equal(NnrpSchemaRegistryAction.Invalidated, registry.Invalidate(0x1001, 3));
+            }
+
+            var query = host.QueryCacheLease(3, objectId, 9, 1000, 500);
+            var touch = host.TouchCacheLease(3, objectId, 9, 1000, 500);
+            var prefetch = host.PrefetchCacheLeases(3, new[] { objectId }, 1000, 500);
+            var release = host.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
+            var sessionRelease = session.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
+
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
+            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Single(prefetch);
+            Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
+            Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, sessionRelease.OutcomeCode);
+
+            host.Close();
+
+            Assert.True(host.IsClosed);
+            Assert.True(session.IsClosed);
+            Assert.Throws<NnrpNativeInvalidStateException>(() => host.CreateSchemaRegistry());
+            Assert.Throws<NnrpNativeInvalidStateException>(() => session.QueryCacheLease(objectId, 9, 1000, 500));
         }
 
         [Fact]
