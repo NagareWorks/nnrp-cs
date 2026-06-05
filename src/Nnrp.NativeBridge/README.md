@@ -31,6 +31,25 @@ using var host = NnrpNativeRuntimeSessionHost.Open(options);
 var result = host.SubmitAndPollResult(operationId: 1, frameId: 1, payload: Array.Empty<byte>());
 ```
 
+Native-backed multi-session routing:
+
+```csharp
+var connectionOptions = new NnrpNativeRuntimeConnectionHostOptions(
+    connectionId: 1,
+    connectionGeneration: 1,
+    transportId: NnrpNativeArtifact.TransportSlotTcp);
+
+using var connectionHost = NnrpNativeRuntimeConnectionHost.Open(connectionOptions);
+connectionHost.OpenSession(new NnrpNativeRuntimeSessionOptions(1, 1, 1, 1, 1));
+connectionHost.OpenSession(new NnrpNativeRuntimeSessionOptions(2, 1, 1, 1, 1));
+
+var routed = connectionHost.SubmitAndPollResult(
+    sessionId: 1,
+    operationId: 10,
+    frameId: 1,
+    payload: Array.Empty<byte>());
+```
+
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
