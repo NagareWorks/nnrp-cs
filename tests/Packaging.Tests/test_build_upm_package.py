@@ -25,6 +25,24 @@ packaging = load_packaging_module()
 
 
 class UpmPackageMetadataTests(unittest.TestCase):
+    def test_native_bridge_package_keeps_managed_runtime_packages_out(self) -> None:
+        native_bridge_project = REPO_ROOT / "src" / "Nnrp.NativeBridge" / "Nnrp.NativeBridge.csproj"
+        project_text = native_bridge_project.read_text(encoding="utf-8")
+
+        self.assertNotIn("..\\Nnrp.Client\\Nnrp.Client.csproj", project_text)
+        self.assertNotIn("..\\Nnrp.Transport.Tcp\\Nnrp.Transport.Tcp.csproj", project_text)
+
+        source_root = REPO_ROOT / "src" / "Nnrp.NativeBridge"
+        source_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(source_root.rglob("*.cs"))
+            if "obj" not in path.parts
+        )
+
+        self.assertNotIn("using Nnrp.Client;", source_text)
+        self.assertNotIn("using Nnrp.Transport.Tcp;", source_text)
+        self.assertNotIn("NnrpAutoTransport", source_text)
+
     def test_stable_guid_normalizes_paths(self) -> None:
         first = packaging.stable_guid("Runtime/Plugins/Windows/x86_64/nnrp_ffi.dll")
         second = packaging.stable_guid(r"runtime\plugins\windows\x86_64\nnrp_ffi.dll")
