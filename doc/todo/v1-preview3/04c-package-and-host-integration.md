@@ -19,7 +19,7 @@
   - [x] Keep connection/session host wrappers public as the managed Unity/.NET entry surface.
   - [x] Keep native event/result payload ownership hidden behind read-only managed views.
   - [ ] Decide the final public/internal split for schema handles, borrowed buffer views, and callback subscription handles.
-- [ ] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
+- [x] Document Unity callback dispatch and threading rules for preview3 result/event pumps.
 - [ ] Add Unity-facing guidance for multi-session orchestration, cache lease behavior, and operation cancellation semantics.
 - [x] Run the pre-migration benchmark suite and record the baseline in `doc/benchmarks/rs-native-artifacts-migration.md`.
 - [ ] Run the same benchmark suite after native migration and record the deltas in `doc/benchmarks/rs-native-artifacts-migration.md`.
