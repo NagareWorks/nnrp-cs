@@ -92,7 +92,8 @@ namespace Nnrp.NativeBridge
                 options.Platform,
                 options.FallbackBackend,
                 options.FallbackPolicy,
-                options.TransportId);
+                options.TransportId,
+                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
             return Open(backend, options);
         }
 
@@ -455,7 +456,9 @@ namespace Nnrp.NativeBridge
                 options.ArtifactRoot,
                 options.Platform,
                 options.FallbackBackend,
-                options.FallbackPolicy);
+                options.FallbackPolicy,
+                options.TransportId,
+                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
             return Open(backend, options);
         }
 
@@ -823,7 +826,9 @@ namespace Nnrp.NativeBridge
             var entrypoints = NnrpNativeRuntimeEntrypoints.Load(
                 options.ArtifactPath,
                 options.ArtifactRoot,
-                options.Platform);
+                options.Platform,
+                options.TransportId,
+                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
             return Open(entrypoints, options);
         }
 

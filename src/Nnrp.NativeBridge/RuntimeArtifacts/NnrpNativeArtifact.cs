@@ -2033,10 +2033,13 @@ namespace Nnrp.NativeBridge
             string? artifactPath = null,
             string? artifactRoot = null,
             NnrpNativePlatform? platform = null,
-            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots)
+            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots,
+            string? transportScope = null)
         {
             string resolvedPath = string.IsNullOrWhiteSpace(artifactPath)
-                ? NnrpNativeArtifact.Resolve(artifactRoot, platform)
+                ? string.IsNullOrWhiteSpace(transportScope)
+                    ? NnrpNativeArtifact.Resolve(artifactRoot, platform)
+                    : NnrpNativeArtifact.ResolveTransport(transportScope!, artifactRoot, platform)
                 : artifactPath!;
             IntPtr handle = IntPtr.Zero;
             try
@@ -2709,7 +2712,8 @@ namespace Nnrp.NativeBridge
             NnrpNativePlatform? platform = null,
             INnrpNativeRuntimeBackend? fallback = null,
             NnrpNativeRuntimeFallbackPolicy fallbackPolicy = NnrpNativeRuntimeFallbackPolicy.RequireNative,
-            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots)
+            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots,
+            string? transportScope = null)
         {
             try
             {
@@ -2718,7 +2722,8 @@ namespace Nnrp.NativeBridge
                         artifactPath,
                         artifactRoot,
                         platform,
-                        requiredTransportSlots));
+                        requiredTransportSlots,
+                        transportScope));
             }
             catch (NnrpNativeArtifactException)
             {
@@ -3899,6 +3904,28 @@ namespace Nnrp.NativeBridge
             return "libnnrp_ffi.so";
         }
 
+        public static string TransportLibraryName(string osName, string transportScope)
+        {
+            string scope = NormalizeTransportScope(transportScope);
+            string normalized = new NnrpNativePlatform(osName, "x86_64").OsName;
+            if (normalized == "windows")
+            {
+                return "nnrp_ffi_" + scope + ".dll";
+            }
+
+            if (normalized == "ios" || normalized == "iossimulator")
+            {
+                return "libnnrp_ffi_" + scope + ".a";
+            }
+
+            if (normalized == "macos")
+            {
+                return "libnnrp_ffi_" + scope + ".dylib";
+            }
+
+            return "libnnrp_ffi_" + scope + ".so";
+        }
+
         public static string Resolve(string? artifactRoot = null, NnrpNativePlatform? platform = null)
         {
             NnrpNativePlatform selectedPlatform = platform ?? NnrpNativePlatform.Current;
@@ -3915,6 +3942,57 @@ namespace Nnrp.NativeBridge
             }
 
             return path;
+        }
+
+        public static string ResolveTransport(
+            string transportScope,
+            string? artifactRoot = null,
+            NnrpNativePlatform? platform = null)
+        {
+            string scope = NormalizeTransportScope(transportScope);
+            NnrpNativePlatform selectedPlatform = platform ?? NnrpNativePlatform.Current;
+            string root = string.IsNullOrWhiteSpace(artifactRoot) ? DefaultArtifactRoot : artifactRoot!;
+            string path = Path.Combine(
+                root,
+                "runtimes",
+                selectedPlatform.RuntimeIdentifier,
+                "native",
+                "nnrp",
+                "transport",
+                scope,
+                TransportLibraryName(selectedPlatform.OsName, scope));
+            if (!File.Exists(path))
+            {
+                throw new NnrpNativeArtifactException("Native transport artifact was not found: " + path);
+            }
+
+            return path;
+        }
+
+        public static string TransportScopeFromTransportId(uint transportId)
+        {
+            if (transportId == TransportSlotTcp)
+            {
+                return "tcp";
+            }
+
+            if (transportId == TransportSlotQuic)
+            {
+                return "quic";
+            }
+
+            throw new NnrpNativeArtifactException("Unsupported native transport id: " + transportId);
+        }
+
+        private static string NormalizeTransportScope(string value)
+        {
+            string normalized = (value ?? string.Empty).Trim().ToLowerInvariant().Replace("_", "-");
+            if (normalized == "tcp" || normalized == "quic")
+            {
+                return normalized;
+            }
+
+            throw new NnrpNativeArtifactException("Unsupported native transport scope: " + value);
         }
 
         public static NnrpNativeProbeResult Probe(

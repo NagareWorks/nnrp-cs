@@ -61,8 +61,32 @@ NATIVE_PLUGIN_SETTINGS = {
     "iossimulator-x64": ("iOS", "x86_64"),
 }
 
+
+def transport_scoped_library_name(transport_name: str, filename: str) -> str:
+    suffix = transport_name.strip().lower()
+    if filename == "nnrp_ffi.dll":
+        return f"nnrp_ffi_{suffix}.dll"
+    if filename == "libnnrp_ffi.so":
+        return f"libnnrp_ffi_{suffix}.so"
+    if filename == "libnnrp_ffi.dylib":
+        return f"libnnrp_ffi_{suffix}.dylib"
+    if filename == "libnnrp_ffi.a":
+        return f"libnnrp_ffi_{suffix}.a"
+    raise ValueError(f"Unsupported native library filename: {filename}")
+
+
+def transport_scoped_plugin_path(transport_name: str, relative_output: Path) -> Path:
+    return relative_output.with_name(
+        transport_scoped_library_name(transport_name, relative_output.name)
+    )
+
+
 UNITY_NATIVE_PLUGIN_RIDS_BY_PATH = {
-    (Path("Runtime/Plugins/Transports") / transport_name / Path(*relative_output.parts[2:])).as_posix(): rid
+    (
+        Path("Runtime/Plugins/Transports")
+        / transport_name
+        / Path(*transport_scoped_plugin_path(transport_name, relative_output).parts[2:])
+    ).as_posix(): rid
     for transport_name in NATIVE_TRANSPORTS.values()
     for rid, (_, relative_output) in NATIVE_LAYOUT.items()
 }
@@ -263,7 +287,14 @@ def copy_native_artifacts(native_root: Path, output_root: Path) -> None:
             source_path = transport_root / rid / filename
             if not source_path.exists():
                 continue
-            target_path = output_root / "Runtime" / "Plugins" / "Transports" / transport_name / Path(*relative_output.parts[2:])
+            target_path = (
+                output_root
+                / "Runtime"
+                / "Plugins"
+                / "Transports"
+                / transport_name
+                / Path(*transport_scoped_plugin_path(transport_name, relative_output).parts[2:])
+            )
             ensure_parent(target_path)
             shutil.copy2(source_path, target_path)
 

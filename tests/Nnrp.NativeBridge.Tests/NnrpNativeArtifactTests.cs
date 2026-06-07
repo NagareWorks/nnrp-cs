@@ -137,6 +137,93 @@ namespace Nnrp.NativeBridge.Tests
             }
         }
 
+        [Theory]
+        [InlineData("tcp", "libnnrp_ffi_tcp.so")]
+        [InlineData("quic", "libnnrp_ffi_quic.so")]
+        public void ResolveTransportUsesTransportScopedNuGetRuntimeNativeLayout(
+            string transportScope,
+            string libraryName)
+        {
+            string root = CreateTempDirectory();
+            try
+            {
+                string artifactDirectory = Path.Combine(
+                    root,
+                    "runtimes",
+                    "linux-x64",
+                    "native",
+                    "nnrp",
+                    "transport",
+                    transportScope);
+                Directory.CreateDirectory(artifactDirectory);
+                string artifactPath = Path.Combine(artifactDirectory, libraryName);
+                File.WriteAllBytes(artifactPath, new byte[] { 1 });
+
+                Assert.Equal(
+                    artifactPath,
+                    NnrpNativeArtifact.ResolveTransport(
+                        transportScope,
+                        root,
+                        new NnrpNativePlatform("linux", "x86_64")));
+            }
+            finally
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Theory]
+        [InlineData("windows", "tcp", "nnrp_ffi_tcp.dll")]
+        [InlineData("windows", "quic", "nnrp_ffi_quic.dll")]
+        [InlineData("linux", "tcp", "libnnrp_ffi_tcp.so")]
+        [InlineData("linux", "quic", "libnnrp_ffi_quic.so")]
+        [InlineData("darwin", "tcp", "libnnrp_ffi_tcp.dylib")]
+        [InlineData("darwin", "quic", "libnnrp_ffi_quic.dylib")]
+        [InlineData("ios", "tcp", "libnnrp_ffi_tcp.a")]
+        [InlineData("iossimulator", "quic", "libnnrp_ffi_quic.a")]
+        public void TransportLibraryNameIncludesTransportScope(
+            string osName,
+            string transportScope,
+            string expected)
+        {
+            Assert.Equal(expected, NnrpNativeArtifact.TransportLibraryName(osName, transportScope));
+        }
+
+        [Fact]
+        public void TransportScopeFromTransportIdMapsKnownSlotsAndRejectsUnknownIds()
+        {
+            Assert.Equal("tcp", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotTcp));
+            Assert.Equal("quic", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotQuic));
+
+            var error = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.TransportScopeFromTransportId(0x80000000));
+            Assert.Contains("Unsupported native transport id", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ResolveTransportRejectsUnknownScopeAndMissingTransportArtifact()
+        {
+            var scopeError = Assert.Throws<NnrpNativeArtifactException>(() =>
+                NnrpNativeArtifact.TransportLibraryName("linux", "udp"));
+            Assert.Contains("Unsupported native transport scope", scopeError.Message, StringComparison.Ordinal);
+
+            string root = CreateTempDirectory();
+            try
+            {
+                var missingError = Assert.Throws<NnrpNativeArtifactException>(() =>
+                    NnrpNativeArtifact.ResolveTransport(
+                        "tcp",
+                        root,
+                        new NnrpNativePlatform("linux", "x86_64")));
+
+                Assert.Contains("Native transport artifact was not found", missingError.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
         [Fact]
         public void ResolveRejectsMissingArtifact()
         {
