@@ -32,8 +32,8 @@ Unity projects should install `com.nnrp.client` from OpenUPM when possible. GitH
 
 The preview3 release shape is intentionally split by host role:
 
-- `Nnrp.NativeBridge` is the Rust-backed preview3 FFI substrate. It owns native runtime loading, ABI/protocol probing, raw connection/session/operation handles, cache/schema wrappers, and packaged `nnrp_ffi` runtime assets under NuGet `runtimes/<rid>/native`.
-- `Nnrp.Transport.Tcp` and `Nnrp.Transport.Quic` are transport-owned entry surfaces. They pin their transport ids before opening native client/server hosts through `Nnrp.NativeBridge`, and installing only one transport package exposes only that transport package's high-level entry surface.
+- `Nnrp.NativeBridge` is the Rust-backed preview3 FFI substrate. It owns native runtime loading, ABI/protocol probing, raw connection/session/operation handles, cache/schema wrappers, and transport-scoped runtime asset resolution.
+- `Nnrp.Transport.Tcp` and `Nnrp.Transport.Quic` are transport-owned entry surfaces. They pin their transport ids before opening native client/server hosts through `Nnrp.NativeBridge`, and installing only one transport package exposes only that transport package's high-level entry surface. Their NuGet native payloads are renamed to transport-scoped library names under `runtimes/<rid>/native/nnrp/transport/<tcp|quic>/` so .NET hosts cannot overwrite or accidentally load another transport's native artifact.
 - `Nnrp.Client` and `Nnrp.Server` remain managed diagnostic or unsupported-runtime packages. They do not replace the native-backed preview3 runtime path.
 - The client NuGet bundle is for .NET hosts that want client-side bootstrap, diagnostics, and native bridge access in one downloadable artifact.
 - The server NuGet bundle is for .NET hosts that want server-side diagnostics and native bridge access in one downloadable artifact.
@@ -46,14 +46,14 @@ Do not create repo-staged package trees to represent these boundaries. Change th
 The generated Unity package uses this layout:
 
 - `Runtime/Managed/*.dll` and optional XML docs for managed assemblies.
-- `Runtime/Plugins/Windows/<cpu>/nnrp_ffi.dll`.
-- `Runtime/Plugins/Linux/<cpu>/libnnrp_ffi.so`.
-- `Runtime/Plugins/macOS/<cpu>/libnnrp_ffi.dylib`.
-- `Runtime/Plugins/Android/<abi>/libnnrp_ffi.so`.
-- `Runtime/Plugins/iOS/<cpu>/libnnrp_ffi.a`.
-- `Runtime/Plugins/iOSSimulator/<cpu>/libnnrp_ffi.a`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/Windows/<cpu>/nnrp_ffi_<tcp|quic>.dll`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/Linux/<cpu>/libnnrp_ffi_<tcp|quic>.so`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/macOS/<cpu>/libnnrp_ffi_<tcp|quic>.dylib`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/Android/<abi>/libnnrp_ffi_<tcp|quic>.so`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/iOS/<cpu>/libnnrp_ffi_<tcp|quic>.a`.
+- `Runtime/Plugins/Transports/<Tcp|Quic>/iOSSimulator/<cpu>/libnnrp_ffi_<tcp|quic>.a`.
 
-Every generated folder, managed assembly, documentation file, and native plugin receives a deterministic `.meta` file from `scripts/build_upm_package.py`. The GUID seed is the normalized package-relative path, so rerunning the generator should reproduce the same metadata. Managed DLLs are enabled as Unity plugins for all targets. Native plugins disable `Any` and enable only the target platform and CPU declared by the RID-to-Unity mapping in the generator.
+Every generated folder, managed assembly, documentation file, and native plugin receives a deterministic `.meta` file from `scripts/build_upm_package.py`. The GUID seed is the normalized package-relative path, so rerunning the generator should reproduce the same metadata. Managed DLLs are enabled as Unity plugins for all targets. Native plugins disable `Any` and enable only the target platform and CPU declared by the RID-to-Unity mapping in the generator. TCP and QUIC native plugin files must not share the same filename inside one Unity package, because the Unity Editor treats same-named native plugins as mutually conflicting Editor-compatible plugins even when they live in different folders.
 
 If the native layout changes, update `scripts/build_upm_package.py`, `tests/Packaging.Tests/test_build_upm_package.py`, this document, and the release workflow together.
 

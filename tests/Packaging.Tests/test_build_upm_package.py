@@ -143,8 +143,9 @@ class UpmPackageMetadataTests(unittest.TestCase):
 
         for rid, (_, relative_output) in packaging.NATIVE_LAYOUT.items():
             for transport_name in packaging.NATIVE_TRANSPORTS.values():
+                scoped_output = packaging.transport_scoped_plugin_path(transport_name, relative_output)
                 relative_path = (
-                    Path("Runtime/Plugins/Transports") / transport_name / Path(*relative_output.parts[2:])
+                    Path("Runtime/Plugins/Transports") / transport_name / Path(*scoped_output.parts[2:])
                 ).as_posix()
                 self.assertEqual(rid, packaging.native_plugin_rid_for_relative_path(relative_path))
 
@@ -158,6 +159,15 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 self.assertIn(f"CPU: {cpu}", metadata)
 
         self.assertIsNone(packaging.native_plugin_rid_for_relative_path("Runtime/Plugins/Android/arm64/libnnrp_ffi.so"))
+
+    def test_transport_scoped_plugin_names_do_not_collide_in_unity_or_dotnet_outputs(self) -> None:
+        for rid, (_, relative_output) in packaging.NATIVE_LAYOUT.items():
+            tcp_path = packaging.transport_scoped_plugin_path("Tcp", relative_output)
+            quic_path = packaging.transport_scoped_plugin_path("Quic", relative_output)
+
+            self.assertNotEqual(tcp_path.name, quic_path.name, rid)
+            self.assertIn("_tcp", tcp_path.name)
+            self.assertIn("_quic", quic_path.name)
 
     def test_emit_meta_files_covers_folders_managed_and_native_plugins(self) -> None:
         temp_root = Path(tempfile.mkdtemp(prefix="nnrp-upm-meta-test-"))
@@ -174,7 +184,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
                         / "Plugins"
                         / "Transports"
                         / transport_name
-                        / Path(*relative_output.parts[2:])
+                        / Path(*packaging.transport_scoped_plugin_path(transport_name, relative_output).parts[2:])
                     )
 
             packaging.emit_meta_files(temp_root)
@@ -195,28 +205,28 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "Runtime/Plugins/Transports/Tcp.meta",
                 "Runtime/Plugins/Transports/Tcp/Windows.meta",
                 "Runtime/Plugins/Transports/Tcp/Windows/x86_64.meta",
-                "Runtime/Plugins/Transports/Tcp/Windows/x86_64/nnrp_ffi.dll.meta",
+                "Runtime/Plugins/Transports/Tcp/Windows/x86_64/nnrp_ffi_tcp.dll.meta",
                 "Runtime/Plugins/Transports/Tcp/Linux.meta",
                 "Runtime/Plugins/Transports/Tcp/Linux/x86_64.meta",
-                "Runtime/Plugins/Transports/Tcp/Linux/x86_64/libnnrp_ffi.so.meta",
+                "Runtime/Plugins/Transports/Tcp/Linux/x86_64/libnnrp_ffi_tcp.so.meta",
                 "Runtime/Plugins/Transports/Tcp/macOS.meta",
                 "Runtime/Plugins/Transports/Tcp/macOS/x86_64.meta",
-                "Runtime/Plugins/Transports/Tcp/macOS/x86_64/libnnrp_ffi.dylib.meta",
+                "Runtime/Plugins/Transports/Tcp/macOS/x86_64/libnnrp_ffi_tcp.dylib.meta",
                 "Runtime/Plugins/Transports/Tcp/macOS/arm64.meta",
-                "Runtime/Plugins/Transports/Tcp/macOS/arm64/libnnrp_ffi.dylib.meta",
+                "Runtime/Plugins/Transports/Tcp/macOS/arm64/libnnrp_ffi_tcp.dylib.meta",
                 "Runtime/Plugins/Transports/Tcp/Android.meta",
                 "Runtime/Plugins/Transports/Tcp/Android/arm64-v8a.meta",
-                "Runtime/Plugins/Transports/Tcp/Android/arm64-v8a/libnnrp_ffi.so.meta",
+                "Runtime/Plugins/Transports/Tcp/Android/arm64-v8a/libnnrp_ffi_tcp.so.meta",
                 "Runtime/Plugins/Transports/Tcp/iOS.meta",
                 "Runtime/Plugins/Transports/Tcp/iOS/arm64.meta",
-                "Runtime/Plugins/Transports/Tcp/iOS/arm64/libnnrp_ffi.a.meta",
+                "Runtime/Plugins/Transports/Tcp/iOS/arm64/libnnrp_ffi_tcp.a.meta",
                 "Runtime/Plugins/Transports/Tcp/iOSSimulator.meta",
                 "Runtime/Plugins/Transports/Tcp/iOSSimulator/x86_64.meta",
-                "Runtime/Plugins/Transports/Tcp/iOSSimulator/x86_64/libnnrp_ffi.a.meta",
+                "Runtime/Plugins/Transports/Tcp/iOSSimulator/x86_64/libnnrp_ffi_tcp.a.meta",
                 "Runtime/Plugins/Transports/Quic.meta",
                 "Runtime/Plugins/Transports/Quic/Windows.meta",
                 "Runtime/Plugins/Transports/Quic/Windows/x86_64.meta",
-                "Runtime/Plugins/Transports/Quic/Windows/x86_64/nnrp_ffi.dll.meta",
+                "Runtime/Plugins/Transports/Quic/Windows/x86_64/nnrp_ffi_quic.dll.meta",
             }
             self.assertTrue(expected_meta_paths.issubset(metadata_snapshot))
 
@@ -229,17 +239,18 @@ class UpmPackageMetadataTests(unittest.TestCase):
             self.assertIn("DefaultImporter:", text_meta)
             self.assertNotIn("PluginImporter:", text_meta)
 
-            windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Windows/x86_64/nnrp_ffi.dll.meta"]
-            linux_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Linux/x86_64/libnnrp_ffi.so.meta"]
-            mac_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/macOS/arm64/libnnrp_ffi.dylib.meta"]
-            android_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Android/arm64-v8a/libnnrp_ffi.so.meta"]
-            ios_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/iOS/arm64/libnnrp_ffi.a.meta"]
-            quic_windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Quic/Windows/x86_64/nnrp_ffi.dll.meta"]
+            windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Windows/x86_64/nnrp_ffi_tcp.dll.meta"]
+            linux_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Linux/x86_64/libnnrp_ffi_tcp.so.meta"]
+            mac_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/macOS/arm64/libnnrp_ffi_tcp.dylib.meta"]
+            android_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/Android/arm64-v8a/libnnrp_ffi_tcp.so.meta"]
+            ios_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/iOS/arm64/libnnrp_ffi_tcp.a.meta"]
+            quic_windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Quic/Windows/x86_64/nnrp_ffi_quic.dll.meta"]
 
             self.assertIn("Windows: Windows", windows_meta)
             self.assertIn("CPU: x86_64", windows_meta)
             self.assertIn("Windows: Windows", quic_windows_meta)
             self.assertIn("CPU: x86_64", quic_windows_meta)
+            self.assertIn("Editor: Editor", quic_windows_meta)
             self.assertIn("Linux: Linux", linux_meta)
             self.assertIn("CPU: x86_64", linux_meta)
             self.assertIn("OSX: OSX", mac_arm_meta)
