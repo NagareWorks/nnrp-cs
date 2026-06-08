@@ -34,6 +34,6 @@
 
 - [ ] Expose result/event payload snapshots as `ReadOnlyMemory<byte>`.
 - [ ] Expose borrowed native views only behind safe lifetime guards.
-- [ ] Keep Unity-safe copied fallback behavior.
+- [ ] Keep Unity-safe copied snapshot behavior explicit.
 - [ ] Document copy behavior for runtime objects and partial results.
 - [ ] Add benchmarks for copied snapshots and borrowed views.
