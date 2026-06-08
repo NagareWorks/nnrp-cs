@@ -112,7 +112,7 @@
 - [x] Add a preview1 protocol overview.
 - [x] Add a status table for implemented vs planned SDK pieces.
 - [x] Add examples for header encode/decode.
-- [x] Add examples for frame submit encode/decode after those codecs exist.
+- [x] Add examples for frame submit encode/decode through the implemented codecs.
 - [x] Add example for result push encode/decode.
 - [x] Add example for control extension TLV.
 - [x] Add Unity 2022 consumption notes.
@@ -461,9 +461,9 @@
 - [x] Keep Unity-compatible builds free from unsupported QUIC dependencies.
 - [x] Send a minimal preview frame header and tile payload to the runtime QUIC preview listener.
 - [x] Receive a minimal preview result header and payload from the runtime QUIC preview listener.
-- [x] Add loopback smoke coverage against the runtime preview bridge when the runtime side is available.
+- [x] Add loopback smoke coverage against the runtime preview bridge.
 - [x] Add an optional newer-.NET sample for QUIC transport if feasible.
-- [x] Add an integration smoke test when a supported QUIC runtime is available.
+- [x] Add an integration smoke test for the supported QUIC runtime.
 - [x] Make the native QUIC session lifetime explicit for preview bring-up.
 - [x] Stop relying on the QUIC stack default idle timeout in the Rust native bridge; set keepalive / idle policy suitable for connect-first, submit-later flows.
 - [x] Surface a non-Unity preview warm-up path that can connect and optionally ping before the first frame submit.
@@ -558,7 +558,7 @@
 - [x] Add a result push decode sample (in README).
 - [x] Add a fake client/server in-memory sample.
 - [x] Add a Unity-oriented sample without unsupported runtime dependencies (via `nnrp-cs` managed DLLs).
-- [x] Add a newer-.NET QUIC sample when that adapter exists (`samples/Nnrp.QuicPreview.Net8Sample/`).
+- [x] Add a newer-.NET QUIC sample for that adapter (`samples/Nnrp.QuicPreview.Net8Sample/`).
 
 ### Part 9.3 Preview1 Acceptance Criteria
 
