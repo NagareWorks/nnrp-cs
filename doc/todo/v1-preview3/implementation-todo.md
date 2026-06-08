@@ -35,3 +35,12 @@
 4. Cache lease/version/dependency rules, schema descriptor 32B, typed payload descriptor 24B, and `descriptor_flags` are tracked in `01` and `03`.
 5. `tensor` / `token` first-round standard profiles plus `structured_event` / `tool_delta` ownership boundaries are tracked in `01`, `03`, and `04`.
 6. Rust conformance-first enum/message/error baselines and C# binding validation are tracked in `01` and `05`.
+
+## 4. Preview3 SDK Surface Traceability
+
+1. Connection/session lifecycle is exposed through `Nnrp.NativeBridge` host facades, native client/session/server wrappers, close/dispose guards, and multi-session routing tests.
+2. Submit/result/control routing is exposed through native-backed client submit/cancel/control helpers, server receive/result/control helpers, event/result polling, `FLOW_UPDATE`, `RESULT_HINT`, and recovery validators.
+3. Cache semantics are exposed through native cache lease handles, cache lease lifecycle wrappers, version/dependency validation, and cache diagnostics surfaced through managed result/exception types.
+4. Schema/profile semantics are exposed through native schema registry handles, schema descriptor helpers, typed payload binding validation, profile neutrality rules, and managed host wrappers.
+5. Transport ownership is split across `Nnrp.Transport.Tcp` and `Nnrp.Transport.Quic`, where each package owns the transport-specific native runtime entry surface instead of acting as a config flag over hidden shared behavior.
+6. Package traceability is enforced through deterministic NuGet `runtimes/<rid>/native` paths, Unity plugin paths, generated `.meta` files, native artifact probing, and validation rows in `05`.
