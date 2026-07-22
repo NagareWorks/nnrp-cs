@@ -16,7 +16,7 @@
 
 ## Rust Artifact Baseline
 
-- [ ] Pin preview4 Rust artifact version in build metadata.
+- [ ] Pin Rust artifact `1.0.0-preview.4.10` in build metadata.
 - [ ] Probe protocol version.
 - [ ] Probe ABI version.
 - [ ] Probe enabled transport slots.
@@ -26,7 +26,7 @@
 
 ## API Surface Policy
 
-- [ ] Preserve preview3 entrypoints where behavior remains identical.
+- [ ] Replace earlier preview entrypoints with the frozen Preview4 names and semantics.
 - [ ] Add preview4 options and types for new behavior.
 - [ ] Remove preview-era managed hot-path implementations from default runtime routes.
 - [ ] Keep managed-only packet builders under diagnostics or tests.
