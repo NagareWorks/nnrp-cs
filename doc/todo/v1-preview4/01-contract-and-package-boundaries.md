@@ -16,7 +16,7 @@
 
 ## Rust Artifact Baseline
 
-- [ ] Pin Rust artifact `1.0.0-preview.4.10` in build metadata.
+- [ ] Pin Rust artifact `1.0.0-preview.4.13` in build metadata.
 - [ ] Probe protocol version.
 - [ ] Probe ABI version.
 - [ ] Probe enabled transport slots.
@@ -48,7 +48,6 @@
   - [ ] `control.degrade_profile`.
   - [ ] `control.budget_update`.
   - [ ] `control.recoverable_error`.
-  - [ ] `control.retry_after`.
 - [ ] Mirror the Rust preview4 runtime-object and cache capability token names exactly.
   - [ ] `object.lifecycle`.
   - [ ] `object.delta`.
