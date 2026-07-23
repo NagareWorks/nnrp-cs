@@ -34,31 +34,31 @@
 
 ## Capability Token Catalog
 
-- [ ] Mirror the Rust preview4 control capability token names exactly.
-  - [ ] `control.cancel_abort`.
-  - [ ] `control.supersede`.
-  - [ ] `control.priority_update`.
-  - [ ] `control.deadline_expire`.
-  - [ ] `control.progress_partial`.
-  - [ ] `control.credit_backpressure`.
-  - [ ] `control.capability_costs`.
-  - [ ] `control.route_execution_hint`.
-  - [ ] `control.trace_context`.
-  - [ ] `control.result_drop_reason`.
-  - [ ] `control.degrade_profile`.
-  - [ ] `control.budget_update`.
-  - [ ] `control.recoverable_error`.
-- [ ] Mirror the Rust preview4 runtime-object and cache capability token names exactly.
-  - [ ] `object.lifecycle`.
-  - [ ] `object.delta`.
-  - [ ] `object.cost`.
-  - [ ] `object.ownership`.
-  - [ ] `cache.reference`.
-- [ ] Mirror the Rust preview4 transport names exactly.
-  - [ ] `tcp`.
-  - [ ] `quic`.
-  - [ ] `ipc`.
-  - [ ] `websocket`.
+- [x] Mirror the Rust preview4 control capability token names exactly.
+  - [x] `control.cancel_abort`.
+  - [x] `control.supersede`.
+  - [x] `control.priority_update`.
+  - [x] `control.deadline_expire`.
+  - [x] `control.progress_partial`.
+  - [x] `control.credit_backpressure`.
+  - [x] `control.capability_costs`.
+  - [x] `control.route_execution_hint`.
+  - [x] `control.trace_context`.
+  - [x] `control.result_drop_reason`.
+  - [x] `control.degrade_profile`.
+  - [x] `control.budget_update`.
+  - [x] `control.recoverable_error`.
+- [x] Mirror the Rust preview4 runtime-object and cache capability token names exactly.
+  - [x] `object.lifecycle`.
+  - [x] `object.delta`.
+  - [x] `object.cost`.
+  - [x] `object.ownership`.
+  - [x] `cache.reference`.
+- [x] Mirror the Rust preview4 transport names exactly.
+  - [x] `tcp`.
+  - [x] `quic`.
+  - [x] `ipc`.
+  - [x] `websocket`.
 
 ## Ownership Split
 
