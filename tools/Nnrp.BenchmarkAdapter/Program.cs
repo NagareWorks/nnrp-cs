@@ -138,6 +138,8 @@ public static class Program
             "metadata_encode_decode" => RunMetadataEncodeDecode(id, workload),
             "submit_result_metadata_encode_decode" => RunSubmitResultMetadataEncodeDecode(id, workload),
             "typed_payload_pack_unpack" => RunTypedPayloadPackUnpack(id, workload),
+            "payload_snapshot_copy" => RunPayloadSnapshotCopy(id, workload),
+            "borrowed_buffer_view" => RunBorrowedBufferView(id, workload),
             "runtime_probe" => RunRuntimeProbe(id, workload),
             "session_lifecycle" => RunSessionLifecycle(id, workload),
             "submit_result_loop" => RunSubmitResultLoop(id, workload),
@@ -366,6 +368,83 @@ public static class Program
                 || (capabilities.TransportSlots & NnrpNativeArtifact.TransportSlotTcp) == 0)
             {
                 throw new InvalidOperationException("Native runtime probe benchmark mismatch.");
+            }
+        }
+
+        for (var index = 0; index < warmupIterations; index += 1)
+        {
+            Operation();
+        }
+
+        return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunPayloadSnapshotCopy(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var payloadBytes = GetPositiveInt(workload, "payload_bytes", 4_096);
+        var payload = new byte[payloadBytes];
+        Array.Fill(payload, (byte)'x');
+        var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+
+        try
+        {
+            var ffiEvent = new NnrpEvent(
+                kind: 6,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                frameId: 1,
+                new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length)),
+                default);
+
+            void Operation()
+            {
+                var snapshot = NnrpNativeRuntimeEvent.FromFfi(ffiEvent);
+                if (snapshot.PayloadMemory.Length != payload.Length
+                    || snapshot.PayloadSpan[0] != payload[0]
+                    || snapshot.PayloadSpan[^1] != payload[^1])
+                {
+                    throw new InvalidOperationException("Managed payload snapshot benchmark copy mismatch.");
+                }
+            }
+
+            for (var index = 0; index < warmupIterations; index += 1)
+            {
+                Operation();
+            }
+
+            return MeasuredLatencyResult(id, MeasureMicroseconds(Operation, iterations));
+        }
+        finally
+        {
+            payloadHandle.Free();
+        }
+    }
+
+    private static BenchmarkScenarioResult RunBorrowedBufferView(string id, JsonElement workload)
+    {
+        var artifactPath = ResolveNativeArtifactPath();
+        if (artifactPath == null)
+        {
+            return NativeUnavailableResult(id);
+        }
+
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var payloadBytes = GetPositiveInt(workload, "payload_bytes", 4_096);
+        var payload = new byte[payloadBytes];
+        Array.Fill(payload, (byte)'x');
+        using var entrypoints = NnrpNativeRuntimeEntrypoints.Load(artifactPath);
+        using var nativeBuffer = new NnrpNativeBuffers(entrypoints).AcquireCopy(payload);
+
+        void Operation()
+        {
+            var view = nativeBuffer.BorrowView();
+            if (view.Pointer == IntPtr.Zero || view.Length.ToUInt64() != (ulong)payload.Length)
+            {
+                throw new InvalidOperationException("Borrowed native buffer benchmark view mismatch.");
             }
         }
 

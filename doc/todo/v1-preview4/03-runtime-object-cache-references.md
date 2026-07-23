@@ -32,8 +32,8 @@
 
 ## Copy And Lifetime Rules
 
-- [ ] Expose result/event payload snapshots as `ReadOnlyMemory<byte>`.
-- [ ] Expose borrowed native views only behind safe lifetime guards.
-- [ ] Keep Unity-safe copied snapshot behavior explicit.
-- [ ] Document copy behavior for runtime objects and partial results.
-- [ ] Add benchmarks for copied snapshots and borrowed views.
+- [x] Expose result/event payload snapshots as `ReadOnlyMemory<byte>`.
+- [x] Expose borrowed native views only behind safe lifetime guards.
+- [x] Keep Unity-safe copied snapshot behavior explicit.
+- [x] Document copy behavior for runtime objects and partial results.
+- [x] Add benchmarks for copied snapshots and borrowed views.

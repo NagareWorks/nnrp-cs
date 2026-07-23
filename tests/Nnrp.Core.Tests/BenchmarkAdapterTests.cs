@@ -21,7 +21,7 @@ namespace Nnrp.Core.Tests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(9, results.Length);
+            Assert.Equal(11, results.Length);
 
             var headerResult = results.Single(result => result.GetProperty("id").GetString() == "l4.header.encode_decode.latency");
             Assert.Equal("measured", headerResult.GetProperty("outcome").GetString());
@@ -36,6 +36,8 @@ namespace Nnrp.Core.Tests
             AssertMeasured(results, "l4.metadata.session_open_ack.latency");
             AssertMeasured(results, "l4.metadata.submit_result.latency");
             AssertMeasured(results, "l4.typed_payload.tensor_pack_unpack.latency");
+            AssertMeasured(results, "l4.native.payload_snapshot_copy.latency");
+            AssertNativeSkipped(results, "l4.native.borrowed_buffer_view.latency");
             AssertNativeSkipped(results, "l4.runtime.probe.latency");
             AssertNativeSkipped(results, "l4.session.lifecycle.latency");
             AssertNativeSkipped(results, "l4.transport.tcp.loopback.throughput");
@@ -63,7 +65,7 @@ namespace Nnrp.Core.Tests
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
                 Assert.Equal("nnrp-1", document.RootElement.GetProperty("protocol_version").GetString());
-                Assert.Equal(9, document.RootElement.GetProperty("results").GetArrayLength());
+                Assert.Equal(11, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
             {
@@ -171,6 +173,26 @@ namespace Nnrp.Core.Tests
                   "workload": {
                     "operation": "typed_payload_pack_unpack",
                     "payload": "tensor_descriptor_plus_payload",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.native.payload_snapshot_copy.latency",
+                  "workload": {
+                    "operation": "payload_snapshot_copy",
+                    "payload": "runtime_event_4k",
+                    "payload_bytes": 4096,
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.native.borrowed_buffer_view.latency",
+                  "workload": {
+                    "operation": "borrowed_buffer_view",
+                    "payload": "native_buffer_4k",
+                    "payload_bytes": 4096,
                     "iterations": 3,
                     "warmup_iterations": 1
                   }
