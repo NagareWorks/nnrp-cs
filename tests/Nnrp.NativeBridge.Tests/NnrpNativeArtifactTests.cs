@@ -229,6 +229,25 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void Preview4RuntimeObjectInteropLayoutsMatchAbi4()
+        {
+            Assert.Equal(40, Marshal.SizeOf<NnrpRuntimeObjectDescriptor>());
+            Assert.Equal(0, Marshal.OffsetOf<NnrpRuntimeObjectDescriptor>(nameof(NnrpRuntimeObjectDescriptor.ObjectId)).ToInt32());
+            Assert.Equal(16, Marshal.OffsetOf<NnrpRuntimeObjectDescriptor>(nameof(NnrpRuntimeObjectDescriptor.ByteSize)).ToInt32());
+            Assert.Equal(36, Marshal.OffsetOf<NnrpRuntimeObjectDescriptor>(nameof(NnrpRuntimeObjectDescriptor.MetadataBytes)).ToInt32());
+
+            Assert.Equal(56, Marshal.SizeOf<NnrpCacheReferenceDescriptor>());
+            Assert.Equal(0, Marshal.OffsetOf<NnrpCacheReferenceDescriptor>(nameof(NnrpCacheReferenceDescriptor.CacheNamespace)).ToInt32());
+            Assert.Equal(8, Marshal.OffsetOf<NnrpCacheReferenceDescriptor>(nameof(NnrpCacheReferenceDescriptor.CacheKeyHi)).ToInt32());
+            Assert.Equal(48, Marshal.OffsetOf<NnrpCacheReferenceDescriptor>(nameof(NnrpCacheReferenceDescriptor.Flags)).ToInt32());
+
+            Assert.Equal(7U, (uint)NnrpErrorFamily.Control);
+            Assert.Equal(8U, (uint)NnrpErrorFamily.RuntimeObject);
+            Assert.Equal(8U, (uint)NnrpHandleKind.ObjectDescriptor);
+            Assert.Equal(9U, (uint)NnrpHandleKind.CacheReferenceDescriptor);
+        }
+
+        [Fact]
         public void ResolveTransportRejectsUnknownScopeAndMissingTransportArtifact()
         {
             var scopeError = Assert.Throws<NnrpNativeArtifactException>(() =>
@@ -852,6 +871,89 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeObjectsOwnDescriptorAndMetadataLifetimes()
+        {
+            using var store = new NativeObjectStore();
+            var objects = new NnrpNativeRuntimeObjects(CreateEntrypoints(objectStore: store));
+            var objectMetadata = new byte[] { 1, 2, 3 };
+            var objectDescriptor = new ObjectDescriptorMetadata(
+                11,
+                RuntimeObjectKind.Tensor,
+                RuntimeRole.Runtime,
+                RuntimeRole.Client,
+                12,
+                4096,
+                17,
+                MemoryLocationHint.DeviceMemory,
+                OwnershipHint.Borrowed,
+                500,
+                (uint)objectMetadata.Length);
+
+            using (var descriptor = objects.CreateObjectDescriptor(objectDescriptor, objectMetadata))
+            {
+                Assert.Equal(NnrpHandleKind.ObjectDescriptor, descriptor.Handle.NativeHandle.Kind);
+                Assert.Equal(objectDescriptor, descriptor.ReadDescriptor());
+                var snapshot = descriptor.Snapshot();
+                Assert.Equal(objectDescriptor, snapshot.Descriptor);
+                Assert.Equal(objectMetadata, snapshot.Metadata.ToArray());
+
+                using var metadata = descriptor.AcquireMetadataSnapshot();
+                Assert.Equal(NnrpHandleKind.Buffer, metadata.Handle.NativeHandle.Kind);
+                Assert.Equal(objectMetadata, metadata.CopyToArray());
+                metadata.RefreshView();
+                Assert.Equal(objectMetadata, metadata.CopyToArray());
+            }
+
+            var cacheMetadata = new byte[] { 4, 5 };
+            var cacheDescriptor = new CacheReferenceMetadata(
+                21,
+                22,
+                23,
+                24,
+                CacheReuseScope.Session,
+                25,
+                26,
+                1000,
+                (uint)cacheMetadata.Length,
+                1);
+            var cache = objects.CreateCacheReference(cacheDescriptor, cacheMetadata);
+            Assert.Equal(NnrpHandleKind.CacheReferenceDescriptor, cache.Handle.NativeHandle.Kind);
+            Assert.Equal(cacheDescriptor, cache.ReadDescriptor());
+            Assert.Equal(cacheMetadata, cache.Snapshot().Metadata.ToArray());
+            cache.Dispose();
+            Assert.True(cache.Handle.IsClosed);
+            Assert.Throws<ObjectDisposedException>(() => cache.ReadDescriptor());
+
+            using var copied = objects.AcquireMetadataCopy(objectMetadata);
+            Assert.Equal(objectMetadata, copied.CopyToArray());
+            Assert.Equal(0, store.ObjectDescriptorCount);
+            Assert.Equal(0, store.CacheReferenceDescriptorCount);
+        }
+
+        [Fact]
+        public void NativeRuntimeObjectsRejectInvalidConstructionAndMissingEntrypoints()
+        {
+            Assert.Throws<ArgumentNullException>(() => new NnrpNativeRuntimeObjects(null!));
+
+            var missing = new NnrpNativeRuntimeObjects(CreateEntrypoints());
+            Assert.Throws<NnrpNativeInternalException>(() => missing.AcquireMetadataCopy(Array.Empty<byte>()));
+            Assert.Throws<NnrpNativeInternalException>(() => missing.CreateObjectDescriptor(default(ObjectDescriptorMetadata), Array.Empty<byte>()));
+            Assert.Throws<NnrpNativeInternalException>(() => missing.CreateCacheReference(default(CacheReferenceMetadata), Array.Empty<byte>()));
+
+            using var store = new NativeObjectStore();
+            var objects = new NnrpNativeRuntimeObjects(CreateEntrypoints(objectStore: store));
+            Assert.Throws<ArgumentNullException>(() => objects.AcquireMetadataCopy(null!));
+            Assert.Throws<ArgumentNullException>(() => objects.CreateObjectDescriptor(default(ObjectDescriptorMetadata), null!));
+            Assert.Throws<ArgumentNullException>(() => objects.CreateCacheReference(default(CacheReferenceMetadata), null!));
+            Assert.Throws<ArgumentException>(() => objects.CreateObjectDescriptor(
+                new ObjectDescriptorMetadata(1, RuntimeObjectKind.Tensor, RuntimeRole.Runtime, RuntimeRole.Client, 1, 1, 1, MemoryLocationHint.HostMemory, OwnershipHint.Borrowed, 1, 2),
+                new byte[] { 1 }));
+            Assert.Throws<ArgumentException>(() => objects.CreateCacheReference(
+                new CacheReferenceMetadata(1, 2, 3, 4, CacheReuseScope.Session, 5, 6, 7, 2, 0),
+                new byte[] { 1 }));
+        }
+
+        [Fact]
         public void NativeRuntimeEntrypointsRejectMissingDelegate()
         {
             Assert.Throws<ArgumentNullException>(() =>
@@ -943,6 +1045,22 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.BufferAcquireCopy(NnrpBufferView.Empty, out registry, out bufferView).StatusCode);
             Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.BufferView(NnrpHandle.Invalid, out bufferView).StatusCode);
             Assert.Equal(NnrpErrorFamily.Schema, entrypoints.BufferRelease(NnrpHandle.Invalid).ErrorFamily);
+
+            NnrpRuntimeObjectDescriptor objectDescriptor;
+            NnrpCacheReferenceDescriptor cacheDescriptor;
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectMetadataBufferAcquireCopy(NnrpBufferView.Empty, out registry, out bufferView).ErrorFamily);
+            Assert.Equal(NnrpFfiStatusCode.InternalError, entrypoints.ObjectMetadataBufferView(NnrpHandle.Invalid, out bufferView).StatusCode);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectMetadataBufferRelease(NnrpHandle.Invalid).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectDescriptorCreate(default(NnrpRuntimeObjectDescriptor), NnrpBufferView.Empty, out registry).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectDescriptorView(NnrpHandle.Invalid, out objectDescriptor, out bufferView).ErrorFamily);
+            Assert.Equal(default(NnrpRuntimeObjectDescriptor), objectDescriptor);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectDescriptorMetadataSnapshot(NnrpHandle.Invalid, out registry, out bufferView).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.ObjectDescriptorRelease(NnrpHandle.Invalid).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.CacheReferenceDescriptorCreate(default(NnrpCacheReferenceDescriptor), NnrpBufferView.Empty, out registry).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.CacheReferenceDescriptorView(NnrpHandle.Invalid, out cacheDescriptor, out bufferView).ErrorFamily);
+            Assert.Equal(default(NnrpCacheReferenceDescriptor), cacheDescriptor);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.CacheReferenceDescriptorMetadataSnapshot(NnrpHandle.Invalid, out registry, out bufferView).ErrorFamily);
+            Assert.Equal(NnrpErrorFamily.RuntimeObject, entrypoints.CacheReferenceDescriptorRelease(NnrpHandle.Invalid).ErrorFamily);
 
             Assert.Equal(NnrpErrorFamily.Cache, entrypoints.CacheQuery(MatchingCacheLeaseRequest(), out leaseResult).ErrorFamily);
             Assert.Equal(default(NnrpCacheLeaseResult), leaseResult);
@@ -2876,7 +2994,8 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         private static NnrpNativeRuntimeEntrypoints CreateEntrypoints(
-            NnrpNativeRuntimeEntrypoints.RuntimeFrameSendInvoker? runtimeFrameSend = null)
+            NnrpNativeRuntimeEntrypoints.RuntimeFrameSendInvoker? runtimeFrameSend = null,
+            NativeObjectStore? objectStore = null)
         {
             return new NnrpNativeRuntimeEntrypoints(
                 CurrentProtocolVersion,
@@ -2923,7 +3042,18 @@ namespace Nnrp.NativeBridge.Tests
                 cachePrefetch: CachePrefetch,
                 cacheRelease: CacheRelease,
                 clientSubmitResultCompactBatch: ClientSubmitResultCompactBatch,
-                runtimeFrameSend: runtimeFrameSend);
+                runtimeFrameSend: runtimeFrameSend,
+                objectMetadataBufferAcquireCopy: objectStore == null ? null : objectStore.AcquireMetadataCopy,
+                objectMetadataBufferView: objectStore == null ? null : objectStore.MetadataBufferView,
+                objectMetadataBufferRelease: objectStore == null ? null : objectStore.MetadataBufferRelease,
+                objectDescriptorCreate: objectStore == null ? null : objectStore.ObjectDescriptorCreate,
+                objectDescriptorView: objectStore == null ? null : objectStore.ObjectDescriptorView,
+                objectDescriptorMetadataSnapshot: objectStore == null ? null : objectStore.ObjectDescriptorMetadataSnapshot,
+                objectDescriptorRelease: objectStore == null ? null : objectStore.ObjectDescriptorRelease,
+                cacheReferenceDescriptorCreate: objectStore == null ? null : objectStore.CacheReferenceDescriptorCreate,
+                cacheReferenceDescriptorView: objectStore == null ? null : objectStore.CacheReferenceDescriptorView,
+                cacheReferenceDescriptorMetadataSnapshot: objectStore == null ? null : objectStore.CacheReferenceDescriptorMetadataSnapshot,
+                cacheReferenceDescriptorRelease: objectStore == null ? null : objectStore.CacheReferenceDescriptorRelease);
         }
 
         private static byte[] CopyBufferView(NnrpBufferView view)
@@ -3433,6 +3563,270 @@ namespace Nnrp.NativeBridge.Tests
 
         private static readonly System.Runtime.InteropServices.GCHandle EventPayloadHandle =
             System.Runtime.InteropServices.GCHandle.Alloc(EventPayload, System.Runtime.InteropServices.GCHandleType.Pinned);
+
+        private sealed class NativeObjectStore : IDisposable
+        {
+            private readonly Dictionary<ulong, ObjectEntry> _objects = new Dictionary<ulong, ObjectEntry>();
+            private readonly Dictionary<ulong, CacheEntry> _cacheReferences = new Dictionary<ulong, CacheEntry>();
+            private readonly Dictionary<ulong, PinnedBytes> _buffers = new Dictionary<ulong, PinnedBytes>();
+            private ulong _nextId = 100;
+
+            public int ObjectDescriptorCount => _objects.Count;
+
+            public int CacheReferenceDescriptorCount => _cacheReferences.Count;
+
+            public NnrpFfiStatus AcquireMetadataCopy(
+                NnrpBufferView source,
+                out NnrpHandle buffer,
+                out NnrpBufferView view)
+            {
+                var bytes = new PinnedBytes(CopyBufferView(source));
+                buffer = NextHandle(NnrpHandleKind.Buffer);
+                _buffers.Add(buffer.Id, bytes);
+                view = bytes.View;
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus MetadataBufferView(NnrpHandle buffer, out NnrpBufferView view)
+            {
+                PinnedBytes bytes;
+                if (buffer.Kind != NnrpHandleKind.Buffer || !_buffers.TryGetValue(buffer.Id, out bytes!))
+                {
+                    view = NnrpBufferView.Empty;
+                    return InvalidHandle();
+                }
+
+                view = bytes.View;
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus MetadataBufferRelease(NnrpHandle buffer)
+            {
+                PinnedBytes bytes;
+                if (buffer.Kind != NnrpHandleKind.Buffer || !_buffers.TryGetValue(buffer.Id, out bytes!))
+                {
+                    return InvalidHandle();
+                }
+
+                _buffers.Remove(buffer.Id);
+                bytes.Dispose();
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus ObjectDescriptorCreate(
+                NnrpRuntimeObjectDescriptor descriptor,
+                NnrpBufferView metadata,
+                out NnrpHandle handle)
+            {
+                var bytes = new PinnedBytes(CopyBufferView(metadata));
+                handle = NextHandle(NnrpHandleKind.ObjectDescriptor);
+                _objects.Add(handle.Id, new ObjectEntry(descriptor, bytes));
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus ObjectDescriptorView(
+                NnrpHandle handle,
+                out NnrpRuntimeObjectDescriptor descriptor,
+                out NnrpBufferView metadata)
+            {
+                ObjectEntry entry;
+                if (handle.Kind != NnrpHandleKind.ObjectDescriptor || !_objects.TryGetValue(handle.Id, out entry!))
+                {
+                    descriptor = default(NnrpRuntimeObjectDescriptor);
+                    metadata = NnrpBufferView.Empty;
+                    return InvalidHandle();
+                }
+
+                descriptor = entry.Descriptor;
+                metadata = entry.Metadata.View;
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus ObjectDescriptorMetadataSnapshot(
+                NnrpHandle handle,
+                out NnrpHandle buffer,
+                out NnrpBufferView view)
+            {
+                ObjectEntry entry;
+                if (handle.Kind != NnrpHandleKind.ObjectDescriptor || !_objects.TryGetValue(handle.Id, out entry!))
+                {
+                    buffer = NnrpHandle.Invalid;
+                    view = NnrpBufferView.Empty;
+                    return InvalidHandle();
+                }
+
+                return AcquireSnapshot(entry.Metadata.Bytes, out buffer, out view);
+            }
+
+            public NnrpFfiStatus ObjectDescriptorRelease(NnrpHandle handle)
+            {
+                ObjectEntry entry;
+                if (handle.Kind != NnrpHandleKind.ObjectDescriptor || !_objects.TryGetValue(handle.Id, out entry!))
+                {
+                    return InvalidHandle();
+                }
+
+                _objects.Remove(handle.Id);
+                entry.Dispose();
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus CacheReferenceDescriptorCreate(
+                NnrpCacheReferenceDescriptor descriptor,
+                NnrpBufferView metadata,
+                out NnrpHandle handle)
+            {
+                var bytes = new PinnedBytes(CopyBufferView(metadata));
+                handle = NextHandle(NnrpHandleKind.CacheReferenceDescriptor);
+                _cacheReferences.Add(handle.Id, new CacheEntry(descriptor, bytes));
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus CacheReferenceDescriptorView(
+                NnrpHandle handle,
+                out NnrpCacheReferenceDescriptor descriptor,
+                out NnrpBufferView metadata)
+            {
+                CacheEntry entry;
+                if (handle.Kind != NnrpHandleKind.CacheReferenceDescriptor || !_cacheReferences.TryGetValue(handle.Id, out entry!))
+                {
+                    descriptor = default(NnrpCacheReferenceDescriptor);
+                    metadata = NnrpBufferView.Empty;
+                    return InvalidHandle();
+                }
+
+                descriptor = entry.Descriptor;
+                metadata = entry.Metadata.View;
+                return NnrpFfiStatus.Ok;
+            }
+
+            public NnrpFfiStatus CacheReferenceDescriptorMetadataSnapshot(
+                NnrpHandle handle,
+                out NnrpHandle buffer,
+                out NnrpBufferView view)
+            {
+                CacheEntry entry;
+                if (handle.Kind != NnrpHandleKind.CacheReferenceDescriptor || !_cacheReferences.TryGetValue(handle.Id, out entry!))
+                {
+                    buffer = NnrpHandle.Invalid;
+                    view = NnrpBufferView.Empty;
+                    return InvalidHandle();
+                }
+
+                return AcquireSnapshot(entry.Metadata.Bytes, out buffer, out view);
+            }
+
+            public NnrpFfiStatus CacheReferenceDescriptorRelease(NnrpHandle handle)
+            {
+                CacheEntry entry;
+                if (handle.Kind != NnrpHandleKind.CacheReferenceDescriptor || !_cacheReferences.TryGetValue(handle.Id, out entry!))
+                {
+                    return InvalidHandle();
+                }
+
+                _cacheReferences.Remove(handle.Id);
+                entry.Dispose();
+                return NnrpFfiStatus.Ok;
+            }
+
+            public void Dispose()
+            {
+                foreach (var entry in _objects.Values)
+                {
+                    entry.Dispose();
+                }
+
+                foreach (var entry in _cacheReferences.Values)
+                {
+                    entry.Dispose();
+                }
+
+                foreach (var buffer in _buffers.Values)
+                {
+                    buffer.Dispose();
+                }
+
+                _objects.Clear();
+                _cacheReferences.Clear();
+                _buffers.Clear();
+            }
+
+            private NnrpFfiStatus AcquireSnapshot(
+                byte[] source,
+                out NnrpHandle buffer,
+                out NnrpBufferView view)
+            {
+                var bytes = new PinnedBytes((byte[])source.Clone());
+                buffer = NextHandle(NnrpHandleKind.Buffer);
+                _buffers.Add(buffer.Id, bytes);
+                view = bytes.View;
+                return NnrpFfiStatus.Ok;
+            }
+
+            private NnrpHandle NextHandle(NnrpHandleKind kind)
+            {
+                return new NnrpHandle(kind, _nextId++, 1);
+            }
+
+            private static NnrpFfiStatus InvalidHandle()
+            {
+                return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.RuntimeObject);
+            }
+
+            private sealed class ObjectEntry : IDisposable
+            {
+                public ObjectEntry(NnrpRuntimeObjectDescriptor descriptor, PinnedBytes metadata)
+                {
+                    Descriptor = descriptor;
+                    Metadata = metadata;
+                }
+
+                public NnrpRuntimeObjectDescriptor Descriptor { get; }
+                public PinnedBytes Metadata { get; }
+                public void Dispose() => Metadata.Dispose();
+            }
+
+            private sealed class CacheEntry : IDisposable
+            {
+                public CacheEntry(NnrpCacheReferenceDescriptor descriptor, PinnedBytes metadata)
+                {
+                    Descriptor = descriptor;
+                    Metadata = metadata;
+                }
+
+                public NnrpCacheReferenceDescriptor Descriptor { get; }
+                public PinnedBytes Metadata { get; }
+                public void Dispose() => Metadata.Dispose();
+            }
+
+            private sealed class PinnedBytes : IDisposable
+            {
+                private GCHandle _handle;
+
+                public PinnedBytes(byte[] bytes)
+                {
+                    Bytes = bytes;
+                    if (bytes.Length > 0)
+                    {
+                        _handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    }
+                }
+
+                public byte[] Bytes { get; }
+
+                public NnrpBufferView View => Bytes.Length == 0
+                    ? NnrpBufferView.Empty
+                    : new NnrpBufferView(_handle.AddrOfPinnedObject(), new UIntPtr((uint)Bytes.Length));
+
+                public void Dispose()
+                {
+                    if (_handle.IsAllocated)
+                    {
+                        _handle.Free();
+                    }
+                }
+            }
+        }
 
         private sealed class FakeRuntimeBackend : INnrpNativeRuntimeBackend
         {

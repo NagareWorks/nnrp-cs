@@ -350,6 +350,8 @@ namespace Nnrp.NativeBridge
         Transport = 4,
         Lifecycle = 5,
         Operation = 6,
+        Control = 7,
+        RuntimeObject = 8,
         Internal = 0xffff,
     }
 
@@ -532,6 +534,11 @@ namespace Nnrp.NativeBridge
         Buffer = 5,
         SchemaRegistry = 6,
         CacheLease = 7,
+        ObjectDescriptor = 8,
+        CacheReferenceDescriptor = 9,
+        TransportConnection = 10,
+        TransportListener = 11,
+        TransportSecurityConfig = 12,
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1915,7 +1922,18 @@ namespace Nnrp.NativeBridge
             CachePrefetchInvoker? cachePrefetch = null,
             CacheReleaseInvoker? cacheRelease = null,
             ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch = null,
-            RuntimeFrameSendInvoker? runtimeFrameSend = null)
+            RuntimeFrameSendInvoker? runtimeFrameSend = null,
+            BufferAcquireCopyInvoker? objectMetadataBufferAcquireCopy = null,
+            BufferViewInvoker? objectMetadataBufferView = null,
+            HandleStatusInvoker? objectMetadataBufferRelease = null,
+            ObjectDescriptorCreateInvoker? objectDescriptorCreate = null,
+            ObjectDescriptorViewInvoker? objectDescriptorView = null,
+            DescriptorMetadataSnapshotInvoker? objectDescriptorMetadataSnapshot = null,
+            HandleStatusInvoker? objectDescriptorRelease = null,
+            CacheReferenceDescriptorCreateInvoker? cacheReferenceDescriptorCreate = null,
+            CacheReferenceDescriptorViewInvoker? cacheReferenceDescriptorView = null,
+            DescriptorMetadataSnapshotInvoker? cacheReferenceDescriptorMetadataSnapshot = null,
+            HandleStatusInvoker? cacheReferenceDescriptorRelease = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -1964,7 +1982,18 @@ namespace Nnrp.NativeBridge
                 cachePrefetch,
                 cacheRelease,
                 clientSubmitResultCompactBatch,
-                runtimeFrameSend)
+                runtimeFrameSend,
+                objectMetadataBufferAcquireCopy,
+                objectMetadataBufferView,
+                objectMetadataBufferRelease,
+                objectDescriptorCreate,
+                objectDescriptorView,
+                objectDescriptorMetadataSnapshot,
+                objectDescriptorRelease,
+                cacheReferenceDescriptorCreate,
+                cacheReferenceDescriptorView,
+                cacheReferenceDescriptorMetadataSnapshot,
+                cacheReferenceDescriptorRelease)
         {
         }
 
@@ -2016,7 +2045,18 @@ namespace Nnrp.NativeBridge
             CachePrefetchInvoker? cachePrefetch,
             CacheReleaseInvoker? cacheRelease,
             ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch,
-            RuntimeFrameSendInvoker? runtimeFrameSend)
+            RuntimeFrameSendInvoker? runtimeFrameSend,
+            BufferAcquireCopyInvoker? objectMetadataBufferAcquireCopy,
+            BufferViewInvoker? objectMetadataBufferView,
+            HandleStatusInvoker? objectMetadataBufferRelease,
+            ObjectDescriptorCreateInvoker? objectDescriptorCreate,
+            ObjectDescriptorViewInvoker? objectDescriptorView,
+            DescriptorMetadataSnapshotInvoker? objectDescriptorMetadataSnapshot,
+            HandleStatusInvoker? objectDescriptorRelease,
+            CacheReferenceDescriptorCreateInvoker? cacheReferenceDescriptorCreate,
+            CacheReferenceDescriptorViewInvoker? cacheReferenceDescriptorView,
+            DescriptorMetadataSnapshotInvoker? cacheReferenceDescriptorMetadataSnapshot,
+            HandleStatusInvoker? cacheReferenceDescriptorRelease)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -2066,6 +2106,17 @@ namespace Nnrp.NativeBridge
             CacheRelease = cacheRelease ?? MissingCacheRelease;
             ClientSubmitResultCompactBatch = clientSubmitResultCompactBatch ?? MissingClientSubmitResultCompactBatch;
             RuntimeFrameSend = runtimeFrameSend ?? MissingRuntimeFrameSend;
+            ObjectMetadataBufferAcquireCopy = objectMetadataBufferAcquireCopy ?? MissingObjectMetadataBufferAcquireCopy;
+            ObjectMetadataBufferView = objectMetadataBufferView ?? MissingObjectMetadataBufferView;
+            ObjectMetadataBufferRelease = objectMetadataBufferRelease ?? MissingRuntimeObjectHandleStatus;
+            ObjectDescriptorCreate = objectDescriptorCreate ?? MissingObjectDescriptorCreate;
+            ObjectDescriptorView = objectDescriptorView ?? MissingObjectDescriptorView;
+            ObjectDescriptorMetadataSnapshot = objectDescriptorMetadataSnapshot ?? MissingDescriptorMetadataSnapshot;
+            ObjectDescriptorRelease = objectDescriptorRelease ?? MissingRuntimeObjectHandleStatus;
+            CacheReferenceDescriptorCreate = cacheReferenceDescriptorCreate ?? MissingCacheReferenceDescriptorCreate;
+            CacheReferenceDescriptorView = cacheReferenceDescriptorView ?? MissingCacheReferenceDescriptorView;
+            CacheReferenceDescriptorMetadataSnapshot = cacheReferenceDescriptorMetadataSnapshot ?? MissingDescriptorMetadataSnapshot;
+            CacheReferenceDescriptorRelease = cacheReferenceDescriptorRelease ?? MissingRuntimeObjectHandleStatus;
         }
 
         private IntPtr _libraryHandle;
@@ -2096,7 +2147,7 @@ namespace Nnrp.NativeBridge
                     handle,
                     Bind<CurrentProtocolVersionInvoker>(handle, "nnrp_current_protocol_version"),
                     runtimeCapabilities,
-                    Bind<ConnectionBootstrapInvoker>(handle, "nnrp_connection_bootstrap"),
+                    MissingConnectionBootstrap,
                     Bind<ClientConnectInvoker>(handle, "nnrp_client_connect"),
                     Bind<SessionOpenInvoker>(handle, "nnrp_session_open"),
                     Bind<SessionOpenInvoker>(handle, "nnrp_client_open_session"),
@@ -2108,11 +2159,11 @@ namespace Nnrp.NativeBridge
                     Bind<AwaitEventInvoker>(handle, "nnrp_client_await_event"),
                     Bind<ServerBindInvoker>(handle, "nnrp_server_bind"),
                     Bind<ServerAcceptInvoker>(handle, "nnrp_server_accept"),
-                    Bind<ServerReceiveSubmitInvoker>(handle, "nnrp_server_receive_submit"),
+                    MissingServerReceiveSubmit,
                     Bind<ServerSendResultInvoker>(handle, "nnrp_server_send_result"),
-                    Bind<ServerFlowUpdateInvoker>(handle, "nnrp_server_send_flow_update"),
+                    MissingServerFlowUpdate,
                     Bind<HandleStatusInvoker>(handle, "nnrp_server_close"),
-                    Bind<ControlInvoker>(handle, "nnrp_control"),
+                    MissingControl,
                     Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
                     Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"),
                     Bind<HandleStatusInvoker>(handle, "nnrp_connection_close"),
@@ -2139,8 +2190,19 @@ namespace Nnrp.NativeBridge
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
                     Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
                     Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"),
-                    Bind<ClientSubmitResultCompactBatchInvoker>(handle, "nnrp_client_submit_result_compact_batch"),
-                    Bind<RuntimeFrameSendInvoker>(handle, "nnrp_runtime_frame_send"));
+                    MissingClientSubmitResultCompactBatch,
+                    Bind<RuntimeFrameSendInvoker>(handle, "nnrp_runtime_frame_send"),
+                    Bind<BufferAcquireCopyInvoker>(handle, "nnrp_object_metadata_buffer_acquire_copy"),
+                    Bind<BufferViewInvoker>(handle, "nnrp_object_metadata_buffer_view"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_object_metadata_buffer_release"),
+                    Bind<ObjectDescriptorCreateInvoker>(handle, "nnrp_object_descriptor_create"),
+                    Bind<ObjectDescriptorViewInvoker>(handle, "nnrp_object_descriptor_view"),
+                    Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_object_descriptor_metadata_snapshot"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_object_descriptor_release"),
+                    Bind<CacheReferenceDescriptorCreateInvoker>(handle, "nnrp_cache_reference_descriptor_create"),
+                    Bind<CacheReferenceDescriptorViewInvoker>(handle, "nnrp_cache_reference_descriptor_view"),
+                    Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_cache_reference_descriptor_metadata_snapshot"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_cache_reference_descriptor_release"));
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
             {
@@ -2292,6 +2354,36 @@ namespace Nnrp.NativeBridge
         public delegate NnrpFfiStatus BufferViewInvoker(NnrpHandle buffer, out NnrpBufferView view);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ObjectDescriptorCreateInvoker(
+            NnrpRuntimeObjectDescriptor descriptor,
+            NnrpBufferView metadata,
+            out NnrpHandle handle);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ObjectDescriptorViewInvoker(
+            NnrpHandle handle,
+            out NnrpRuntimeObjectDescriptor descriptor,
+            out NnrpBufferView metadata);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus DescriptorMetadataSnapshotInvoker(
+            NnrpHandle handle,
+            out NnrpHandle buffer,
+            out NnrpBufferView view);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus CacheReferenceDescriptorCreateInvoker(
+            NnrpCacheReferenceDescriptor descriptor,
+            NnrpBufferView metadata,
+            out NnrpHandle handle);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus CacheReferenceDescriptorViewInvoker(
+            NnrpHandle handle,
+            out NnrpCacheReferenceDescriptor descriptor,
+            out NnrpBufferView metadata);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus CacheLeaseRequestInvoker(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -2392,6 +2484,28 @@ namespace Nnrp.NativeBridge
 
         public HandleStatusInvoker BufferRelease { get; }
 
+        public BufferAcquireCopyInvoker ObjectMetadataBufferAcquireCopy { get; }
+
+        public BufferViewInvoker ObjectMetadataBufferView { get; }
+
+        public HandleStatusInvoker ObjectMetadataBufferRelease { get; }
+
+        public ObjectDescriptorCreateInvoker ObjectDescriptorCreate { get; }
+
+        public ObjectDescriptorViewInvoker ObjectDescriptorView { get; }
+
+        public DescriptorMetadataSnapshotInvoker ObjectDescriptorMetadataSnapshot { get; }
+
+        public HandleStatusInvoker ObjectDescriptorRelease { get; }
+
+        public CacheReferenceDescriptorCreateInvoker CacheReferenceDescriptorCreate { get; }
+
+        public CacheReferenceDescriptorViewInvoker CacheReferenceDescriptorView { get; }
+
+        public DescriptorMetadataSnapshotInvoker CacheReferenceDescriptorMetadataSnapshot { get; }
+
+        public HandleStatusInvoker CacheReferenceDescriptorRelease { get; }
+
         public CacheLeaseRequestInvoker CacheQuery { get; }
 
         public CacheLeaseRequestInvoker CacheTouch { get; }
@@ -2437,6 +2551,32 @@ namespace Nnrp.NativeBridge
         private static NnrpFfiStatus MissingRuntimeFrameSend(NnrpRuntimeFrameSendRequest request)
         {
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingConnectionBootstrap(
+            NnrpConnectionBootstrap request,
+            out NnrpHandle connection)
+        {
+            connection = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingServerReceiveSubmit(
+            NnrpServerReceiveSubmitRequest request,
+            out NnrpHandle operation)
+        {
+            operation = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Operation);
+        }
+
+        private static NnrpFfiStatus MissingServerFlowUpdate(NnrpServerFlowUpdateRequest request)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Control);
+        }
+
+        private static NnrpFfiStatus MissingControl(NnrpControlRequest request)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Control);
         }
 
         private static NnrpFfiStatus MissingClientResumeSession(
@@ -2525,6 +2665,77 @@ namespace Nnrp.NativeBridge
         {
             view = NnrpBufferView.Empty;
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingRuntimeObjectHandleStatus(NnrpHandle handle)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingObjectMetadataBufferAcquireCopy(
+            NnrpBufferView source,
+            out NnrpHandle buffer,
+            out NnrpBufferView view)
+        {
+            buffer = NnrpHandle.Invalid;
+            view = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingObjectMetadataBufferView(
+            NnrpHandle buffer,
+            out NnrpBufferView view)
+        {
+            view = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingObjectDescriptorCreate(
+            NnrpRuntimeObjectDescriptor descriptor,
+            NnrpBufferView metadata,
+            out NnrpHandle handle)
+        {
+            handle = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingObjectDescriptorView(
+            NnrpHandle handle,
+            out NnrpRuntimeObjectDescriptor descriptor,
+            out NnrpBufferView metadata)
+        {
+            descriptor = default(NnrpRuntimeObjectDescriptor);
+            metadata = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingDescriptorMetadataSnapshot(
+            NnrpHandle handle,
+            out NnrpHandle buffer,
+            out NnrpBufferView view)
+        {
+            buffer = NnrpHandle.Invalid;
+            view = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingCacheReferenceDescriptorCreate(
+            NnrpCacheReferenceDescriptor descriptor,
+            NnrpBufferView metadata,
+            out NnrpHandle handle)
+        {
+            handle = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
+        }
+
+        private static NnrpFfiStatus MissingCacheReferenceDescriptorView(
+            NnrpHandle handle,
+            out NnrpCacheReferenceDescriptor descriptor,
+            out NnrpBufferView metadata)
+        {
+            descriptor = default(NnrpCacheReferenceDescriptor);
+            metadata = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.RuntimeObject);
         }
 
         private static NnrpFfiStatus MissingCacheLeaseRequest(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)

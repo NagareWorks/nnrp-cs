@@ -1,61 +1,60 @@
 using Nnrp.Core;
 using Nnrp.NativeBridge;
+using Nnrp.Runtime;
 using Xunit;
 
 namespace Nnrp.NativeBridge.Tests
 {
-    public sealed class LiveNativeResumeSmokeTests
+    public sealed class LiveNativeRuntimeObjectSmokeTests
     {
-        private const uint SessionRecoveryOutcomeResumed = 2;
-
         [LiveNativeArtifactFact]
-        public void ResumeSessionPassesAgainstConfiguredNativeArtifact()
+        public void RuntimeObjectDescriptorsPassAgainstConfiguredNativeArtifact()
         {
             Assert.True(
                 LiveNativeArtifactFactAttribute.TryResolveArtifact(out var artifactPath, out var reason),
                 reason);
 
             using var entrypoints = NnrpNativeRuntimeEntrypoints.Load(artifactPath);
-            var client = new NnrpNativeRuntimeClient(entrypoints);
-            using var connection = client.Connect(101, 1, NnrpNativeArtifact.TransportSlotTcp);
-            NnrpNativeRuntimeSession? opened = null;
-            NnrpNativeRuntimeSession? resumed = null;
+            var objects = new NnrpNativeRuntimeObjects(entrypoints);
+            var objectMetadata = new byte[] { 1, 2, 3 };
+            var objectDescriptor = new ObjectDescriptorMetadata(
+                301,
+                RuntimeObjectKind.Tensor,
+                RuntimeRole.Runtime,
+                RuntimeRole.Client,
+                201,
+                4096,
+                17,
+                MemoryLocationHint.DeviceMemory,
+                OwnershipHint.Borrowed,
+                500,
+                (uint)objectMetadata.Length);
 
-            try
+            using (var descriptor = objects.CreateObjectDescriptor(objectDescriptor, objectMetadata))
             {
-                opened = connection.OpenSession(
-                    requestedSessionId: 201,
-                    generation: 1,
-                    profileId: SchemaDescriptorHeader.ProfileToken,
-                    schemaId: SchemaDescriptorHeader.TokenDeltaSchemaId,
-                    schemaVersion: SchemaDescriptorHeader.TokenDeltaSchemaVersion);
-                resumed = connection.ResumeSession(
-                    requestedSessionId: 202,
-                    generation: 2,
-                    profileId: SchemaDescriptorHeader.ProfileToken,
-                    schemaId: SchemaDescriptorHeader.TokenDeltaSchemaId,
-                    schemaVersion: SchemaDescriptorHeader.TokenDeltaSchemaVersion,
-                    resumeTokenBytes: 16,
-                    recoveryOutcome: out var recoveryOutcome);
-
-                Assert.Equal((ulong)101, connection.Handle.Handle.Id);
-                Assert.Equal((ulong)201, opened.Handle.Handle.Id);
-                Assert.Equal((uint)1, opened.Handle.Handle.Generation);
-                Assert.Equal((ulong)202, resumed.Handle.Handle.Id);
-                Assert.Equal((uint)2, resumed.Handle.Handle.Generation);
-                Assert.Equal(SessionRecoveryOutcomeResumed, recoveryOutcome.OutcomeCode);
+                var snapshot = descriptor.Snapshot();
+                Assert.Equal(objectDescriptor, snapshot.Descriptor);
+                Assert.Equal(objectMetadata, snapshot.Metadata.ToArray());
             }
-            finally
-            {
-                if (resumed != null && !resumed.IsClosed)
-                {
-                    resumed.Close();
-                }
 
-                if (opened != null && !opened.IsClosed)
-                {
-                    opened.Close();
-                }
+            var cacheMetadata = new byte[] { 4, 5 };
+            var cacheDescriptor = new CacheReferenceMetadata(
+                401,
+                402,
+                403,
+                SchemaDescriptorHeader.ProfileToken,
+                CacheReuseScope.Session,
+                404,
+                405,
+                1000,
+                (uint)cacheMetadata.Length,
+                1);
+
+            using (var descriptor = objects.CreateCacheReference(cacheDescriptor, cacheMetadata))
+            {
+                var snapshot = descriptor.Snapshot();
+                Assert.Equal(cacheDescriptor, snapshot.Descriptor);
+                Assert.Equal(cacheMetadata, snapshot.Metadata.ToArray());
             }
         }
     }

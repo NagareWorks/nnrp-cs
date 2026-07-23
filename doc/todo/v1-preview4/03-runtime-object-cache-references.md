@@ -12,13 +12,13 @@
 
 ## NativeBridge Object Bindings
 
-- [ ] Bind native object descriptor creation.
-- [ ] Bind native object descriptor parsing.
-- [ ] Bind native object release.
+- [x] Bind native object descriptor creation.
+- [x] Bind native object descriptor parsing.
+- [x] Bind native object release.
 - [ ] Bind native object delta helpers.
-- [ ] Bind native-owned metadata buffer release.
-- [ ] Add SafeHandle wrappers for native-owned object metadata.
-- [ ] Add disposal and use-after-close tests.
+- [x] Bind native-owned metadata buffer release.
+- [x] Add SafeHandle wrappers for native-owned object metadata.
+- [x] Add disposal and use-after-close tests.
 
 ## Cache Reference Types
 
