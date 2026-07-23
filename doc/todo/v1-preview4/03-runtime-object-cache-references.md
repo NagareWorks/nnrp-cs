@@ -2,13 +2,13 @@
 
 ## Runtime Object Types
 
-- [ ] Add managed runtime object descriptor.
-- [ ] Add managed runtime object reference.
-- [ ] Add managed runtime object delta.
-- [ ] Add managed runtime object release.
-- [ ] Add object kind enum.
-- [ ] Add owner and lifetime metadata.
-- [ ] Add compute and memory cost metadata.
+- [x] Add managed runtime object descriptor.
+- [x] Add managed runtime object reference.
+- [x] Add managed runtime object delta.
+- [x] Add managed runtime object release.
+- [x] Add object kind enum.
+- [x] Add owner and lifetime metadata.
+- [x] Add compute and memory cost metadata.
 
 ## NativeBridge Object Bindings
 
@@ -22,13 +22,13 @@
 
 ## Cache Reference Types
 
-- [ ] Add cache reference record.
-- [ ] Add cache miss record.
+- [x] Add cache reference record.
+- [x] Add cache miss record.
 - [ ] Add cache invalidate record.
-- [ ] Add cache lease metadata.
+- [x] Add cache lease metadata.
 - [ ] Add cache policy options.
-- [ ] Keep cache reference behavior explicit per request/profile.
-- [ ] Add tests for typed cache miss diagnostics.
+- [x] Keep cache reference behavior explicit per request/profile.
+- [x] Add tests for typed cache miss diagnostics.
 
 ## Copy And Lifetime Rules
 
