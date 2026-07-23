@@ -884,21 +884,21 @@ namespace Nnrp.NativeBridge
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpCacheObjectId
     {
-        public NnrpCacheObjectId(uint cacheNamespace, uint cacheKeyHigh, uint cacheKeyLow, uint objectKind)
+        public NnrpCacheObjectId(uint cacheNamespace, ulong cacheKeyHigh, ulong cacheKeyLow, uint objectKind)
         {
             CacheNamespace = cacheNamespace;
+            ObjectKind = objectKind;
             CacheKeyHigh = cacheKeyHigh;
             CacheKeyLow = cacheKeyLow;
-            ObjectKind = objectKind;
         }
 
         public readonly uint CacheNamespace;
 
-        public readonly uint CacheKeyHigh;
-
-        public readonly uint CacheKeyLow;
-
         public readonly uint ObjectKind;
+
+        public readonly ulong CacheKeyHigh;
+
+        public readonly ulong CacheKeyLow;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -946,14 +946,20 @@ namespace Nnrp.NativeBridge
             NnrpCacheObjectId objectId,
             ulong objectVersion,
             ulong leaseId,
-            ulong expiresAtMilliseconds)
+            uint ownerScope,
+            uint ttlMilliseconds,
+            ulong ownerId,
+            ulong grantedAtMilliseconds)
         {
             OutcomeCode = outcomeCode;
             LeaseHandle = leaseHandle;
             ObjectId = objectId;
             ObjectVersion = objectVersion;
             LeaseId = leaseId;
-            ExpiresAtMilliseconds = expiresAtMilliseconds;
+            OwnerScope = ownerScope;
+            TtlMilliseconds = ttlMilliseconds;
+            OwnerId = ownerId;
+            GrantedAtMilliseconds = grantedAtMilliseconds;
         }
 
         public readonly uint OutcomeCode;
@@ -966,7 +972,13 @@ namespace Nnrp.NativeBridge
 
         public readonly ulong LeaseId;
 
-        public readonly ulong ExpiresAtMilliseconds;
+        public readonly uint OwnerScope;
+
+        public readonly uint TtlMilliseconds;
+
+        public readonly ulong OwnerId;
+
+        public readonly ulong GrantedAtMilliseconds;
     }
 
     public sealed class NnrpNativeSchemaRegistry : IDisposable
@@ -3828,12 +3840,15 @@ namespace Nnrp.NativeBridge
     public static class NnrpNativeArtifact
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
-        public const ushort ExpectedAbiMajor = 1;
-        public const ushort MinimumAbiMinor = 6;
+        public const ushort ExpectedAbiMajor = 4;
+        public const ushort ExpectedAbiMinor = 0;
+        public const ushort ExpectedAbiPatch = 0;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;
         public const uint TransportSlotQuic = 0x00000001;
         public const uint TransportSlotTcp = 0x00000002;
+        public const uint TransportSlotIpc = 0x00000004;
+        public const uint TransportSlotWebSocket = 0x00000008;
         public const ulong RuntimeFeatureProtocolCore = 0x0000000000000001;
         public const ulong RuntimeFeatureClientApi = 0x0000000000000002;
         public const ulong RuntimeFeatureServerApi = 0x0000000000000004;
@@ -3848,9 +3863,10 @@ namespace Nnrp.NativeBridge
         public const ulong RuntimeFeatureSchemaRegistryHandles = 0x0000000000000800;
         public const ulong RuntimeFeatureBufferHandles = 0x0000000000001000;
         public const ulong RuntimeFeatureExecutableResume = 0x0000000000002000;
-        public const ulong RuntimeFeatureClientCompletionHelpers = 0x0000000000004000;
-        public const ulong RuntimeFeatureClientCoarseResultHelpers = 0x0000000000008000;
-        public const ulong RuntimeFeatureClientCompactResultHelpers = 0x0000000000010000;
+        public const ulong RuntimeFeaturePreview4ControlEvents = 0x0000000000020000;
+        public const ulong RuntimeFeaturePreview4ObjectCacheEvents = 0x0000000000040000;
+        public const ulong RuntimeFeaturePreview4RuntimeFrameSend = 0x0000000000080000;
+        public const ulong RuntimeFeatureTransportFramedIo = 0x0000000000100000;
         public const ulong RequiredRuntimeFeatures =
             RuntimeFeatureProtocolCore
             | RuntimeFeatureClientApi
@@ -3863,7 +3879,11 @@ namespace Nnrp.NativeBridge
             | RuntimeFeatureTransportSlots
             | RuntimeFeatureCacheLeaseOps
             | RuntimeFeatureSchemaRegistryHandles
-            | RuntimeFeatureBufferHandles;
+            | RuntimeFeatureBufferHandles
+            | RuntimeFeaturePreview4ControlEvents
+            | RuntimeFeaturePreview4ObjectCacheEvents
+            | RuntimeFeaturePreview4RuntimeFrameSend
+            | RuntimeFeatureTransportFramedIo;
         public const uint RequiredTransportSlots = TransportSlotTcp;
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -3981,13 +4001,23 @@ namespace Nnrp.NativeBridge
                 return "quic";
             }
 
+            if (transportId == TransportSlotIpc)
+            {
+                return "ipc";
+            }
+
+            if (transportId == TransportSlotWebSocket)
+            {
+                return "websocket";
+            }
+
             throw new NnrpNativeArtifactException("Unsupported native transport id: " + transportId);
         }
 
         private static string NormalizeTransportScope(string value)
         {
             string normalized = (value ?? string.Empty).Trim().ToLowerInvariant().Replace("_", "-");
-            if (normalized == "tcp" || normalized == "quic")
+            if (normalized == "tcp" || normalized == "quic" || normalized == "ipc" || normalized == "websocket")
             {
                 return normalized;
             }
@@ -4025,14 +4055,18 @@ namespace Nnrp.NativeBridge
 
         private static void ValidateRuntimeCapabilities(NnrpRuntimeCapabilities capabilities, uint requiredTransportSlots)
         {
-            if (capabilities.AbiMajor != ExpectedAbiMajor || capabilities.AbiMinor < MinimumAbiMinor)
+            if (capabilities.AbiMajor != ExpectedAbiMajor
+                || capabilities.AbiMinor != ExpectedAbiMinor
+                || capabilities.AbiPatch != ExpectedAbiPatch)
             {
                 throw new NnrpNativeArtifactException(
                     "Native artifact ABI mismatch: expected "
                     + ExpectedAbiMajor
                     + "."
-                    + MinimumAbiMinor
-                    + ".x, got "
+                    + ExpectedAbiMinor
+                    + "."
+                    + ExpectedAbiPatch
+                    + ", got "
                     + capabilities.AbiMajor
                     + "."
                     + capabilities.AbiMinor

@@ -26,7 +26,7 @@ packaging = load_packaging_module()
 
 
 class UpmPackageMetadataTests(unittest.TestCase):
-    def test_runtime_package_descriptions_keep_preview3_boundary_visible(self) -> None:
+    def test_runtime_package_descriptions_keep_preview4_boundary_visible(self) -> None:
         expected_descriptions = {
             "src/Nnrp.Client/Nnrp.Client.csproj": [
                 "managed diagnostic",
@@ -46,7 +46,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
             ],
             "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": [
                 "rust-backed",
-                "preview3",
+                "preview4",
                 "native bridge",
             ],
         }
@@ -57,7 +57,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 for fragment in required_fragments:
                     self.assertIn(fragment, description)
 
-    def test_preview3_project_references_stay_on_declared_boundaries(self) -> None:
+    def test_preview4_project_references_stay_on_declared_boundaries(self) -> None:
         expected_references = {
             "src/Nnrp.Client/Nnrp.Client.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "src/Nnrp.Server/Nnrp.Server.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},

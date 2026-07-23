@@ -10,7 +10,11 @@ namespace Nnrp.NativeBridge.Tests
         public void ResolveSelectsHighestPriorityInstalledProviderForAutoPolicy()
         {
             var resolution = NnrpNativeTransportResolver.Resolve(
-                Probe(NnrpNativeArtifact.TransportSlotTcp | NnrpNativeArtifact.TransportSlotQuic),
+                Probe(
+                    NnrpNativeArtifact.TransportSlotTcp
+                    | NnrpNativeArtifact.TransportSlotQuic
+                    | NnrpNativeArtifact.TransportSlotIpc
+                    | NnrpNativeArtifact.TransportSlotWebSocket),
                 new INnrpNativeTransportProvider[]
                 {
                     Provider(TransportId.Tcp, "tcp", NnrpNativeArtifact.TransportSlotTcp, priority: 10),
@@ -26,19 +30,29 @@ namespace Nnrp.NativeBridge.Tests
         [Theory]
         [InlineData(TransportPolicy.PreferTcp, TransportId.Tcp, true)]
         [InlineData(TransportPolicy.PreferQuic, TransportId.Quic, true)]
+        [InlineData(TransportPolicy.PreferIpc, TransportId.Ipc, true)]
+        [InlineData(TransportPolicy.PreferWebSocket, TransportId.WebSocket, true)]
         [InlineData(TransportPolicy.ForceTcp, TransportId.Tcp, false)]
         [InlineData(TransportPolicy.ForceQuic, TransportId.Quic, false)]
+        [InlineData(TransportPolicy.ForceIpc, TransportId.Ipc, false)]
+        [InlineData(TransportPolicy.ForceWebSocket, TransportId.WebSocket, false)]
         public void ResolveHonorsExplicitTransportPolicy(
             TransportPolicy policy,
             TransportId expectedTransportId,
             bool expectedProbe)
         {
             var resolution = NnrpNativeTransportResolver.Resolve(
-                Probe(NnrpNativeArtifact.TransportSlotTcp | NnrpNativeArtifact.TransportSlotQuic),
+                Probe(
+                    NnrpNativeArtifact.TransportSlotTcp
+                    | NnrpNativeArtifact.TransportSlotQuic
+                    | NnrpNativeArtifact.TransportSlotIpc
+                    | NnrpNativeArtifact.TransportSlotWebSocket),
                 new INnrpNativeTransportProvider[]
                 {
                     Provider(TransportId.Tcp, "tcp", NnrpNativeArtifact.TransportSlotTcp, priority: 10),
                     Provider(TransportId.Quic, "quic", NnrpNativeArtifact.TransportSlotQuic, priority: 20),
+                    Provider(TransportId.Ipc, "ipc", NnrpNativeArtifact.TransportSlotIpc, priority: 30),
+                    Provider(TransportId.WebSocket, "websocket", NnrpNativeArtifact.TransportSlotWebSocket, priority: 5),
                 },
                 policy);
 
@@ -137,7 +151,7 @@ namespace Nnrp.NativeBridge.Tests
             return new NnrpNativeProbeResult(
                 artifactPath: "fixture",
                 abiMajor: NnrpNativeArtifact.ExpectedAbiMajor,
-                abiMinor: NnrpNativeArtifact.MinimumAbiMinor,
+                abiMinor: NnrpNativeArtifact.ExpectedAbiMinor,
                 abiPatch: 0,
                 protocolMajor: NnrpNativeArtifact.ExpectedProtocolMajor,
                 protocolWireFormat: NnrpNativeArtifact.ExpectedProtocolWireFormat,

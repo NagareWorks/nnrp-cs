@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Transport.Quic</PackageId>
-    <Description>QUIC native transport entry surface for NNRP preview3 hosts.</Description>
+    <Description>QUIC native transport entry surface for NNRP Preview4 hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NnrpQuicTransportArtifactRoot Condition="'$(NnrpQuicTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-quic</NnrpQuicTransportArtifactRoot>
   </PropertyGroup>

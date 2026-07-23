@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionTrain>preview.3.1</VersionTrain>
+    <VersionTrain>preview.4</VersionTrain>
     <ReleaseVersion Condition="'$(VersionTrain)' != ''">$(VersionPrefix)-$(VersionTrain)</ReleaseVersion>
     <ReleaseVersion Condition="'$(VersionTrain)' == ''">$(VersionPrefix)</ReleaseVersion>
     <VersionDate Condition="'$(VersionDate)' == ''">$([System.DateTime]::UtcNow.ToString('yyyyMMdd'))</VersionDate>

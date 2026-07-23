@@ -22,7 +22,7 @@ class NativeArtifact:
 
 def native_artifacts() -> list[NativeArtifact]:
     artifacts: list[NativeArtifact] = []
-    for transport in ("tcp", "quic"):
+    for transport in ("tcp", "quic", "ipc", "websocket"):
         artifacts.extend(
             [
                 NativeArtifact(transport, "windows-x86", "win-x86", "nnrp_ffi.dll"),
@@ -48,7 +48,7 @@ def native_artifacts() -> list[NativeArtifact]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download nnrp-rs native FFI artifacts into C# package layout.")
-    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.3.8")
+    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.4.15")
     parser.add_argument("--repo", default="NagareWorks/nnrp-rs")
     parser.add_argument("--output", required=True)
     parser.add_argument("--include-headers", action="store_true")

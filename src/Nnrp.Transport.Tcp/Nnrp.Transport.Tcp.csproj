@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Transport.Tcp</PackageId>
-    <Description>TCP native transport entry surface and managed diagnostic helpers for NNRP preview3 hosts.</Description>
+    <Description>TCP native transport entry surface and managed diagnostic helpers for NNRP Preview4 hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NnrpTcpTransportArtifactRoot Condition="'$(NnrpTcpTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-tcp</NnrpTcpTransportArtifactRoot>
   </PropertyGroup>

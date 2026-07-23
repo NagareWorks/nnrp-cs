@@ -108,7 +108,7 @@ namespace Nnrp.Transport.Quic.Tests
             var probeResult = new NnrpNativeProbeResult(
                 artifactPath: "fixture",
                 abiMajor: NnrpNativeArtifact.ExpectedAbiMajor,
-                abiMinor: NnrpNativeArtifact.MinimumAbiMinor,
+                abiMinor: NnrpNativeArtifact.ExpectedAbiMinor,
                 abiPatch: 0,
                 protocolMajor: NnrpNativeArtifact.ExpectedProtocolMajor,
                 protocolWireFormat: NnrpNativeArtifact.ExpectedProtocolWireFormat,

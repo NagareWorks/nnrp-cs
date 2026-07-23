@@ -126,8 +126,12 @@ namespace Nnrp.NativeBridge
                 TransportPolicy.Auto => true,
                 TransportPolicy.PreferQuic => true,
                 TransportPolicy.PreferTcp => true,
+                TransportPolicy.PreferIpc => true,
+                TransportPolicy.PreferWebSocket => true,
                 TransportPolicy.ForceQuic => false,
                 TransportPolicy.ForceTcp => false,
+                TransportPolicy.ForceIpc => false,
+                TransportPolicy.ForceWebSocket => false,
                 _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "Unknown transport policy."),
             };
         }
@@ -139,8 +143,12 @@ namespace Nnrp.NativeBridge
                 TransportPolicy.Auto => TransportId.Unspecified,
                 TransportPolicy.PreferQuic => TransportId.Quic,
                 TransportPolicy.PreferTcp => TransportId.Tcp,
+                TransportPolicy.PreferIpc => TransportId.Ipc,
+                TransportPolicy.PreferWebSocket => TransportId.WebSocket,
                 TransportPolicy.ForceQuic => TransportId.Quic,
                 TransportPolicy.ForceTcp => TransportId.Tcp,
+                TransportPolicy.ForceIpc => TransportId.Ipc,
+                TransportPolicy.ForceWebSocket => TransportId.WebSocket,
                 _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "Unknown transport policy."),
             };
         }

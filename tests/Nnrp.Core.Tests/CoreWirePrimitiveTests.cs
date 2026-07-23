@@ -170,8 +170,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal(0x00000020U, (uint)PayloadKind.ToolDelta);
             Assert.Equal(0x00000040U, (uint)PayloadKind.OpaqueBytes);
             Assert.Equal(0x0000007FU, PayloadKindValidator.AllowedPayloadKindBits);
+            Assert.Equal(1U, (uint)TransportId.Quic);
             Assert.Equal(2U, (uint)TransportId.Tcp);
-            Assert.Equal(4, (byte)TransportPolicy.ForceTcp);
+            Assert.Equal(3U, (uint)TransportId.Ipc);
+            Assert.Equal(4U, (uint)TransportId.WebSocket);
+            Assert.Equal(3, (byte)TransportPolicy.PreferIpc);
+            Assert.Equal(4, (byte)TransportPolicy.PreferWebSocket);
+            Assert.Equal(5, (byte)TransportPolicy.ForceQuic);
+            Assert.Equal(6, (byte)TransportPolicy.ForceTcp);
+            Assert.Equal(7, (byte)TransportPolicy.ForceIpc);
+            Assert.Equal(8, (byte)TransportPolicy.ForceWebSocket);
             Assert.Equal(3, (byte)LossTolerance.FireAndForget);
             Assert.Equal(6U, (uint)CacheObjectKind.PayloadLayoutTemplate);
             Assert.Equal(0x0000000FU, SubmitObjectReferenceMask.AllowedBits);

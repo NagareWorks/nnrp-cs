@@ -665,6 +665,12 @@ namespace Nnrp.Core
 
         /// <summary>TCP transport, encoded as <c>2</c>.</summary>
         Tcp = 2,
+
+        /// <summary>Local IPC transport, encoded as <c>3</c>.</summary>
+        Ipc = 3,
+
+        /// <summary>WebSocket transport, encoded as <c>4</c>.</summary>
+        WebSocket = 4,
     }
 
     /// <summary>
@@ -681,11 +687,23 @@ namespace Nnrp.Core
         /// <summary>Prefer TCP when probing, encoded as <c>2</c>.</summary>
         PreferTcp = 2,
 
-        /// <summary>Force QUIC without probing, encoded as <c>3</c>.</summary>
-        ForceQuic = 3,
+        /// <summary>Prefer local IPC when probing, encoded as <c>3</c>.</summary>
+        PreferIpc = 3,
 
-        /// <summary>Force TCP without probing, encoded as <c>4</c>.</summary>
-        ForceTcp = 4,
+        /// <summary>Prefer WebSocket when probing, encoded as <c>4</c>.</summary>
+        PreferWebSocket = 4,
+
+        /// <summary>Force QUIC without probing, encoded as <c>5</c>.</summary>
+        ForceQuic = 5,
+
+        /// <summary>Force TCP without probing, encoded as <c>6</c>.</summary>
+        ForceTcp = 6,
+
+        /// <summary>Force local IPC without probing, encoded as <c>7</c>.</summary>
+        ForceIpc = 7,
+
+        /// <summary>Force WebSocket without probing, encoded as <c>8</c>.</summary>
+        ForceWebSocket = 8,
     }
 
     /// <summary>

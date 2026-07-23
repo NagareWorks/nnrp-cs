@@ -12,9 +12,9 @@
 
 # nnrp-cs
 
-C# bindings and Unity/.NET host surfaces for NNRP preview3.
+C# bindings and Unity/.NET host surfaces for NNRP Preview4.
 
-The preview3 runtime path is Rust-backed. `Nnrp.NativeBridge` loads packaged `nnrp-rs` `nnrp_ffi` artifacts and probes the ABI/protocol/feature flags. `Nnrp.Transport.Tcp` and `Nnrp.Transport.Quic` own the transport-specific native entry surfaces that pin the selected transport before opening native connection, session, server, event polling, control, and cancellation facades. Managed client/server helpers remain diagnostic or unsupported-runtime surfaces for fixture inspection, conformance support, and local host development.
+The Preview4 runtime path is Rust-backed. `Nnrp.NativeBridge` loads packaged `nnrp-rs` provider artifacts and probes the ABI, protocol, and feature flags. Each transport package owns its transport-specific native entry surface and pins the selected transport before opening native connection, session, server, event polling, control, and cancellation facades. Managed client/server helpers remain diagnostic or unsupported-runtime surfaces for fixture inspection, conformance support, and local host development.
 
 Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-doc/.
 
@@ -23,7 +23,7 @@ Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-
 | Package | Role |
 | --- | --- |
 | `Nnrp.Core` | Protocol enums, fixed-layout codecs, state machines, capability negotiation, and conformance-oriented models. |
-| `Nnrp.NativeBridge` | Rust-backed preview3 FFI substrate, artifact loading, ABI probing, and raw native handle facades. |
+| `Nnrp.NativeBridge` | Rust-backed Preview4 FFI substrate, artifact loading, ABI probing, and raw native handle facades. |
 | `Nnrp.Client` | Managed diagnostic client helpers for fixture and unsupported-runtime scenarios. |
 | `Nnrp.Server` | Managed diagnostic server helpers for fixture and unsupported-runtime scenarios. |
 | `Nnrp.Transport.Tcp` | TCP native transport entry surface plus managed diagnostic TCP framed transport adapter. |
@@ -40,7 +40,7 @@ dotnet add package Nnrp.Transport.Tcp --version <published-version>
 
 Unity package generation is also CI owned. The Unity package is expected to contain managed assemblies plus platform-specific native plugins under Unity importer-aware plugin paths.
 
-The common preview3 native platform scope is Windows, macOS, Linux, Android, and iOS across the RIDs represented in the package layout.
+The common Preview4 native platform scope is Windows, macOS, Linux, Android, and iOS across the RIDs represented in the package layout.
 
 Reviewer-facing packaging policy and CI-owned release rules are documented in [doc/packaging/ci-first-package-strategy.md](./doc/packaging/ci-first-package-strategy.md).
 
@@ -96,7 +96,7 @@ serverHost.SendResult(sessionId: 1, operation, payload: Array.Empty<byte>());
 ## Repository Layout
 
 - `src/Nnrp.Core/`: protocol models, fixed-width codecs, negotiation, and state machines.
-- `src/Nnrp.NativeBridge/`: preview3 Rust-backed native runtime substrate and artifact packaging.
+- `src/Nnrp.NativeBridge/`: Preview4 Rust-backed native runtime substrate and artifact packaging.
 - `src/Nnrp.Client/`: managed diagnostic client helpers.
 - `src/Nnrp.Server/`: managed diagnostic server helpers.
 - `src/Nnrp.Transport.Tcp/`: TCP native transport entry surface and managed diagnostic TCP transport adapter.

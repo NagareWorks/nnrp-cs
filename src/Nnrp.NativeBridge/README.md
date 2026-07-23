@@ -1,12 +1,12 @@
 # Nnrp.NativeBridge
 
-Nnrp.NativeBridge provides the Rust-backed preview3 runtime entry point for C# hosts.
+Nnrp.NativeBridge provides the Rust-backed Preview4 runtime entry point for C# hosts.
 
 Use this package when you want client connection/session bootstrap, submit/result polling, cancellation, and control paths to run through the packaged `nnrp-rs` native artifacts. `NnrpNativeRuntimeSessionHost` is the recommended high-level facade when an application wants one native-backed session surface instead of manually assembling handles.
 
-The default preview3 path is native-backed and fails fast when the packaged artifact is missing or incompatible. Managed fallback backends are explicit diagnostic or unsupported-runtime hooks; set `FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics` only for tests, fixture inspection, or hosts that intentionally run without native artifacts.
+The default Preview4 path is native-backed and fails fast when the packaged artifact is missing or incompatible. Managed fallback backends are explicit diagnostic or unsupported-runtime hooks; set `FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics` only for tests, fixture inspection, or hosts that intentionally run without native artifacts.
 
-This package depends on `Nnrp.Core` and may include runtime-specific native binaries when they are present during packing. It does not depend on the managed client/server or managed TCP adapter packages for the preview3 runtime path.
+This package depends on `Nnrp.Core` and may include runtime-specific native binaries when they are present during packing. It does not depend on the managed client/server or managed transport adapter packages for the Preview4 runtime path.
 
 Install:
 
@@ -169,7 +169,7 @@ Unity APIs must only be touched from Unity's main thread. Native event payloads 
 
 Borrowed native buffer views are intentionally scoped to the native call or poll result that owns them. `NnrpNativeBuffer.BorrowView()` is for immediate submit/control/result calls; do not cache the returned `NnrpBufferView`, expose it through user callbacks, or enqueue it across frames. Every polled event/result body that crosses the public managed host surface is copied into a managed snapshot. Any public borrowed-view surface must use an explicit scoped owner that cannot outlive the native connection, session, operation, or buffer handle.
 
-Close the session or connection after the owner loop has stopped polling. `Dispose` closes the native handles and clears buffered connection events; callbacks or queued work owned by the application should be cancelled before disposing the host facade. The preview3 FFI already exposes dispatch through `NnrpCallbackSink` and `nnrp_dispatch_event`; C# must not invent an additional subscription-handle abstraction outside that frozen contract. `NnrpCallbackSink.None` is the only valid unbound sink. Managed callback consumers must create non-empty sinks with `NnrpCallbackSink.Create` and treat the sink as owned by the native handle whose events it receives. Callbacks may enqueue managed snapshots, but Unity object mutation remains main-thread dispatch only.
+Close the session or connection after the owner loop has stopped polling. `Dispose` closes the native handles and clears buffered connection events; callbacks or queued work owned by the application should be cancelled before disposing the host facade. The Preview4 FFI exposes dispatch through `NnrpCallbackSink` and `nnrp_dispatch_event`; C# must not invent an additional subscription-handle abstraction outside that frozen contract. `NnrpCallbackSink.None` is the only valid unbound sink. Managed callback consumers must create non-empty sinks with `NnrpCallbackSink.Create` and treat the sink as owned by the native handle whose events it receives. Callbacks may enqueue managed snapshots, but Unity object mutation remains main-thread dispatch only.
 
 Repository and full SDK documentation:
 

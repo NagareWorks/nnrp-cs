@@ -1,6 +1,6 @@
 # com.nnrp.client
 
-Version: 1.0.0-preview.3.1
+Version: 1.0.0-preview.4
 
 This tracked package definition exists so OpenUPM can discover the package metadata directly from the repository.
 

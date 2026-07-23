@@ -1,6 +1,6 @@
 # Nnrp.Transport.Quic
 
-Nnrp.Transport.Quic owns the QUIC entry surface for NNRP preview3 hosts.
+Nnrp.Transport.Quic owns the QUIC entry surface for NNRP Preview4 hosts.
 
 Install this package when the host should expose QUIC as an installed transport candidate. The package provides
 transport-specific native runtime options and factory methods that pin the QUIC transport id before calling into

@@ -140,6 +140,8 @@ namespace Nnrp.NativeBridge.Tests
         [Theory]
         [InlineData("tcp", "libnnrp_ffi_tcp.so")]
         [InlineData("quic", "libnnrp_ffi_quic.so")]
+        [InlineData("ipc", "libnnrp_ffi_ipc.so")]
+        [InlineData("websocket", "libnnrp_ffi_websocket.so")]
         public void ResolveTransportUsesTransportScopedNuGetRuntimeNativeLayout(
             string transportScope,
             string libraryName)
@@ -177,6 +179,8 @@ namespace Nnrp.NativeBridge.Tests
         [InlineData("windows", "quic", "nnrp_ffi_quic.dll")]
         [InlineData("linux", "tcp", "libnnrp_ffi_tcp.so")]
         [InlineData("linux", "quic", "libnnrp_ffi_quic.so")]
+        [InlineData("linux", "ipc", "libnnrp_ffi_ipc.so")]
+        [InlineData("linux", "websocket", "libnnrp_ffi_websocket.so")]
         [InlineData("darwin", "tcp", "libnnrp_ffi_tcp.dylib")]
         [InlineData("darwin", "quic", "libnnrp_ffi_quic.dylib")]
         [InlineData("ios", "tcp", "libnnrp_ffi_tcp.a")]
@@ -194,10 +198,33 @@ namespace Nnrp.NativeBridge.Tests
         {
             Assert.Equal("tcp", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotTcp));
             Assert.Equal("quic", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotQuic));
+            Assert.Equal("ipc", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotIpc));
+            Assert.Equal("websocket", NnrpNativeArtifact.TransportScopeFromTransportId(NnrpNativeArtifact.TransportSlotWebSocket));
 
             var error = Assert.Throws<NnrpNativeArtifactException>(() =>
                 NnrpNativeArtifact.TransportScopeFromTransportId(0x80000000));
             Assert.Contains("Unsupported native transport id", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Preview4CacheLeaseInteropLayoutMatchesAbi4()
+        {
+            Assert.Equal(24, Marshal.SizeOf<NnrpCacheObjectId>());
+            Assert.Equal(0, Marshal.OffsetOf<NnrpCacheObjectId>(nameof(NnrpCacheObjectId.CacheNamespace)).ToInt32());
+            Assert.Equal(4, Marshal.OffsetOf<NnrpCacheObjectId>(nameof(NnrpCacheObjectId.ObjectKind)).ToInt32());
+            Assert.Equal(8, Marshal.OffsetOf<NnrpCacheObjectId>(nameof(NnrpCacheObjectId.CacheKeyHigh)).ToInt32());
+            Assert.Equal(16, Marshal.OffsetOf<NnrpCacheObjectId>(nameof(NnrpCacheObjectId.CacheKeyLow)).ToInt32());
+
+            Assert.Equal(96, Marshal.SizeOf<NnrpCacheLeaseResult>());
+            Assert.Equal(0, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.OutcomeCode)).ToInt32());
+            Assert.Equal(8, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.LeaseHandle)).ToInt32());
+            Assert.Equal(32, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.ObjectId)).ToInt32());
+            Assert.Equal(56, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.ObjectVersion)).ToInt32());
+            Assert.Equal(64, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.LeaseId)).ToInt32());
+            Assert.Equal(72, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.OwnerScope)).ToInt32());
+            Assert.Equal(76, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.TtlMilliseconds)).ToInt32());
+            Assert.Equal(80, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.OwnerId)).ToInt32());
+            Assert.Equal(88, Marshal.OffsetOf<NnrpCacheLeaseResult>(nameof(NnrpCacheLeaseResult.GrantedAtMilliseconds)).ToInt32());
         }
 
         [Fact]
@@ -249,8 +276,8 @@ namespace Nnrp.NativeBridge.Tests
                 runtimeCapabilities: () => MatchingCapabilities());
 
             Assert.Equal("fake-path", result.ArtifactPath);
-            Assert.Equal(1, result.AbiMajor);
-            Assert.Equal(NnrpNativeArtifact.MinimumAbiMinor, result.AbiMinor);
+            Assert.Equal(NnrpNativeArtifact.ExpectedAbiMajor, result.AbiMajor);
+            Assert.Equal(NnrpNativeArtifact.ExpectedAbiMinor, result.AbiMinor);
             Assert.Equal(0, result.AbiPatch);
             Assert.Equal(1, result.ProtocolMajor);
             Assert.Equal(0, result.ProtocolWireFormat);
@@ -298,13 +325,19 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Contains("protocol mismatch", error.Message, StringComparison.Ordinal);
         }
 
-        [Fact]
-        public void ProbeRejectsAbiMismatch()
+        [Theory]
+        [InlineData(3, 0, 0)]
+        [InlineData(4, 1, 0)]
+        [InlineData(4, 0, 1)]
+        public void ProbeRejectsAbiMismatch(ushort abiMajor, ushort abiMinor, ushort abiPatch)
         {
             var error = Assert.Throws<NnrpNativeArtifactException>(() =>
                 NnrpNativeArtifact.Probe(
                     "fake-path",
-                    runtimeCapabilities: () => MatchingCapabilities(abiMajor: 2)));
+                    runtimeCapabilities: () => MatchingCapabilities(
+                        abiMajor: abiMajor,
+                        abiMinor: abiMinor,
+                        abiPatch: abiPatch)));
 
             Assert.Contains("ABI mismatch", error.Message, StringComparison.Ordinal);
         }
@@ -547,7 +580,7 @@ namespace Nnrp.NativeBridge.Tests
             var entrypoints = CreateEntrypoints();
 
             Assert.Equal(1, entrypoints.CurrentProtocolVersion().Major);
-            Assert.Equal(1, entrypoints.RuntimeCapabilities().AbiMajor);
+            Assert.Equal(NnrpNativeArtifact.ExpectedAbiMajor, entrypoints.RuntimeCapabilities().AbiMajor);
 
             NnrpHandle handle;
             Assert.True(entrypoints.ConnectionBootstrap(new NnrpConnectionBootstrap(1, 1, 2), out handle).Succeeded);
@@ -670,7 +703,10 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, leaseResult.OutcomeCode);
             Assert.Equal(NnrpHandleKind.CacheLease, leaseResult.LeaseHandle.Kind);
             Assert.True(entrypoints.CacheTouch(MatchingCacheLeaseRequest(), out leaseResult).Succeeded);
-            Assert.Equal((ulong)2500, leaseResult.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1000, leaseResult.GrantedAtMilliseconds);
+            Assert.Equal((uint)1500, leaseResult.TtlMilliseconds);
+            Assert.Equal((uint)1, leaseResult.OwnerScope);
+            Assert.Equal((ulong)3, leaseResult.OwnerId);
 
             var objects = new[] { MatchingCacheObjectId(), new NnrpCacheObjectId(5, 6, 7, 8) };
             var results = new NnrpCacheLeaseResult[objects.Length];
@@ -739,9 +775,11 @@ namespace Nnrp.NativeBridge.Tests
             var release = cache.Release(new NnrpCacheLeaseHandle(query.LeaseHandle));
 
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
-            Assert.Equal((ulong)2000, query.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1500, query.GrantedAtMilliseconds);
+            Assert.Equal((uint)500, query.TtlMilliseconds);
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, touch.OutcomeCode);
-            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1000, touch.GrantedAtMilliseconds);
+            Assert.Equal((uint)1500, touch.TtlMilliseconds);
             Assert.Equal(2, prefetch.Length);
             Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
             Assert.Equal((uint)5, prefetch[1].ObjectId.CacheNamespace);
@@ -1830,7 +1868,8 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((ulong)98, operation.OperationId);
             Assert.Equal((ulong)99, result.OperationId);
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
-            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1000, touch.GrantedAtMilliseconds);
+            Assert.Equal((uint)1500, touch.TtlMilliseconds);
             Assert.Single(prefetch);
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
             Assert.True(host.IsClosed);
@@ -2057,7 +2096,8 @@ namespace Nnrp.NativeBridge.Tests
             var release = host.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
 
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
-            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1000, touch.GrantedAtMilliseconds);
+            Assert.Equal((uint)1500, touch.TtlMilliseconds);
             Assert.Single(prefetch);
             Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
@@ -2575,7 +2615,8 @@ namespace Nnrp.NativeBridge.Tests
             var sessionRelease = session.ReleaseCacheLease(new NnrpCacheLeaseHandle(query.LeaseHandle));
 
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Valid, query.OutcomeCode);
-            Assert.Equal((ulong)2500, touch.ExpiresAtMilliseconds);
+            Assert.Equal((ulong)1000, touch.GrantedAtMilliseconds);
+            Assert.Equal((uint)1500, touch.TtlMilliseconds);
             Assert.Single(prefetch);
             Assert.Equal((uint)1, prefetch[0].ObjectId.CacheNamespace);
             Assert.Equal((uint)NnrpCacheLeaseOutcome.Released, release.OutcomeCode);
@@ -2702,8 +2743,8 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         private static NnrpRuntimeCapabilities MatchingCapabilities(
-            ushort abiMajor = 1,
-            ushort abiMinor = NnrpNativeArtifact.MinimumAbiMinor,
+            ushort abiMajor = NnrpNativeArtifact.ExpectedAbiMajor,
+            ushort abiMinor = NnrpNativeArtifact.ExpectedAbiMinor,
             ushort abiPatch = 0,
             byte protocolMajor = 1,
             byte protocolWireFormat = 0,
@@ -3158,7 +3199,8 @@ namespace Nnrp.NativeBridge.Tests
         private static NnrpCacheLeaseResult CreateCacheLeaseResult(
             NnrpCacheObjectId objectId,
             NnrpCacheLeaseOutcome outcome = NnrpCacheLeaseOutcome.Valid,
-            ulong expiresAtMilliseconds = 2000)
+            ulong grantedAtMilliseconds = 1500,
+            uint ttlMilliseconds = 500)
         {
             return new NnrpCacheLeaseResult(
                 (uint)outcome,
@@ -3166,7 +3208,10 @@ namespace Nnrp.NativeBridge.Tests
                 objectId,
                 9,
                 88,
-                expiresAtMilliseconds);
+                1,
+                ttlMilliseconds,
+                3,
+                grantedAtMilliseconds);
         }
 
         private static NnrpFfiStatus CacheQuery(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
@@ -3177,7 +3222,10 @@ namespace Nnrp.NativeBridge.Tests
 
         private static NnrpFfiStatus CacheTouch(NnrpCacheLeaseRequest request, out NnrpCacheLeaseResult result)
         {
-            result = CreateCacheLeaseResult(request.ObjectId, expiresAtMilliseconds: request.NowMilliseconds + request.TtlMilliseconds + 1000);
+            result = CreateCacheLeaseResult(
+                request.ObjectId,
+                grantedAtMilliseconds: request.NowMilliseconds,
+                ttlMilliseconds: checked(request.TtlMilliseconds + 1000));
             return request.Owner.IsValid ? NnrpFfiStatus.Ok : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle, NnrpErrorFamily.Cache);
         }
 
@@ -3201,7 +3249,10 @@ namespace Nnrp.NativeBridge.Tests
             {
                 var objectId = Marshal.PtrToStructure<NnrpCacheObjectId>(IntPtr.Add(objects, index * objectSize));
                 Marshal.StructureToPtr(
-                    CreateCacheLeaseResult(objectId, expiresAtMilliseconds: nowMilliseconds + ttlMilliseconds + (ulong)index),
+                    CreateCacheLeaseResult(
+                        objectId,
+                        grantedAtMilliseconds: nowMilliseconds,
+                        ttlMilliseconds: checked(ttlMilliseconds + (uint)index)),
                     IntPtr.Add(results, index * resultSize),
                     false);
             }

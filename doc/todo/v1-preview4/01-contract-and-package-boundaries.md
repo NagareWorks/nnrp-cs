@@ -16,13 +16,13 @@
 
 ## Rust Artifact Baseline
 
-- [ ] Pin Rust artifact `1.0.0-preview.4.13` in build metadata.
-- [ ] Probe protocol version.
-- [ ] Probe ABI version.
-- [ ] Probe enabled transport slots.
-- [ ] Probe runtime-control support.
-- [ ] Probe runtime-object support.
-- [ ] Reject mismatched artifacts with deterministic managed diagnostics.
+- [x] Pin Rust artifact `1.0.0-preview.4.15` in build metadata.
+- [x] Probe protocol version.
+- [x] Probe ABI version.
+- [x] Probe enabled transport slots.
+- [x] Probe runtime-control support.
+- [x] Probe runtime-object support.
+- [x] Reject mismatched artifacts with deterministic managed diagnostics.
 
 ## API Surface Policy
 

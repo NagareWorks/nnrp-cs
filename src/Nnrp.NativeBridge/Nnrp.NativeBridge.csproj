@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>Nnrp.NativeBridge</PackageId>
-    <Description>Rust-backed preview3 native bridge facade and packaged native assets for NNRP hosts.</Description>
+    <Description>Rust-backed Preview4 native bridge facade and packaged native assets for NNRP hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
