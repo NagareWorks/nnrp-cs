@@ -154,7 +154,7 @@ namespace Nnrp.Core.Tests
         {
             var message = new CacheInvalidateMessage(
                 new NnrpHeader(1, NnrpHeader.CurrentWireFormat, MessageType.CacheInvalidate, HeaderFlags.None, CacheInvalidateMetadata.MetadataLength, 0, 5, 0, 0, 0, 0),
-                new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 1, 2, 3, 4));
+                new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 2, 3, 4));
 
             Assert.True(CacheInvalidateMessage.TryParse(message.ToArray(), out var parsed, out var error));
             Assert.Equal(NnrpParseError.None, error);

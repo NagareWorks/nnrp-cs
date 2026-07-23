@@ -24,7 +24,7 @@
 
 - [x] Add cache reference record.
 - [x] Add cache miss record.
-- [ ] Add cache invalidate record.
+- [x] Add cache invalidate record.
 - [x] Add cache lease metadata.
 - [ ] Add cache policy options.
 - [x] Keep cache reference behavior explicit per request/profile.

@@ -3,21 +3,20 @@ using System;
 namespace Nnrp.Core
 {
     /// <summary>
-    /// A cache key that matches the current cache-key wire layout:
-    /// (namespaceId, keyHigh, keyLow) — three uint32 values.
+    /// A cache key that matches the current cache-key wire layout.
     /// </summary>
     public readonly struct NnrpCacheKey : IEquatable<NnrpCacheKey>
     {
-        public NnrpCacheKey(ushort namespaceId, uint keyHigh, uint keyLow)
+        public NnrpCacheKey(uint namespaceId, ulong keyHigh, ulong keyLow)
         {
             NamespaceId = namespaceId;
             KeyHigh = keyHigh;
             KeyLow = keyLow;
         }
 
-        public ushort NamespaceId { get; }
-        public uint KeyHigh { get; }
-        public uint KeyLow { get; }
+        public uint NamespaceId { get; }
+        public ulong KeyHigh { get; }
+        public ulong KeyLow { get; }
 
         public bool Equals(NnrpCacheKey other)
         {
@@ -39,12 +38,12 @@ namespace Nnrp.Core
 
         public static NnrpCacheKey FromCachePutMetadata(CachePutMetadata metadata)
         {
-            return new NnrpCacheKey((ushort)metadata.CacheNamespace, metadata.CacheKeyHigh, metadata.CacheKeyLow);
+            return new NnrpCacheKey(metadata.CacheNamespace, metadata.CacheKeyHigh, metadata.CacheKeyLow);
         }
 
         public static NnrpCacheKey FromCacheInvalidateMetadata(CacheInvalidateMetadata metadata)
         {
-            return new NnrpCacheKey((ushort)metadata.CacheNamespace, metadata.CacheKeyHigh, metadata.CacheKeyLow);
+            return new NnrpCacheKey(metadata.CacheNamespace, metadata.CacheKeyHigh, metadata.CacheKeyLow);
         }
     }
 }

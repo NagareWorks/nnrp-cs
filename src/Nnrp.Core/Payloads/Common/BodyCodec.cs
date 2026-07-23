@@ -131,8 +131,8 @@ namespace Nnrp.Core
         public static ObjectReferenceBlock BuildObjectReferenceBlock(
             CacheObjectKind objectKind,
             uint cacheNamespace,
-            uint cacheKeyHigh,
-            uint cacheKeyLow)
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow)
         {
             return new ObjectReferenceBlock(
                 objectKind,
@@ -164,7 +164,6 @@ namespace Nnrp.Core
             {
                 if (!ObjectReferenceBlock.TryParse(
                         region.Slice(index * ObjectReferenceBlock.BlockLength, ObjectReferenceBlock.BlockLength).Span,
-                        strict: true,
                         out blocks[index],
                         out error))
                 {

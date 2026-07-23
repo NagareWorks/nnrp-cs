@@ -4,12 +4,12 @@ namespace Nnrp.Core
 {
     public readonly struct CachePutMetadata : IEquatable<CachePutMetadata>
     {
-        public const int MetadataLength = 8 * sizeof(uint);
+        public const int MetadataLength = 40;
 
         public CachePutMetadata(
             uint cacheNamespace,
-            uint cacheKeyHigh,
-            uint cacheKeyLow,
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow,
             CacheObjectKind objectKind,
             uint ttlMilliseconds,
             uint objectBytes,
@@ -37,8 +37,8 @@ namespace Nnrp.Core
         }
 
         public uint CacheNamespace { get; }
-        public uint CacheKeyHigh { get; }
-        public uint CacheKeyLow { get; }
+        public ulong CacheKeyHigh { get; }
+        public ulong CacheKeyLow { get; }
         public CacheObjectKind ObjectKind { get; }
         public uint TtlMilliseconds { get; }
         public uint ObjectBytes { get; }
@@ -68,9 +68,9 @@ namespace Nnrp.Core
 
             var writer = new FixedBinaryWriter(destination);
             if (!writer.TryWriteUInt32(CacheNamespace)
-                || !writer.TryWriteUInt32(CacheKeyHigh)
-                || !writer.TryWriteUInt32(CacheKeyLow)
                 || !writer.TryWriteUInt32(wireObjectKind)
+                || !writer.TryWriteUInt64(CacheKeyHigh)
+                || !writer.TryWriteUInt64(CacheKeyLow)
                 || !writer.TryWriteUInt32(TtlMilliseconds)
                 || !writer.TryWriteUInt32(ObjectBytes)
                 || !writer.TryWriteUInt32(CodecBitmap)
@@ -107,9 +107,9 @@ namespace Nnrp.Core
 
             var reader = new FixedBinaryReader(source);
             if (!reader.TryReadUInt32(out var cacheNamespace)
-                || !reader.TryReadUInt32(out var cacheKeyHigh)
-                || !reader.TryReadUInt32(out var cacheKeyLow)
                 || !reader.TryReadUInt32(out var objectKind)
+                || !reader.TryReadUInt64(out var cacheKeyHigh)
+                || !reader.TryReadUInt64(out var cacheKeyLow)
                 || !reader.TryReadUInt32(out var ttlMilliseconds)
                 || !reader.TryReadUInt32(out var objectBytes)
                 || !reader.TryReadUInt32(out var codecBitmap)

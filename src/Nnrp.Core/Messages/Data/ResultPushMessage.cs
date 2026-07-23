@@ -890,13 +890,7 @@ namespace Nnrp.Core
             payload = default;
             error = NnrpParseError.None;
 
-            if (block.CacheNamespace > ushort.MaxValue)
-            {
-                error = NnrpParseError.InvalidMessageLayout;
-                return false;
-            }
-
-            var key = new NnrpCacheKey((ushort)block.CacheNamespace, block.CacheKeyHigh, block.CacheKeyLow);
+            var key = new NnrpCacheKey(block.CacheNamespace, block.CacheKeyHigh, block.CacheKeyLow);
             var cacheResult = cacheStore.TryGet(key);
             if (!cacheResult.IsSuccess || cacheResult.Entry == null)
             {

@@ -61,7 +61,7 @@ namespace Nnrp.Core
         {
             error = NnrpParseError.None;
 
-            var previousObjectKey = default((int objectKind, uint cacheNamespace, uint cacheKeyHigh, uint cacheKeyLow)?);
+            var previousObjectKey = default((int objectKind, uint cacheNamespace, ulong cacheKeyHigh, ulong cacheKeyLow)?);
             foreach (var block in objectReferenceBlocks)
             {
                 var currentKey = ((int)block.ObjectKind, block.CacheNamespace, block.CacheKeyHigh, block.CacheKeyLow);

@@ -4,18 +4,23 @@ namespace Nnrp.Core
 {
     public readonly struct CacheInvalidateMetadata : IEquatable<CacheInvalidateMetadata>
     {
-        public const int MetadataLength = 5 * sizeof(uint);
+        public const int MetadataLength = 32;
 
         public CacheInvalidateMetadata(
             CacheInvalidateScope invalidateScope,
             uint cacheNamespace,
-            uint cacheKeyHigh,
-            uint cacheKeyLow,
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow,
             uint reasonCode)
         {
             if (!Enum.IsDefined(typeof(CacheInvalidateScope), invalidateScope))
             {
                 throw new ArgumentOutOfRangeException(nameof(invalidateScope));
+            }
+
+            if (!HasValidIdentityForScope(invalidateScope, cacheNamespace, cacheKeyHigh, cacheKeyLow))
+            {
+                throw new ArgumentException("Cache identity fields must match invalidateScope.", nameof(invalidateScope));
             }
 
             InvalidateScope = invalidateScope;
@@ -27,8 +32,8 @@ namespace Nnrp.Core
 
         public CacheInvalidateScope InvalidateScope { get; }
         public uint CacheNamespace { get; }
-        public uint CacheKeyHigh { get; }
-        public uint CacheKeyLow { get; }
+        public ulong CacheKeyHigh { get; }
+        public ulong CacheKeyLow { get; }
         public uint ReasonCode { get; }
 
         public void Write(Span<byte> destination)
@@ -47,17 +52,13 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if (!TryGetWireInvalidateScope(InvalidateScope, out var wireInvalidateScope))
-            {
-                return false;
-            }
-
             var writer = new FixedBinaryWriter(destination);
-            if (!writer.TryWriteUInt32(wireInvalidateScope)
+            if (!writer.TryWriteUInt32((uint)InvalidateScope)
                 || !writer.TryWriteUInt32(CacheNamespace)
-                || !writer.TryWriteUInt32(CacheKeyHigh)
-                || !writer.TryWriteUInt32(CacheKeyLow)
-                || !writer.TryWriteUInt32(ReasonCode))
+                || !writer.TryWriteUInt64(CacheKeyHigh)
+                || !writer.TryWriteUInt64(CacheKeyLow)
+                || !writer.TryWriteUInt32(ReasonCode)
+                || !writer.TryWriteUInt32(0))
             {
                 return false;
             }
@@ -91,15 +92,28 @@ namespace Nnrp.Core
             var reader = new FixedBinaryReader(source);
             if (!reader.TryReadUInt32(out var invalidateScope)
                 || !reader.TryReadUInt32(out var cacheNamespace)
-                || !reader.TryReadUInt32(out var cacheKeyHigh)
-                || !reader.TryReadUInt32(out var cacheKeyLow)
-                || !reader.TryReadUInt32(out var reasonCode))
+                || !reader.TryReadUInt64(out var cacheKeyHigh)
+                || !reader.TryReadUInt64(out var cacheKeyLow)
+                || !reader.TryReadUInt32(out var reasonCode)
+                || !reader.TryReadUInt32(out var reserved))
             {
                 error = NnrpParseError.SourceTooShort;
                 return false;
             }
 
             if (!TryGetInvalidateScopeFromWire(invalidateScope, out var parsedInvalidateScope))
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
+            if (reserved != 0)
+            {
+                error = NnrpParseError.NonZeroReservedField;
+                return false;
+            }
+
+            if (!HasValidIdentityForScope(parsedInvalidateScope, cacheNamespace, cacheKeyHigh, cacheKeyLow))
             {
                 error = NnrpParseError.InvalidMessageLayout;
                 return false;
@@ -114,10 +128,28 @@ namespace Nnrp.Core
             return true;
         }
 
-        private static bool TryGetWireInvalidateScope(CacheInvalidateScope invalidateScope, out uint wireInvalidateScope)
+        private static bool HasValidIdentityForScope(
+            CacheInvalidateScope invalidateScope,
+            uint cacheNamespace,
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow)
         {
-            wireInvalidateScope = (uint)invalidateScope;
-            return Enum.IsDefined(typeof(CacheInvalidateScope), invalidateScope);
+            if (invalidateScope == CacheInvalidateScope.WholeSession)
+            {
+                return cacheNamespace == 0 && cacheKeyHigh == 0 && cacheKeyLow == 0;
+            }
+
+            if (invalidateScope == CacheInvalidateScope.Namespace)
+            {
+                return cacheKeyHigh == 0 && cacheKeyLow == 0;
+            }
+
+            if (invalidateScope == CacheInvalidateScope.ObjectKind)
+            {
+                return cacheKeyHigh <= uint.MaxValue && cacheKeyLow == 0;
+            }
+
+            return true;
         }
 
         private static bool TryGetInvalidateScopeFromWire(uint wireInvalidateScope, out CacheInvalidateScope invalidateScope)

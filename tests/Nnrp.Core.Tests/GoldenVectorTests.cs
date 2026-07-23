@@ -464,7 +464,7 @@ namespace Nnrp.Core.Tests
         {
             var msg = new CacheInvalidateMessage(
                 new NnrpHeader(1, NnrpHeader.CurrentWireFormat, MessageType.CacheInvalidate, HeaderFlags.None, CacheInvalidateMetadata.MetadataLength, 0, 5, 0, 0, 0, 0),
-                new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 1, 2, 3, 4));
+                new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 2, 3, 4));
             var bytes = msg.ToArray();
             var path = Path.Combine(VectorsDir, "cache_invalidate.bin");
 

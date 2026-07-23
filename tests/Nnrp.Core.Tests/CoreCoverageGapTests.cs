@@ -95,7 +95,7 @@ namespace Nnrp.Core.Tests
                 bodyLength: 0,
                 sessionId: 1, frameId: 0, viewId: 0, routeId: 0, traceId: 0);
             var metadata = new CacheInvalidateMetadata(
-                CacheInvalidateScope.Entry, 1, 0, 0, 0);
+                CacheInvalidateScope.ObjectKey, 1, 0, 0, 0);
             Assert.Throws<ArgumentException>(() =>
                 new CacheInvalidateMessage(invalidHeader, metadata));
         }
@@ -257,10 +257,10 @@ namespace Nnrp.Core.Tests
         [Fact]
         public void CacheInvalidateScopeHasExpectedValues()
         {
-            Assert.Equal((uint)0, (uint)CacheInvalidateScope.Session);
+            Assert.Equal((uint)0, (uint)CacheInvalidateScope.WholeSession);
             Assert.Equal((uint)1, (uint)CacheInvalidateScope.Namespace);
             Assert.Equal((uint)2, (uint)CacheInvalidateScope.ObjectKind);
-            Assert.Equal((uint)3, (uint)CacheInvalidateScope.Entry);
+            Assert.Equal((uint)3, (uint)CacheInvalidateScope.ObjectKey);
         }
 
         [Fact]
@@ -433,7 +433,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(ackMeta.CacheNamespace, parsedAck.CacheNamespace);
 
             // CacheInvalidateMetadata
-            var invMeta = new CacheInvalidateMetadata(CacheInvalidateScope.Entry, 1, 0xAA, 0xBB, 0);
+            var invMeta = new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 0xAA, 0xBB, 0);
             Assert.True(CacheInvalidateMetadata.TryParse(invMeta.ToArray(), out var parsedInv, out _));
             Assert.Equal(invMeta.CacheNamespace, parsedInv.CacheNamespace);
         }

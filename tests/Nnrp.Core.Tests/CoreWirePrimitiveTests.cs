@@ -602,25 +602,35 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void ObjectReferenceBlockRoundTripsAndRejectsReferenceFlagsInStrictMode()
+        public void ObjectReferenceBlockRoundTripsFullWidthIdentityAndRejectsReferenceFlags()
         {
             var block = new ObjectReferenceBlock(
                 CacheObjectKind.TensorSectionTable,
                 referenceFlags: 0,
-                cacheNamespace: 3,
-                cacheKeyHigh: 11,
-                cacheKeyLow: 19);
+                cacheNamespace: 0xF1234567,
+                cacheKeyHigh: 0xFEDCBA9876543210,
+                cacheKeyLow: 0x89ABCDEF01234567);
 
             var payload = block.ToArray();
 
             Assert.Equal(ObjectReferenceBlock.BlockLength, payload.Length);
-            Assert.True(ObjectReferenceBlock.TryParse(payload, strict: true, out var parsed, out var error));
+            Assert.True(ObjectReferenceBlock.TryParse(payload, out var parsed, out var error));
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(block, parsed);
 
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new ObjectReferenceBlock((CacheObjectKind)0, 0, 0, 0, 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new ObjectReferenceBlock(CacheObjectKind.CameraBlock, 1, 0, 0, 0));
+
             payload[2] = 1;
-            Assert.False(ObjectReferenceBlock.TryParse(payload, strict: true, out _, out error));
+            Assert.False(ObjectReferenceBlock.TryParse(payload, out _, out error));
             Assert.Equal(NnrpParseError.NonZeroReservedField, error);
+
+            payload = block.ToArray();
+            payload[0] = 0;
+            Assert.False(ObjectReferenceBlock.TryParse(payload, out _, out error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
         }
 
         [Fact]

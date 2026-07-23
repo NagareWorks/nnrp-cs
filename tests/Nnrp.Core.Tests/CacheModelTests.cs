@@ -30,7 +30,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(key1, NnrpCacheKey.FromCachePutMetadata(putMetadata));
 
             var invalidateMetadata = new CacheInvalidateMetadata(
-                invalidateScope: CacheInvalidateScope.Entry,
+                invalidateScope: CacheInvalidateScope.ObjectKey,
                 cacheNamespace: 1,
                 cacheKeyHigh: 0xCAFE,
                 cacheKeyLow: 0xBEEF,
@@ -356,13 +356,13 @@ namespace Nnrp.Core.Tests
             Assert.False(query.MatchesLease(CreateLease(objectVersion: 8)));
             Assert.False(query.MatchesLease(CreateLease(leaseId: 100)));
 
-            Assert.True(query.TryCreateObjectReference(referenceFlags: 7, out var block));
+            Assert.True(query.TryCreateObjectReference(out var block));
             Assert.Equal(lease.ObjectId.ObjectKind, block.ObjectKind);
-            Assert.Equal(7, block.ReferenceFlags);
+            Assert.Equal(0, block.ReferenceFlags);
             Assert.Equal(lease.ObjectId.CacheNamespace, block.CacheNamespace);
             Assert.Equal(lease.ObjectId.CacheKeyHigh, block.CacheKeyHigh);
             Assert.Equal(lease.ObjectId.CacheKeyLow, block.CacheKeyLow);
-            Assert.Equal(block, query.CreateObjectReference(referenceFlags: 7));
+            Assert.Equal(block, query.CreateObjectReference());
 
             Assert.False(query.TryCreatePrefetchMetadata(out _));
             Assert.False(query.TryCreateReleaseMetadata(out _));
@@ -397,7 +397,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(42ul, touch.OwnerId);
             Assert.Equal(2000u, touch.LeaseTtlHintMilliseconds);
             Assert.True(touch.MatchesLease(lease));
-            Assert.False(touch.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(touch.TryCreateObjectReference(out _));
             Assert.False(touch.TryCreatePrefetchMetadata(out _));
             Assert.False(touch.TryCreateReleaseMetadata(out _));
 
@@ -419,7 +419,7 @@ namespace Nnrp.Core.Tests
 
             Assert.Equal(NnrpCacheHostAction.Prefetch, prefetch.Action);
             Assert.False(prefetch.CarriesLeaseIdentity);
-            Assert.False(prefetch.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(prefetch.TryCreateObjectReference(out _));
             Assert.False(prefetch.TryCreateReleaseMetadata(out _));
             Assert.True(prefetch.TryCreatePrefetchMetadata(out var putMetadata));
             Assert.Equal(putMetadata, prefetch.CreatePrefetchMetadata());
@@ -438,7 +438,7 @@ namespace Nnrp.Core.Tests
             var release = NnrpCacheHostCommand.Release(objectId, reasonCode: 77);
             Assert.Equal(NnrpCacheHostAction.Release, release.Action);
             Assert.False(release.CarriesLeaseIdentity);
-            Assert.False(release.TryCreateObjectReference(referenceFlags: 0, out _));
+            Assert.False(release.TryCreateObjectReference(out _));
             Assert.False(release.TryCreatePrefetchMetadata(out _));
             Assert.True(release.TryCreateReleaseMetadata(out var invalidateMetadata));
             Assert.Equal(invalidateMetadata, release.CreateReleaseMetadata());
@@ -585,7 +585,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(new byte[] { 1, 2, 3 }, parsed.ObjectBytes.ToArray());
 
             var invalidateMetadata = new CacheInvalidateMetadata(
-                invalidateScope: CacheInvalidateScope.Entry,
+                invalidateScope: CacheInvalidateScope.ObjectKey,
                 cacheNamespace: 1,
                 cacheKeyHigh: 0xCAFE,
                 cacheKeyLow: 0xBEEF,
@@ -611,32 +611,60 @@ namespace Nnrp.Core.Tests
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 new CachePutMetadata(1, 2, 3, (CacheObjectKind)0, 1000, 3, 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new CacheAckMetadata(1, 2, 3, (CacheAckStatus)3, 1000, 3, 1));
 
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 new CacheInvalidateMetadata((CacheInvalidateScope)4, 1, 2, 3, 0));
+            Assert.Throws<ArgumentException>(() =>
+                new CacheInvalidateMetadata(CacheInvalidateScope.WholeSession, 1, 0, 0, 0));
+            Assert.Throws<ArgumentException>(() =>
+                new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 1, 2, 0, 0));
+            Assert.Throws<ArgumentException>(() =>
+                new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKind, 1, 2, 3, 0));
 
             var putPayload = new byte[CachePutMetadata.MetadataLength];
             BitConverter.GetBytes(1u).CopyTo(putPayload, 0);
-            BitConverter.GetBytes(2u).CopyTo(putPayload, 4);
-            BitConverter.GetBytes(3u).CopyTo(putPayload, 8);
-            BitConverter.GetBytes(0u).CopyTo(putPayload, 12);
-            BitConverter.GetBytes(1000u).CopyTo(putPayload, 16);
-            BitConverter.GetBytes(64u).CopyTo(putPayload, 20);
-            BitConverter.GetBytes(1u).CopyTo(putPayload, 24);
-            BitConverter.GetBytes(0u).CopyTo(putPayload, 28);
+            BitConverter.GetBytes(0u).CopyTo(putPayload, 4);
+            BitConverter.GetBytes(2ul).CopyTo(putPayload, 8);
+            BitConverter.GetBytes(3ul).CopyTo(putPayload, 16);
+            BitConverter.GetBytes(1000u).CopyTo(putPayload, 24);
+            BitConverter.GetBytes(64u).CopyTo(putPayload, 28);
+            BitConverter.GetBytes(1u).CopyTo(putPayload, 32);
+            BitConverter.GetBytes(0u).CopyTo(putPayload, 36);
 
             Assert.False(CachePutMetadata.TryParse(putPayload, out _, out var putError));
             Assert.Equal(NnrpParseError.InvalidMessageLayout, putError);
 
+            var ackPayload = new CacheAckMetadata(1, 2, 3, CacheAckStatus.Accepted, 1000, 64, 0).ToArray();
+            BitConverter.GetBytes(3u).CopyTo(ackPayload, 4);
+            Assert.False(CacheAckMetadata.TryParse(ackPayload, out _, out var ackStatusError));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, ackStatusError);
+
+            ackPayload = new CacheAckMetadata(1, 2, 3, CacheAckStatus.Accepted, 1000, 64, 0).ToArray();
+            BitConverter.GetBytes(1u).CopyTo(ackPayload, 36);
+            Assert.False(CacheAckMetadata.TryParse(ackPayload, out _, out var ackReservedError));
+            Assert.Equal(NnrpParseError.NonZeroReservedField, ackReservedError);
+
             var invalidatePayload = new byte[CacheInvalidateMetadata.MetadataLength];
             BitConverter.GetBytes(4u).CopyTo(invalidatePayload, 0);
             BitConverter.GetBytes(1u).CopyTo(invalidatePayload, 4);
-            BitConverter.GetBytes(2u).CopyTo(invalidatePayload, 8);
-            BitConverter.GetBytes(3u).CopyTo(invalidatePayload, 12);
-            BitConverter.GetBytes(0u).CopyTo(invalidatePayload, 16);
+            BitConverter.GetBytes(2ul).CopyTo(invalidatePayload, 8);
+            BitConverter.GetBytes(3ul).CopyTo(invalidatePayload, 16);
+            BitConverter.GetBytes(0u).CopyTo(invalidatePayload, 24);
 
             Assert.False(CacheInvalidateMetadata.TryParse(invalidatePayload, out _, out var invalidateError));
             Assert.Equal(NnrpParseError.InvalidMessageLayout, invalidateError);
+
+            invalidatePayload = new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 2, 3, 0).ToArray();
+            BitConverter.GetBytes(1u).CopyTo(invalidatePayload, 0);
+            Assert.False(CacheInvalidateMetadata.TryParse(invalidatePayload, out _, out var invalidateIdentityError));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, invalidateIdentityError);
+
+            invalidatePayload = new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 2, 3, 0).ToArray();
+            BitConverter.GetBytes(1u).CopyTo(invalidatePayload, 28);
+            Assert.False(CacheInvalidateMetadata.TryParse(invalidatePayload, out _, out var invalidateReservedError));
+            Assert.Equal(NnrpParseError.NonZeroReservedField, invalidateReservedError);
         }
 
         [Fact]

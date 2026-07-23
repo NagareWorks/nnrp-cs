@@ -1549,7 +1549,7 @@ public static class Program
         var lease = CreateCacheLease(CacheLeaseOwnerScope.Session);
         var query = NnrpCacheHostCommand.Query(lease);
         AssertTrue(query.MatchesLease(lease), "Cache query helper lost lease identity.");
-        AssertTrue(query.TryCreateObjectReference(0, out var reference), "Cache query helper did not create an object reference.");
+        AssertTrue(query.TryCreateObjectReference(out var reference), "Cache query helper did not create an object reference.");
         AssertTrue(
             reference.ObjectKind == lease.ObjectId.ObjectKind
                 && reference.CacheNamespace == lease.ObjectId.CacheNamespace
@@ -1561,7 +1561,7 @@ public static class Program
         AssertTrue(
             !touch.TryCreatePrefetchMetadata(out _)
                 && !touch.TryCreateReleaseMetadata(out _)
-                && !touch.TryCreateObjectReference(0, out _),
+                && !touch.TryCreateObjectReference(out _),
             "Cache touch helper created wire metadata instead of preserving native command ownership.");
 
         var prefetch = NnrpCacheHostCommand.Prefetch(

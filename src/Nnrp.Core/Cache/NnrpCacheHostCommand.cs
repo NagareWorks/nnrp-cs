@@ -178,9 +178,9 @@ namespace Nnrp.Core
                 releaseReasonCode: reasonCode);
         }
 
-        public ObjectReferenceBlock CreateObjectReference(ushort referenceFlags = 0)
+        public ObjectReferenceBlock CreateObjectReference()
         {
-            if (!TryCreateObjectReference(referenceFlags, out var block))
+            if (!TryCreateObjectReference(out var block))
             {
                 throw new InvalidOperationException("Only query commands can create object reference blocks.");
             }
@@ -188,7 +188,7 @@ namespace Nnrp.Core
             return block;
         }
 
-        public bool TryCreateObjectReference(ushort referenceFlags, out ObjectReferenceBlock block)
+        public bool TryCreateObjectReference(out ObjectReferenceBlock block)
         {
             if (Action != NnrpCacheHostAction.Query)
             {
@@ -198,7 +198,7 @@ namespace Nnrp.Core
 
             block = new ObjectReferenceBlock(
                 ObjectId.ObjectKind,
-                referenceFlags,
+                referenceFlags: 0,
                 ObjectId.CacheNamespace,
                 ObjectId.CacheKeyHigh,
                 ObjectId.CacheKeyLow);

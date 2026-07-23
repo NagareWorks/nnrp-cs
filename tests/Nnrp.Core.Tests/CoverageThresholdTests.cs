@@ -199,20 +199,19 @@ namespace Nnrp.Core.Tests
             Assert.False(objectReference.TryWrite(new byte[ObjectReferenceBlock.BlockLength - 1], out var referenceBytesWritten));
             Assert.Equal(0, referenceBytesWritten);
             Assert.Throws<ArgumentException>(() => objectReference.Write(new byte[ObjectReferenceBlock.BlockLength - 1]));
-            Assert.False(ObjectReferenceBlock.TryParse(new byte[ObjectReferenceBlock.BlockLength - 1], strict: true, out _, out var objectShortError));
+            Assert.False(ObjectReferenceBlock.TryParse(new byte[ObjectReferenceBlock.BlockLength - 1], out _, out var objectShortError));
             Assert.Equal(NnrpParseError.SourceTooShort, objectShortError);
-            Assert.True(ObjectReferenceBlock.TryParse(objectReference.ToArray(), strict: true, out var parsedReference, out var objectParseError));
+            Assert.True(ObjectReferenceBlock.TryParse(objectReference.ToArray(), out var parsedReference, out var objectParseError));
             Assert.Equal(NnrpParseError.None, objectParseError);
             Assert.Equal(objectReference, parsedReference);
             Assert.True(objectReference.Equals((object)parsedReference));
             Assert.False(objectReference.Equals("not-reference"));
             Assert.Equal(objectReference.GetHashCode(), parsedReference.GetHashCode());
 
-            var nonStrictReference = new ObjectReferenceBlock(CacheObjectKind.TileIndexBlock, referenceFlags: 2, cacheNamespace: 1, cacheKeyHigh: 2, cacheKeyLow: 3);
-            Assert.True(ObjectReferenceBlock.TryParse(nonStrictReference.ToArray(), strict: false, out _, out var nonStrictReferenceError));
-            Assert.Equal(NnrpParseError.None, nonStrictReferenceError);
-            Assert.False(ObjectReferenceBlock.TryParse(nonStrictReference.ToArray(), strict: true, out _, out var strictReferenceError));
-            Assert.Equal(NnrpParseError.NonZeroReservedField, strictReferenceError);
+            var reservedReference = objectReference.ToArray();
+            reservedReference[2] = 2;
+            Assert.False(ObjectReferenceBlock.TryParse(reservedReference, out _, out var reservedReferenceError));
+            Assert.Equal(NnrpParseError.NonZeroReservedField, reservedReferenceError);
 
             var probeMetadata = new TransportProbeMetadata(probeId: 10, probePayloadBytes: 128, clientSendTimestampMicroseconds: 999);
             Assert.False(probeMetadata.TryWrite(new byte[TransportProbeMetadata.MetadataLength - 1], out var probeBytesWritten));

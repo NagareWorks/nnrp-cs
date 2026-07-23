@@ -584,7 +584,7 @@ namespace Nnrp.Server.Tests
             uint keyLow)
         {
             var metadata = new CacheInvalidateMetadata(
-                invalidateScope: CacheInvalidateScope.Entry,
+                invalidateScope: CacheInvalidateScope.ObjectKey,
                 cacheNamespace: namespaceId,
                 cacheKeyHigh: keyHigh,
                 cacheKeyLow: keyLow,

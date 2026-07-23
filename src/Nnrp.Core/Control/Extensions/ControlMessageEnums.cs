@@ -72,9 +72,6 @@ namespace Nnrp.Core
         Namespace = 1,
         ObjectKind = 2,
         ObjectKey = 3,
-
-        Entry = ObjectKey,
-        Session = WholeSession,
     }
 
     [Flags]

@@ -4,17 +4,22 @@ namespace Nnrp.Core
 {
     public readonly struct CacheAckMetadata : IEquatable<CacheAckMetadata>
     {
-        public const int MetadataLength = 7 * sizeof(uint);
+        public const int MetadataLength = 40;
 
         public CacheAckMetadata(
             uint cacheNamespace,
-            uint cacheKeyHigh,
-            uint cacheKeyLow,
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow,
             CacheAckStatus status,
             uint acceptedTtlMilliseconds,
             uint maxObjectBytes,
             uint detailCode)
         {
+            if (!Enum.IsDefined(typeof(CacheAckStatus), status))
+            {
+                throw new ArgumentOutOfRangeException(nameof(status));
+            }
+
             CacheNamespace = cacheNamespace;
             CacheKeyHigh = cacheKeyHigh;
             CacheKeyLow = cacheKeyLow;
@@ -25,8 +30,8 @@ namespace Nnrp.Core
         }
 
         public uint CacheNamespace { get; }
-        public uint CacheKeyHigh { get; }
-        public uint CacheKeyLow { get; }
+        public ulong CacheKeyHigh { get; }
+        public ulong CacheKeyLow { get; }
         public CacheAckStatus Status { get; }
         public uint AcceptedTtlMilliseconds { get; }
         public uint MaxObjectBytes { get; }
@@ -50,12 +55,13 @@ namespace Nnrp.Core
 
             var writer = new FixedBinaryWriter(destination);
             if (!writer.TryWriteUInt32(CacheNamespace)
-                || !writer.TryWriteUInt32(CacheKeyHigh)
-                || !writer.TryWriteUInt32(CacheKeyLow)
                 || !writer.TryWriteUInt32((uint)Status)
+                || !writer.TryWriteUInt64(CacheKeyHigh)
+                || !writer.TryWriteUInt64(CacheKeyLow)
                 || !writer.TryWriteUInt32(AcceptedTtlMilliseconds)
                 || !writer.TryWriteUInt32(MaxObjectBytes)
-                || !writer.TryWriteUInt32(DetailCode))
+                || !writer.TryWriteUInt32(DetailCode)
+                || !writer.TryWriteUInt32(0))
             {
                 return false;
             }
@@ -88,14 +94,23 @@ namespace Nnrp.Core
 
             var reader = new FixedBinaryReader(source);
             if (!reader.TryReadUInt32(out var cacheNamespace)
-                || !reader.TryReadUInt32(out var cacheKeyHigh)
-                || !reader.TryReadUInt32(out var cacheKeyLow)
                 || !reader.TryReadUInt32(out var status)
+                || !reader.TryReadUInt64(out var cacheKeyHigh)
+                || !reader.TryReadUInt64(out var cacheKeyLow)
                 || !reader.TryReadUInt32(out var acceptedTtlMilliseconds)
                 || !reader.TryReadUInt32(out var maxObjectBytes)
-                || !reader.TryReadUInt32(out var detailCode))
+                || !reader.TryReadUInt32(out var detailCode)
+                || !reader.TryReadUInt32(out var reserved))
             {
                 error = NnrpParseError.SourceTooShort;
+                return false;
+            }
+
+            if (!Enum.IsDefined(typeof(CacheAckStatus), status) || reserved != 0)
+            {
+                error = reserved != 0
+                    ? NnrpParseError.NonZeroReservedField
+                    : NnrpParseError.InvalidMessageLayout;
                 return false;
             }
 

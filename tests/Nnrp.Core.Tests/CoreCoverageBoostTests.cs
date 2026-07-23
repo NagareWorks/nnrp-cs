@@ -33,7 +33,7 @@ namespace Nnrp.Core.Tests
             Assert.False(cacheAck.Equals("not-cache-ack"));
             Assert.Equal(cacheAck.GetHashCode(), parsedAck.GetHashCode());
 
-            var invalidate = new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 4, 5, 6, 7);
+            var invalidate = new CacheInvalidateMetadata(CacheInvalidateScope.Namespace, 4, 0, 0, 7);
             Assert.False(invalidate.TryWrite(new byte[CacheInvalidateMetadata.MetadataLength - 1], out var invalidateWritten));
             Assert.Equal(0, invalidateWritten);
             Assert.Throws<ArgumentException>(() => invalidate.Write(new byte[CacheInvalidateMetadata.MetadataLength - 1]));

@@ -4,15 +4,25 @@ namespace Nnrp.Core
 {
     public readonly struct ObjectReferenceBlock : IEquatable<ObjectReferenceBlock>
     {
-        public const int BlockLength = 16;
+        public const int BlockLength = 24;
 
         public ObjectReferenceBlock(
             CacheObjectKind objectKind,
             ushort referenceFlags,
             uint cacheNamespace,
-            uint cacheKeyHigh,
-            uint cacheKeyLow)
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow)
         {
+            if (!Enum.IsDefined(typeof(CacheObjectKind), objectKind))
+            {
+                throw new ArgumentOutOfRangeException(nameof(objectKind));
+            }
+
+            if (referenceFlags != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(referenceFlags));
+            }
+
             ObjectKind = objectKind;
             ReferenceFlags = referenceFlags;
             CacheNamespace = cacheNamespace;
@@ -26,9 +36,9 @@ namespace Nnrp.Core
 
         public uint CacheNamespace { get; }
 
-        public uint CacheKeyHigh { get; }
+        public ulong CacheKeyHigh { get; }
 
-        public uint CacheKeyLow { get; }
+        public ulong CacheKeyLow { get; }
 
         public void Write(Span<byte> destination)
         {
@@ -50,8 +60,8 @@ namespace Nnrp.Core
             if (!writer.TryWriteUInt16(checked((ushort)ObjectKind))
                 || !writer.TryWriteUInt16(ReferenceFlags)
                 || !writer.TryWriteUInt32(CacheNamespace)
-                || !writer.TryWriteUInt32(CacheKeyHigh)
-                || !writer.TryWriteUInt32(CacheKeyLow))
+                || !writer.TryWriteUInt64(CacheKeyHigh)
+                || !writer.TryWriteUInt64(CacheKeyLow))
             {
                 return false;
             }
@@ -69,10 +79,10 @@ namespace Nnrp.Core
 
         public static bool TryParse(ReadOnlySpan<byte> source, out ObjectReferenceBlock block)
         {
-            return TryParse(source, strict: false, out block, out _);
+            return TryParse(source, out block, out _);
         }
 
-        public static bool TryParse(ReadOnlySpan<byte> source, bool strict, out ObjectReferenceBlock block, out NnrpParseError error)
+        public static bool TryParse(ReadOnlySpan<byte> source, out ObjectReferenceBlock block, out NnrpParseError error)
         {
             block = default;
             error = NnrpParseError.None;
@@ -86,16 +96,18 @@ namespace Nnrp.Core
             if (!reader.TryReadUInt16(out var objectKind)
                 || !reader.TryReadUInt16(out var referenceFlags)
                 || !reader.TryReadUInt32(out var cacheNamespace)
-                || !reader.TryReadUInt32(out var cacheKeyHigh)
-                || !reader.TryReadUInt32(out var cacheKeyLow))
+                || !reader.TryReadUInt64(out var cacheKeyHigh)
+                || !reader.TryReadUInt64(out var cacheKeyLow))
             {
                 error = NnrpParseError.SourceTooShort;
                 return false;
             }
 
-            if (strict && referenceFlags != 0)
+            if (referenceFlags != 0 || !Enum.IsDefined(typeof(CacheObjectKind), (uint)objectKind))
             {
-                error = NnrpParseError.NonZeroReservedField;
+                error = referenceFlags != 0
+                    ? NnrpParseError.NonZeroReservedField
+                    : NnrpParseError.InvalidMessageLayout;
                 return false;
             }
 

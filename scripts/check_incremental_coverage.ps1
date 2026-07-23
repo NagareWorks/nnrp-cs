@@ -77,7 +77,7 @@ foreach ($line in $diffOutput) {
 
     if ($line -match "^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@") {
         $startLine = [int]$matches[1]
-        $lineCount = if ($matches[2]) { [int]$matches[2] } else { 1 }
+        $lineCount = if ($matches[2] -ne "") { [int]$matches[2] } else { 1 }
         if ($lineCount -le 0) {
             continue
         }
@@ -172,6 +172,10 @@ $totalChangedExecutableLines = 0
 $totalCoveredChangedLines = 0
 
 foreach ($changedFile in ($changedFiles.Keys | Sort-Object)) {
+    if ($changedFiles[$changedFile].Count -eq 0) {
+        continue
+    }
+
     if (-not $coverageByFile.ContainsKey($changedFile)) {
         $missingCoverageFiles.Add($changedFile)
         continue

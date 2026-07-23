@@ -4,7 +4,7 @@ namespace Nnrp.Core
 {
     public readonly struct NnrpCacheObjectId : IEquatable<NnrpCacheObjectId>
     {
-        public NnrpCacheObjectId(uint cacheNamespace, uint cacheKeyHigh, uint cacheKeyLow, CacheObjectKind objectKind)
+        public NnrpCacheObjectId(uint cacheNamespace, ulong cacheKeyHigh, ulong cacheKeyLow, CacheObjectKind objectKind)
         {
             if (!Enum.IsDefined(typeof(CacheObjectKind), objectKind))
             {
@@ -19,9 +19,9 @@ namespace Nnrp.Core
 
         public uint CacheNamespace { get; }
 
-        public uint CacheKeyHigh { get; }
+        public ulong CacheKeyHigh { get; }
 
-        public uint CacheKeyLow { get; }
+        public ulong CacheKeyLow { get; }
 
         public CacheObjectKind ObjectKind { get; }
 
@@ -44,7 +44,7 @@ namespace Nnrp.Core
                     return CacheNamespace == metadata.CacheNamespace;
                 case CacheInvalidateScope.ObjectKind:
                     return CacheNamespace == metadata.CacheNamespace
-                        && (uint)ObjectKind == metadata.CacheKeyHigh;
+                        && (ulong)(uint)ObjectKind == metadata.CacheKeyHigh;
                 case CacheInvalidateScope.ObjectKey:
                     return CacheNamespace == metadata.CacheNamespace
                         && CacheKeyHigh == metadata.CacheKeyHigh
