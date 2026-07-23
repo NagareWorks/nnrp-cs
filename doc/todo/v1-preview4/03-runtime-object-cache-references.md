@@ -15,7 +15,7 @@
 - [x] Bind native object descriptor creation.
 - [x] Bind native object descriptor parsing.
 - [x] Bind native object release.
-- [ ] Bind native object delta helpers.
+- [x] Bind native object delta helpers.
 - [x] Bind native-owned metadata buffer release.
 - [x] Add SafeHandle wrappers for native-owned object metadata.
 - [x] Add disposal and use-after-close tests.
@@ -26,7 +26,7 @@
 - [x] Add cache miss record.
 - [x] Add cache invalidate record.
 - [x] Add cache lease metadata.
-- [ ] Add cache policy options.
+- [x] Add cache policy options.
 - [x] Keep cache reference behavior explicit per request/profile.
 - [x] Add tests for typed cache miss diagnostics.
 

@@ -926,6 +926,16 @@ namespace Nnrp.NativeBridge.Tests
 
             using var copied = objects.AcquireMetadataCopy(objectMetadata);
             Assert.Equal(objectMetadata, copied.CopyToArray());
+
+            var deltaMetadata = new ObjectDeltaMetadata(11, 2, 8, 4, 4, 3, 2);
+            using var patch = objects.AcquireObjectPatchMetadataCopy(deltaMetadata, new byte[] { 6, 7 }, new byte[] { 8, 9, 10, 11 });
+            using var delta = objects.AcquireObjectDeltaMetadataCopy(deltaMetadata, new byte[] { 12, 13 }, new byte[] { 14, 15, 16, 17 });
+            var decodedPatch = NnrpRuntimeObject.Decode(MessageType.ObjectPatch, patch.CopyToArray());
+            var decodedDelta = NnrpRuntimeObject.Decode(MessageType.ObjectDelta, delta.CopyToArray());
+            Assert.Equal(deltaMetadata, decodedPatch.Metadata);
+            Assert.Equal(new byte[] { 6, 7, 8, 9, 10, 11 }, decodedPatch.Tail.ToArray());
+            Assert.Equal(deltaMetadata, decodedDelta.Metadata);
+            Assert.Equal(new byte[] { 12, 13, 14, 15, 16, 17 }, decodedDelta.Tail.ToArray());
             Assert.Equal(0, store.ObjectDescriptorCount);
             Assert.Equal(0, store.CacheReferenceDescriptorCount);
         }
@@ -945,6 +955,11 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentNullException>(() => objects.AcquireMetadataCopy(null!));
             Assert.Throws<ArgumentNullException>(() => objects.CreateObjectDescriptor(default(ObjectDescriptorMetadata), null!));
             Assert.Throws<ArgumentNullException>(() => objects.CreateCacheReference(default(CacheReferenceMetadata), null!));
+            var deltaMetadata = new ObjectDeltaMetadata(1, 2, 3, 4, 1, 0, 1);
+            Assert.Throws<ArgumentNullException>(() => objects.AcquireObjectPatchMetadataCopy(deltaMetadata, null!, new byte[] { 1 }));
+            Assert.Throws<ArgumentNullException>(() => objects.AcquireObjectDeltaMetadataCopy(deltaMetadata, new byte[] { 1 }, null!));
+            Assert.Throws<ArgumentException>(() => objects.AcquireObjectPatchMetadataCopy(deltaMetadata, Array.Empty<byte>(), new byte[] { 1 }));
+            Assert.Throws<ArgumentException>(() => objects.AcquireObjectDeltaMetadataCopy(deltaMetadata, new byte[] { 1 }, Array.Empty<byte>()));
             Assert.Throws<ArgumentException>(() => objects.CreateObjectDescriptor(
                 new ObjectDescriptorMetadata(1, RuntimeObjectKind.Tensor, RuntimeRole.Runtime, RuntimeRole.Client, 1, 1, 1, MemoryLocationHint.HostMemory, OwnershipHint.Borrowed, 1, 2),
                 new byte[] { 1 }));

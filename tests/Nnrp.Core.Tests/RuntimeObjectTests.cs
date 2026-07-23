@@ -74,6 +74,43 @@ namespace Nnrp.Core.Tests
             Assert.Throws<InvalidOperationException>(() => decoded.GetMetadata<ObjectReferenceMetadata>());
         }
 
+        [Fact]
+        public void CachePolicyOptionsRequireExplicitEnabledSettings()
+        {
+            Assert.Equal(default(CachePolicyOptions), new CachePolicyOptions());
+
+            var policy = new CachePolicyOptions(
+                enabled: true,
+                reuseScope: CacheReuseScope.Session,
+                expirationHintMilliseconds: 500,
+                invalidationReason: CachePolicyInvalidationReason.VersionMismatch);
+            var samePolicy = new CachePolicyOptions(
+                enabled: true,
+                reuseScope: CacheReuseScope.Session,
+                expirationHintMilliseconds: 500,
+                invalidationReason: CachePolicyInvalidationReason.VersionMismatch);
+            var disabledPolicy = new CachePolicyOptions();
+
+            Assert.True(policy.Enabled);
+            Assert.Equal(CacheReuseScope.Session, policy.ReuseScope);
+            Assert.Equal(500UL, policy.ExpirationHintMilliseconds);
+            Assert.Equal(CachePolicyInvalidationReason.VersionMismatch, policy.InvalidationReason);
+            Assert.Equal(policy, samePolicy);
+            Assert.True(policy == samePolicy);
+            Assert.True(policy != disabledPolicy);
+            Assert.Equal(policy.GetHashCode(), samePolicy.GetHashCode());
+        }
+
+        [Fact]
+        public void CachePolicyOptionsRejectImplicitOrUnknownSettings()
+        {
+            Assert.Throws<ArgumentException>(() => new CachePolicyOptions(enabled: true));
+            Assert.Throws<ArgumentException>(() => new CachePolicyOptions(reuseScope: CacheReuseScope.Session));
+            Assert.Throws<ArgumentException>(() => new CachePolicyOptions(expirationHintMilliseconds: 1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CachePolicyOptions(true, (CacheReuseScope)99));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CachePolicyOptions(invalidationReason: (CachePolicyInvalidationReason)99));
+        }
+
         private static object[] Case(MessageType messageType, IRuntimeObjectMetadata metadata, byte[] tail) => new object[] { messageType, metadata, tail };
 
         private static byte[] Combine(byte[] first, byte[] second)

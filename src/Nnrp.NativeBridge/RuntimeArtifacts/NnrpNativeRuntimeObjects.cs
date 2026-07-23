@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Nnrp.Core;
 using Nnrp.Runtime;
 
 namespace Nnrp.NativeBridge
@@ -352,6 +353,22 @@ namespace Nnrp.NativeBridge
                 view);
         }
 
+        public NnrpNativeObjectMetadataBuffer AcquireObjectPatchMetadataCopy(
+            ObjectDeltaMetadata metadata,
+            byte[] metadataTail,
+            byte[] delta)
+        {
+            return AcquireObjectDeltaMetadataCopyCore(MessageType.ObjectPatch, metadata, metadataTail, delta);
+        }
+
+        public NnrpNativeObjectMetadataBuffer AcquireObjectDeltaMetadataCopy(
+            ObjectDeltaMetadata metadata,
+            byte[] metadataTail,
+            byte[] delta)
+        {
+            return AcquireObjectDeltaMetadataCopyCore(MessageType.ObjectDelta, metadata, metadataTail, delta);
+        }
+
         public NnrpNativeObjectDescriptor CreateObjectDescriptor(
             ObjectDescriptorMetadata descriptor,
             byte[] metadata)
@@ -396,6 +413,31 @@ namespace Nnrp.NativeBridge
             {
                 throw new ArgumentException("Descriptor metadata length does not match MetadataBytes.", parameterName);
             }
+        }
+
+        private NnrpNativeObjectMetadataBuffer AcquireObjectDeltaMetadataCopyCore(
+            MessageType messageType,
+            ObjectDeltaMetadata metadata,
+            byte[] metadataTail,
+            byte[] delta)
+        {
+            if (metadataTail == null)
+            {
+                throw new ArgumentNullException(nameof(metadataTail));
+            }
+
+            if (delta == null)
+            {
+                throw new ArgumentNullException(nameof(delta));
+            }
+
+            RequireLength(metadata.MetadataBytes, metadataTail.Length, nameof(metadata));
+            RequireLength(metadata.DeltaBytes, delta.Length, nameof(metadata));
+
+            var tail = new byte[checked(metadataTail.Length + delta.Length)];
+            Buffer.BlockCopy(metadataTail, 0, tail, 0, metadataTail.Length);
+            Buffer.BlockCopy(delta, 0, tail, metadataTail.Length, delta.Length);
+            return AcquireMetadataCopy(NnrpRuntimeObject.Encode(messageType, metadata, tail));
         }
 
         private static void WithPinnedView(byte[] source, Action<NnrpBufferView> action)
