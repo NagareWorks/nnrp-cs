@@ -37,6 +37,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.Transport.Quic", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.Transport.Quic.Tests", "tests\Nnrp.Transport.Quic.Tests\Nnrp.Transport.Quic.Tests.csproj", "{E57DBF0E-57F5-4F8A-B646-FDF99D84DEA0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nnrp.WireConformance", "tools\Nnrp.WireConformance\Nnrp.WireConformance.csproj", "{66C1E0EC-FC3B-470C-B789-ED203612D36E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -215,6 +217,18 @@ Global
 		{E57DBF0E-57F5-4F8A-B646-FDF99D84DEA0}.Release|x64.Build.0 = Release|Any CPU
 		{E57DBF0E-57F5-4F8A-B646-FDF99D84DEA0}.Release|x86.ActiveCfg = Release|Any CPU
 		{E57DBF0E-57F5-4F8A-B646-FDF99D84DEA0}.Release|x86.Build.0 = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|x64.Build.0 = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Debug|x86.Build.0 = Debug|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|x64.ActiveCfg = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|x64.Build.0 = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|x86.ActiveCfg = Release|Any CPU
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -234,5 +248,6 @@ Global
 		{E86B6846-4926-426D-BEEC-96834EE21D89} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{260DCC02-F7FF-43E8-9F88-1325D9AB23B7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E57DBF0E-57F5-4F8A-B646-FDF99D84DEA0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{66C1E0EC-FC3B-470C-B789-ED203612D36E} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

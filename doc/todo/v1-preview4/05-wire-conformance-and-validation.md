@@ -2,20 +2,20 @@
 
 ## Target Manifest Generation
 
-- [ ] Add managed command to emit wire target manifests.
-- [ ] Include implementation name.
-- [ ] Include protocol version.
-- [ ] Include suite version.
+- [x] Add managed command to emit wire target manifests.
+- [x] Include implementation name.
+- [x] Include protocol version.
+- [x] Include suite version.
 - [ ] Include supported modes.
-  - [ ] Suite as client.
-  - [ ] Suite as server.
+  - [x] Suite as client.
+  - [x] Suite as server.
   - [ ] Suite as proxy where harness support exists.
 - [ ] Include supported transports.
-  - [ ] TCP.
-  - [ ] QUIC.
+  - [x] TCP.
+  - [x] QUIC.
   - [ ] IPC.
   - [ ] WebSocket.
-- [ ] Include capabilities and limits.
+- [x] Include capabilities and limits.
 
 ## Harness
 
@@ -37,7 +37,7 @@
 
 ## Negative Coverage
 
-- [ ] Reject target manifests that declare unsupported transports.
+- [x] Reject target manifests that declare unsupported transports.
 - [ ] Reject missing expected frames.
 - [ ] Reject terminal state mismatches.
 - [ ] Reject duplicate scenario result IDs.
