@@ -5,6 +5,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nnrp.Core;
+using Nnrp.Runtime;
 
 namespace Nnrp.NativeBridge
 {
@@ -1840,6 +1842,30 @@ namespace Nnrp.NativeBridge
         public readonly NnrpBufferView Payload;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpRuntimeFrameSendRequest
+    {
+        public NnrpRuntimeFrameSendRequest(
+            NnrpHandle handle,
+            uint messageType,
+            uint frameId,
+            NnrpBufferView payload)
+        {
+            Handle = handle;
+            MessageType = messageType;
+            FrameId = frameId;
+            Payload = payload;
+        }
+
+        public readonly NnrpHandle Handle;
+
+        public readonly uint MessageType;
+
+        public readonly uint FrameId;
+
+        public readonly NnrpBufferView Payload;
+    }
+
     public sealed class NnrpNativeRuntimeEntrypoints : IDisposable
     {
         public NnrpNativeRuntimeEntrypoints(
@@ -1888,7 +1914,8 @@ namespace Nnrp.NativeBridge
             CacheLeaseRequestInvoker? cacheTouch = null,
             CachePrefetchInvoker? cachePrefetch = null,
             CacheReleaseInvoker? cacheRelease = null,
-            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch = null)
+            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch = null,
+            RuntimeFrameSendInvoker? runtimeFrameSend = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -1936,7 +1963,8 @@ namespace Nnrp.NativeBridge
                 cacheTouch,
                 cachePrefetch,
                 cacheRelease,
-                clientSubmitResultCompactBatch)
+                clientSubmitResultCompactBatch,
+                runtimeFrameSend)
         {
         }
 
@@ -1987,7 +2015,8 @@ namespace Nnrp.NativeBridge
             CacheLeaseRequestInvoker? cacheTouch,
             CachePrefetchInvoker? cachePrefetch,
             CacheReleaseInvoker? cacheRelease,
-            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch)
+            ClientSubmitResultCompactBatchInvoker? clientSubmitResultCompactBatch,
+            RuntimeFrameSendInvoker? runtimeFrameSend)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -2036,6 +2065,7 @@ namespace Nnrp.NativeBridge
             CachePrefetch = cachePrefetch ?? MissingCachePrefetch;
             CacheRelease = cacheRelease ?? MissingCacheRelease;
             ClientSubmitResultCompactBatch = clientSubmitResultCompactBatch ?? MissingClientSubmitResultCompactBatch;
+            RuntimeFrameSend = runtimeFrameSend ?? MissingRuntimeFrameSend;
         }
 
         private IntPtr _libraryHandle;
@@ -2109,7 +2139,8 @@ namespace Nnrp.NativeBridge
                     Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
                     Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
                     Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"),
-                    Bind<ClientSubmitResultCompactBatchInvoker>(handle, "nnrp_client_submit_result_compact_batch"));
+                    Bind<ClientSubmitResultCompactBatchInvoker>(handle, "nnrp_client_submit_result_compact_batch"),
+                    Bind<RuntimeFrameSendInvoker>(handle, "nnrp_runtime_frame_send"));
             }
             catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
             {
@@ -2194,6 +2225,9 @@ namespace Nnrp.NativeBridge
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ControlInvoker(NnrpControlRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus RuntimeFrameSendInvoker(NnrpRuntimeFrameSendRequest request);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus PollEmptyInvoker(out NnrpPollResult result);
@@ -2318,6 +2352,8 @@ namespace Nnrp.NativeBridge
 
         public ControlInvoker Control { get; }
 
+        public RuntimeFrameSendInvoker RuntimeFrameSend { get; }
+
         public PollEmptyInvoker PollEmpty { get; }
 
         public DispatchEventInvoker DispatchEvent { get; }
@@ -2396,6 +2432,11 @@ namespace Nnrp.NativeBridge
         private static NnrpFfiStatus MissingHandleStatus(NnrpHandle handle)
         {
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Schema);
+        }
+
+        private static NnrpFfiStatus MissingRuntimeFrameSend(NnrpRuntimeFrameSendRequest request)
+        {
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
         }
 
         private static NnrpFfiStatus MissingClientResumeSession(
@@ -2864,6 +2905,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeServerSession
     {
+        private uint nextRuntimeFrameId = 1;
+
         public NnrpNativeRuntimeServerSession(
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle server,
@@ -2979,6 +3022,50 @@ namespace Nnrp.NativeBridge
             Entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(Handle.Handle, frameId)).ThrowIfError();
         }
 
+        public void SendProgress(ProgressMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.Progress, metadata, body);
+        }
+
+        public void SendPartialResult(PartialResultMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.PartialResult, metadata, body);
+        }
+
+        public void SendBackpressure(PressureMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.Backpressure, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void SendCreditUpdate(PressureMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.CreditUpdate, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void SendResultDropReason(
+            ResultDropReasonMetadata metadata,
+            ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.ResultDropReason, metadata, diagnostic);
+        }
+
+        public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+        }
+
+        public void SendRecoverableError(
+            RecoverableErrorMetadata metadata,
+            ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.ErrorRecoverable, metadata, diagnostic);
+        }
+
+        public void SendRetryAfter(RetryAfterMetadata metadata, ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.RetryAfter, metadata, diagnostic);
+        }
+
         public NnrpCacheLeaseResult QueryCacheLease(
             NnrpCacheObjectId objectId,
             ulong expectedVersion,
@@ -3053,6 +3140,29 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             Entrypoints.SessionClose(Handle.Handle).ThrowIfError();
             IsClosed = true;
+        }
+
+        private void SendRuntimeFrame(
+            MessageType messageType,
+            IRuntimeControlMetadata metadata,
+            ReadOnlyMemory<byte> tail)
+        {
+            EnsureOpen();
+            var payload = NnrpRuntimeControl.Encode(messageType, metadata, tail.Span);
+            var frameId = nextRuntimeFrameId;
+            NnrpNativeRuntimeSession.WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    Entrypoints.RuntimeFrameSend(
+                        new NnrpRuntimeFrameSendRequest(
+                            Handle.Handle,
+                            (uint)messageType,
+                            frameId,
+                            payloadView)).ThrowIfError();
+                    return true;
+                });
+            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
         }
 
         private void EnsureOpen()
@@ -3303,6 +3413,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeSession
     {
+        private uint nextRuntimeFrameId = 1;
+
         public NnrpNativeRuntimeSession(
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle connection,
@@ -3638,6 +3750,70 @@ namespace Nnrp.NativeBridge
             Entrypoints.ClientCancel(new NnrpClientCancelRequest(Handle.Handle, frameId)).ThrowIfError();
         }
 
+        public void CancelOperation(
+            ControlRequestMetadata metadata,
+            ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.Cancel, metadata, diagnostic);
+        }
+
+        public void AbortOperation(
+            ControlRequestMetadata metadata,
+            ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.Abort, metadata, diagnostic);
+        }
+
+        public void UpdatePriority(SchedulingMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.PriorityUpdate, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void UpdateDeadline(SchedulingMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.Deadline, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void ExpireAt(SchedulingMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.ExpireAt, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void Supersede(SupersedeMetadata metadata, ReadOnlyMemory<byte> diagnostic = default)
+        {
+            SendRuntimeFrame(MessageType.Supersede, metadata, diagnostic);
+        }
+
+        public void UpdateBudget(BudgetMetadata metadata)
+        {
+            SendRuntimeFrame(MessageType.BudgetUpdate, metadata, ReadOnlyMemory<byte>.Empty);
+        }
+
+        public void NegotiateCapabilities(CapabilityMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.CapabilityNegotiation, metadata, body);
+        }
+
+        public void DegradeProfile(CapabilityMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.DegradeProfile, metadata, body);
+        }
+
+        public void SendRouteHint(RouteHintMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.RouteHint, metadata, body);
+        }
+
+        public void SendExecutionHint(RouteHintMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.ExecutionHint, metadata, body);
+        }
+
+        public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+        }
+
         public void Control(uint controlCode, byte[]? payload = null)
         {
             EnsureOpen();
@@ -3714,6 +3890,29 @@ namespace Nnrp.NativeBridge
             byte[]? payload)
         {
             SendControl(entrypoints, handle, controlCode, payload == null ? ReadOnlyMemory<byte>.Empty : payload);
+        }
+
+        private void SendRuntimeFrame(
+            MessageType messageType,
+            IRuntimeControlMetadata metadata,
+            ReadOnlyMemory<byte> tail)
+        {
+            EnsureOpen();
+            var payload = NnrpRuntimeControl.Encode(messageType, metadata, tail.Span);
+            var frameId = nextRuntimeFrameId;
+            WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    Entrypoints.RuntimeFrameSend(
+                        new NnrpRuntimeFrameSendRequest(
+                            Handle.Handle,
+                            (uint)messageType,
+                            frameId,
+                            payloadView)).ThrowIfError();
+                    return true;
+                });
+            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
         }
 
         internal static void SendControl(

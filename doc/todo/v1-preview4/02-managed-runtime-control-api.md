@@ -3,53 +3,53 @@
 ## Client Controls
 
 - [ ] Add cancellation APIs.
-  - [ ] Cancel by operation ID.
-  - [ ] Abort by operation ID.
-  - [ ] Cancellation reason.
+  - [x] Cancel by operation ID.
+  - [x] Abort by operation ID.
+  - [x] Cancellation reason.
   - [ ] Late result suppression.
-- [ ] Add scheduling APIs.
-  - [ ] Priority update.
-  - [ ] Deadline.
-  - [ ] Expire-at timestamp.
-  - [ ] Supersede operation.
-  - [ ] Budget update.
-- [ ] Add route and execution hint APIs.
-  - [ ] Route hint.
-  - [ ] Execution hint.
-  - [ ] Preferred profile list.
-  - [ ] Degrade profile event.
+- [x] Add scheduling APIs.
+  - [x] Priority update.
+  - [x] Deadline.
+  - [x] Expire-at timestamp.
+  - [x] Supersede operation.
+  - [x] Budget update.
+- [x] Add route and execution hint APIs.
+  - [x] Route hint.
+  - [x] Execution hint.
+  - [x] Preferred profile list.
+  - [x] Degrade profile event.
 
 ## Server Controls
 
-- [ ] Add progress event APIs.
-  - [ ] Stage.
-  - [ ] Percent.
-  - [ ] Trace context.
-- [ ] Add partial result APIs.
-  - [ ] Object reference.
-  - [ ] Read-only payload view.
-  - [ ] Completion marker.
-- [ ] Add result drop APIs.
-  - [ ] Drop reason.
-  - [ ] Operation ID.
-  - [ ] Trace context.
-- [ ] Add backpressure APIs.
-  - [ ] Credit update.
-  - [ ] Max in-flight.
-  - [ ] Pressure reason.
+- [x] Add progress event APIs.
+  - [x] Stage.
+  - [x] Percent.
+  - [x] Trace context.
+- [x] Add partial result APIs.
+  - [x] Object reference.
+  - [x] Read-only payload view.
+  - [x] Completion marker.
+- [x] Add result drop APIs.
+  - [x] Drop reason.
+  - [x] Operation ID.
+  - [x] Trace context.
+- [x] Add backpressure APIs.
+  - [x] Credit update.
+  - [x] Max in-flight.
+  - [x] Pressure reason.
 
 ## Managed Type Model
 
-- [ ] Add immutable records for control requests.
-- [ ] Add immutable records for control events.
+- [x] Add immutable records for control requests.
+- [x] Add immutable records for control events.
 - [ ] Add enum mappings for drop reasons and terminal states.
 - [ ] Preserve Rust error family/code in managed exceptions.
-- [ ] Add XML docs for public control types.
+- [x] Add XML docs for public control types.
 
 ## Tests
 
-- [ ] Add unit tests for cancel/abort mapping.
-- [ ] Add unit tests for priority/deadline mapping.
-- [ ] Add unit tests for progress/partial result event order.
-- [ ] Add unit tests for backpressure credit updates.
+- [x] Add unit tests for cancel/abort mapping.
+- [x] Add unit tests for priority/deadline mapping.
+- [x] Add unit tests for progress/partial result event order.
+- [x] Add unit tests for backpressure credit updates.
 - [ ] Add native-backed integration tests against preview4 artifacts.

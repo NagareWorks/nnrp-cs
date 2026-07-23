@@ -81,6 +81,84 @@ namespace Nnrp.Core
 
         /// <summary>Pong message, encoded as <c>0x21</c>.</summary>
         Pong = 0x21,
+
+        /// <summary>Cancel an operation, encoded as <c>0x30</c>.</summary>
+        Cancel = 0x30,
+
+        /// <summary>Abort an operation scope, encoded as <c>0x31</c>.</summary>
+        Abort = 0x31,
+
+        /// <summary>Update operation priority, encoded as <c>0x32</c>.</summary>
+        PriorityUpdate = 0x32,
+
+        /// <summary>Set an operation deadline, encoded as <c>0x33</c>.</summary>
+        Deadline = 0x33,
+
+        /// <summary>Set an operation expiration timestamp, encoded as <c>0x34</c>.</summary>
+        ExpireAt = 0x34,
+
+        /// <summary>Replace an operation, encoded as <c>0x35</c>.</summary>
+        Supersede = 0x35,
+
+        /// <summary>Update an operation budget, encoded as <c>0x36</c>.</summary>
+        BudgetUpdate = 0x36,
+
+        /// <summary>Stream progress metadata, encoded as <c>0x37</c>.</summary>
+        Progress = 0x37,
+
+        /// <summary>Stream a partial result, encoded as <c>0x38</c>.</summary>
+        PartialResult = 0x38,
+
+        /// <summary>Signal runtime pressure, encoded as <c>0x39</c>.</summary>
+        Backpressure = 0x39,
+
+        /// <summary>Update runtime credits, encoded as <c>0x3A</c>.</summary>
+        CreditUpdate = 0x3A,
+
+        /// <summary>Negotiate capabilities and costs, encoded as <c>0x3B</c>.</summary>
+        CapabilityNegotiation = 0x3B,
+
+        /// <summary>Select a degraded profile, encoded as <c>0x3C</c>.</summary>
+        DegradeProfile = 0x3C,
+
+        /// <summary>Provide a route hint, encoded as <c>0x3D</c>.</summary>
+        RouteHint = 0x3D,
+
+        /// <summary>Provide an execution hint, encoded as <c>0x3E</c>.</summary>
+        ExecutionHint = 0x3E,
+
+        /// <summary>Carry trace context, encoded as <c>0x3F</c>.</summary>
+        TraceContext = 0x3F,
+
+        /// <summary>Explain a dropped result, encoded as <c>0x40</c>.</summary>
+        ResultDropReason = 0x40,
+
+        /// <summary>Declare a runtime object, encoded as <c>0x41</c>.</summary>
+        ObjectDeclare = 0x41,
+
+        /// <summary>Reference a runtime object, encoded as <c>0x42</c>.</summary>
+        ObjectRef = 0x42,
+
+        /// <summary>Release a runtime object, encoded as <c>0x43</c>.</summary>
+        ObjectRelease = 0x43,
+
+        /// <summary>Patch a runtime object, encoded as <c>0x44</c>.</summary>
+        ObjectPatch = 0x44,
+
+        /// <summary>Stream a runtime object delta, encoded as <c>0x45</c>.</summary>
+        ObjectDelta = 0x45,
+
+        /// <summary>Reference a reusable cache object, encoded as <c>0x46</c>.</summary>
+        CacheReference = 0x46,
+
+        /// <summary>Report a cache miss, encoded as <c>0x47</c>.</summary>
+        CacheMiss = 0x47,
+
+        /// <summary>Report a recoverable error, encoded as <c>0x48</c>.</summary>
+        ErrorRecoverable = 0x48,
+
+        /// <summary>Request retry after a delay, encoded as <c>0x49</c>.</summary>
+        RetryAfter = 0x49,
     }
 
     public static class MessageTypeExtensions

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
+using Nnrp.Runtime;
 using Xunit;
 
 namespace Nnrp.NativeBridge.Tests
@@ -2765,7 +2766,117 @@ namespace Nnrp.NativeBridge.Tests
                 featureFlags);
         }
 
-        private static NnrpNativeRuntimeEntrypoints CreateEntrypoints()
+        [Fact]
+        public void ClientRuntimeControlsUseOneNativeFrameSendAndIncrementFrameIds()
+        {
+            var sent = new List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)>();
+            var entrypoints = CreateEntrypoints(
+                request =>
+                {
+                    sent.Add((request, CopyBufferView(request.Payload)));
+                    return NnrpFfiStatus.Ok;
+                });
+            var session = new NnrpNativeRuntimeSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+
+            session.CancelOperation(
+                new ControlRequestMetadata(10, 1, 1, RuntimeRole.Client, 1, 2),
+                new byte[] { 7, 8 });
+            session.UpdatePriority(new SchedulingMetadata(10, 2, 3, -1, 0, 1));
+            session.SendRouteHint(
+                new RouteHintMetadata(10, 4, 3, 2, 99, 1, 2),
+                new byte[] { 9 });
+
+            Assert.Collection(
+                sent,
+                item => AssertRuntimeFrame(item, MessageType.Cancel, 1, typeof(ControlRequestMetadata), new byte[] { 7, 8 }),
+                item => AssertRuntimeFrame(item, MessageType.PriorityUpdate, 2, typeof(SchedulingMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.RouteHint, 3, typeof(RouteHintMetadata), new byte[] { 9 }));
+        }
+
+        [Fact]
+        public void ServerRuntimeControlsMapToFrozenMessageTypes()
+        {
+            var sent = new List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)>();
+            var entrypoints = CreateEntrypoints(
+                request =>
+                {
+                    sent.Add((request, CopyBufferView(request.Payload)));
+                    return NnrpFfiStatus.Ok;
+                });
+            var session = new NnrpNativeRuntimeServerSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+
+            session.SendProgress(new ProgressMetadata(20, 1, 5, 2500, 0, 1), new byte[] { 1 });
+            session.SendPartialResult(new PartialResultMetadata(20, 2, 0, 0, 2, 1), new byte[] { 2, 3 });
+            session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
+            session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
+            session.SendResultDropReason(
+                new ResultDropReasonMetadata(20, 3, 4, RuntimeRole.Server, 3, 1),
+                new byte[] { 4 });
+            session.SendRecoverableError(
+                new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 1, 4, 5, 6, 7, 1),
+                new byte[] { 5 });
+            session.SendRetryAfter(
+                new RetryAfterMetadata(20, 4, 5, 1, 2, RuntimeRole.Server, 1, 1),
+                new byte[] { 6 });
+
+            Assert.Equal(
+                new[]
+                {
+                    MessageType.Progress,
+                    MessageType.PartialResult,
+                    MessageType.Backpressure,
+                    MessageType.CreditUpdate,
+                    MessageType.ResultDropReason,
+                    MessageType.ErrorRecoverable,
+                    MessageType.RetryAfter,
+                },
+                sent.ConvertAll(item => (MessageType)item.Request.MessageType));
+            for (var index = 0; index < sent.Count; index++)
+            {
+                Assert.Equal((uint)(index + 1), sent[index].Request.FrameId);
+                NnrpRuntimeControl.Decode((MessageType)sent[index].Request.MessageType, sent[index].Payload);
+            }
+        }
+
+        [Fact]
+        public void RuntimeFrameSendFailurePreservesNativeStatus()
+        {
+            var entrypoints = CreateEntrypoints(
+                _ => new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Session, 77));
+            var session = new NnrpNativeRuntimeSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+
+            var error = Assert.Throws<NnrpNativeInvalidStateException>(() =>
+                session.UpdateBudget(new BudgetMetadata(1, 2, 3, 4, 5, 1)));
+
+            Assert.Equal(NnrpErrorFamily.Session, error.Status.ErrorFamily);
+            Assert.Equal(77u, error.Status.ProtocolErrorCode);
+        }
+
+        private static void AssertRuntimeFrame(
+            (NnrpRuntimeFrameSendRequest Request, byte[] Payload) item,
+            MessageType messageType,
+            uint frameId,
+            Type metadataType,
+            byte[] tail)
+        {
+            Assert.Equal((uint)messageType, item.Request.MessageType);
+            Assert.Equal(frameId, item.Request.FrameId);
+            var decoded = NnrpRuntimeControl.Decode(messageType, item.Payload);
+            Assert.Equal(metadataType, decoded.Metadata.GetType());
+            Assert.Equal(tail, decoded.Tail.ToArray());
+        }
+
+        private static NnrpNativeRuntimeEntrypoints CreateEntrypoints(
+            NnrpNativeRuntimeEntrypoints.RuntimeFrameSendInvoker? runtimeFrameSend = null)
         {
             return new NnrpNativeRuntimeEntrypoints(
                 CurrentProtocolVersion,
@@ -2811,7 +2922,8 @@ namespace Nnrp.NativeBridge.Tests
                 cacheTouch: CacheTouch,
                 cachePrefetch: CachePrefetch,
                 cacheRelease: CacheRelease,
-                clientSubmitResultCompactBatch: ClientSubmitResultCompactBatch);
+                clientSubmitResultCompactBatch: ClientSubmitResultCompactBatch,
+                runtimeFrameSend: runtimeFrameSend);
         }
 
         private static byte[] CopyBufferView(NnrpBufferView view)
