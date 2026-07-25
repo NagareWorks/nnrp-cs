@@ -539,6 +539,7 @@ namespace Nnrp.NativeBridge
         TransportConnection = 10,
         TransportListener = 11,
         TransportSecurityConfig = 12,
+        ServerAccept = 13,
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1753,35 +1754,83 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    public readonly struct NnrpServerAcceptRequest
+    public readonly struct NnrpServerAcceptBeginRequest
     {
-        public NnrpServerAcceptRequest(
+        public NnrpServerAcceptBeginRequest(
             NnrpHandle server,
-            uint sessionId,
-            uint generation,
-            ushort profileId,
-            uint schemaId,
-            uint schemaVersion)
+            ulong acceptHandleId,
+            uint generation)
         {
             Server = server;
-            SessionId = sessionId;
+            AcceptHandleId = acceptHandleId;
             Generation = generation;
-            ProfileId = profileId;
-            SchemaId = schemaId;
-            SchemaVersion = schemaVersion;
+            Reserved0 = 0;
         }
 
         public readonly NnrpHandle Server;
 
-        public readonly uint SessionId;
+        public readonly ulong AcceptHandleId;
 
         public readonly uint Generation;
 
-        public readonly ushort ProfileId;
+        public readonly uint Reserved0;
+    }
 
-        public readonly uint SchemaId;
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerAcceptWaitRequest
+    {
+        public NnrpServerAcceptWaitRequest(NnrpHandle accept, uint timeoutMilliseconds)
+        {
+            Accept = accept;
+            TimeoutMilliseconds = timeoutMilliseconds;
+            Flags = 0;
+        }
 
-        public readonly uint SchemaVersion;
+        public readonly NnrpHandle Accept;
+
+        public readonly uint TimeoutMilliseconds;
+
+        public readonly uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerAcceptClaimRequest
+    {
+        public NnrpServerAcceptClaimRequest(
+            NnrpHandle accept,
+            ulong sessionHandleId,
+            uint generation)
+        {
+            Accept = accept;
+            SessionHandleId = sessionHandleId;
+            Generation = generation;
+            Reserved0 = 0;
+        }
+
+        public readonly NnrpHandle Accept;
+
+        public readonly ulong SessionHandleId;
+
+        public readonly uint Generation;
+
+        public readonly uint Reserved0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerAcceptResult
+    {
+        public NnrpServerAcceptResult(NnrpHandle session, uint activeTransportId)
+        {
+            Session = session;
+            ActiveTransportId = activeTransportId;
+            Reserved0 = 0;
+        }
+
+        public readonly NnrpHandle Session;
+
+        public readonly uint ActiveTransportId;
+
+        public readonly uint Reserved0;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1889,7 +1938,10 @@ namespace Nnrp.NativeBridge
             ClientCancelInvoker clientCancel,
             AwaitEventInvoker clientAwaitEvent,
             ServerBindInvoker serverBind,
-            ServerAcceptInvoker serverAccept,
+            ServerAcceptBeginInvoker serverAcceptBegin,
+            ServerAcceptWaitInvoker serverAcceptWait,
+            ServerAcceptClaimInvoker serverAcceptClaim,
+            HandleStatusInvoker serverAcceptRelease,
             ServerReceiveSubmitInvoker serverReceiveSubmit,
             ServerSendResultInvoker serverSendResult,
             ServerFlowUpdateInvoker serverSendFlowUpdate,
@@ -1949,7 +2001,10 @@ namespace Nnrp.NativeBridge
                 clientCancel,
                 clientAwaitEvent,
                 serverBind,
-                serverAccept,
+                serverAcceptBegin,
+                serverAcceptWait,
+                serverAcceptClaim,
+                serverAcceptRelease,
                 serverReceiveSubmit,
                 serverSendResult,
                 serverSendFlowUpdate,
@@ -2012,7 +2067,10 @@ namespace Nnrp.NativeBridge
             ClientCancelInvoker clientCancel,
             AwaitEventInvoker clientAwaitEvent,
             ServerBindInvoker serverBind,
-            ServerAcceptInvoker serverAccept,
+            ServerAcceptBeginInvoker serverAcceptBegin,
+            ServerAcceptWaitInvoker serverAcceptWait,
+            ServerAcceptClaimInvoker serverAcceptClaim,
+            HandleStatusInvoker serverAcceptRelease,
             ServerReceiveSubmitInvoker serverReceiveSubmit,
             ServerSendResultInvoker serverSendResult,
             ServerFlowUpdateInvoker serverSendFlowUpdate,
@@ -2072,7 +2130,10 @@ namespace Nnrp.NativeBridge
             ClientCancel = clientCancel ?? throw new ArgumentNullException(nameof(clientCancel));
             ClientAwaitEvent = clientAwaitEvent ?? throw new ArgumentNullException(nameof(clientAwaitEvent));
             ServerBind = serverBind ?? throw new ArgumentNullException(nameof(serverBind));
-            ServerAccept = serverAccept ?? throw new ArgumentNullException(nameof(serverAccept));
+            ServerAcceptBegin = serverAcceptBegin ?? throw new ArgumentNullException(nameof(serverAcceptBegin));
+            ServerAcceptWait = serverAcceptWait ?? throw new ArgumentNullException(nameof(serverAcceptWait));
+            ServerAcceptClaim = serverAcceptClaim ?? throw new ArgumentNullException(nameof(serverAcceptClaim));
+            ServerAcceptRelease = serverAcceptRelease ?? throw new ArgumentNullException(nameof(serverAcceptRelease));
             ServerReceiveSubmit = serverReceiveSubmit ?? throw new ArgumentNullException(nameof(serverReceiveSubmit));
             ServerSendResult = serverSendResult ?? throw new ArgumentNullException(nameof(serverSendResult));
             ServerSendFlowUpdate = serverSendFlowUpdate ?? throw new ArgumentNullException(nameof(serverSendFlowUpdate));
@@ -2158,7 +2219,10 @@ namespace Nnrp.NativeBridge
                     Bind<ClientCancelInvoker>(handle, "nnrp_client_cancel"),
                     Bind<AwaitEventInvoker>(handle, "nnrp_client_await_event"),
                     Bind<ServerBindInvoker>(handle, "nnrp_server_bind"),
-                    Bind<ServerAcceptInvoker>(handle, "nnrp_server_accept"),
+                    Bind<ServerAcceptBeginInvoker>(handle, "nnrp_server_accept_begin"),
+                    Bind<ServerAcceptWaitInvoker>(handle, "nnrp_server_accept_wait"),
+                    Bind<ServerAcceptClaimInvoker>(handle, "nnrp_server_accept_claim"),
+                    Bind<HandleStatusInvoker>(handle, "nnrp_server_accept_release"),
                     MissingServerReceiveSubmit,
                     Bind<ServerSendResultInvoker>(handle, "nnrp_server_send_result"),
                     MissingServerFlowUpdate,
@@ -2274,7 +2338,17 @@ namespace Nnrp.NativeBridge
         public delegate NnrpFfiStatus ServerBindInvoker(NnrpServerBindRequest request, out NnrpHandle server);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate NnrpFfiStatus ServerAcceptInvoker(NnrpServerAcceptRequest request, out NnrpHandle session);
+        public delegate NnrpFfiStatus ServerAcceptBeginInvoker(
+            NnrpServerAcceptBeginRequest request,
+            out NnrpHandle accept);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerAcceptWaitInvoker(NnrpServerAcceptWaitRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerAcceptClaimInvoker(
+            NnrpServerAcceptClaimRequest request,
+            out NnrpServerAcceptResult result);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ServerReceiveSubmitInvoker(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation);
@@ -2432,7 +2506,13 @@ namespace Nnrp.NativeBridge
 
         public ServerBindInvoker ServerBind { get; }
 
-        public ServerAcceptInvoker ServerAccept { get; }
+        public ServerAcceptBeginInvoker ServerAcceptBegin { get; }
+
+        public ServerAcceptWaitInvoker ServerAcceptWait { get; }
+
+        public ServerAcceptClaimInvoker ServerAcceptClaim { get; }
+
+        public HandleStatusInvoker ServerAcceptRelease { get; }
 
         public ServerReceiveSubmitInvoker ServerReceiveSubmit { get; }
 
@@ -3033,6 +3113,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeServer : IDisposable
     {
+        private NnrpHandle pendingAccept = NnrpHandle.Invalid;
+
         public NnrpNativeRuntimeServer(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
@@ -3063,36 +3145,90 @@ namespace Nnrp.NativeBridge
         }
 
         public NnrpNativeRuntimeServerSession AcceptSession(
-            uint sessionId,
+            ulong sessionHandleId,
             uint generation,
-            ushort profileId,
-            uint schemaId,
-            uint schemaVersion)
+            uint timeoutMilliseconds = 0)
         {
             EnsureOpen();
-            NnrpHandle session;
-            var status = Entrypoints.ServerAccept(
-                new NnrpServerAcceptRequest(
-                    Handle.Handle,
-                    sessionId,
-                    generation,
-                    profileId,
-                    schemaId,
-                    schemaVersion),
-                out session);
-            status.ThrowIfError();
+            if (!pendingAccept.IsValid)
+            {
+                NnrpHandle accept;
+                Entrypoints.ServerAcceptBegin(
+                    new NnrpServerAcceptBeginRequest(Handle.Handle, sessionHandleId, generation),
+                    out accept).ThrowIfError();
+                accept.RequireKind(NnrpHandleKind.ServerAccept);
+                pendingAccept = accept;
+            }
+
+            Entrypoints.ServerAcceptWait(
+                new NnrpServerAcceptWaitRequest(pendingAccept, timeoutMilliseconds)).ThrowIfError();
+
+            NnrpServerAcceptResult result;
+            Entrypoints.ServerAcceptClaim(
+                new NnrpServerAcceptClaimRequest(pendingAccept, sessionHandleId, generation),
+                out result).ThrowIfError();
+            pendingAccept = NnrpHandle.Invalid;
+            result.Session.RequireKind(NnrpHandleKind.Session);
+            if (!Enum.IsDefined(typeof(TransportId), result.ActiveTransportId)
+                || result.ActiveTransportId == (uint)TransportId.Unspecified)
+            {
+                var message = "Native server accept returned unsupported transport id "
+                    + result.ActiveTransportId
+                    + ".";
+                try
+                {
+                    Entrypoints.ServerClose(result.Session).ThrowIfError();
+                }
+                catch (Exception closeError)
+                {
+                    throw new NnrpNativeArtifactException(message, closeError);
+                }
+
+                throw new NnrpNativeArtifactException(message);
+            }
+
             return new NnrpNativeRuntimeServerSession(
                 Entrypoints,
                 Handle,
-                new NnrpSessionHandle(session),
+                new NnrpSessionHandle(result.Session),
+                (TransportId)result.ActiveTransportId,
                 () => IsClosed);
         }
 
         public void Close()
         {
             EnsureOpen();
-            Entrypoints.ServerClose(Handle.Handle).ThrowIfError();
+            Exception? firstError = null;
+            if (pendingAccept.IsValid)
+            {
+                try
+                {
+                    Entrypoints.ServerAcceptRelease(pendingAccept).ThrowIfError();
+                }
+                catch (Exception error)
+                {
+                    firstError = error;
+                }
+                finally
+                {
+                    pendingAccept = NnrpHandle.Invalid;
+                }
+            }
+
+            try
+            {
+                Entrypoints.ConnectionClose(Handle.Handle).ThrowIfError();
+            }
+            catch (Exception error)
+            {
+                firstError = firstError ?? error;
+            }
+
             IsClosed = true;
+            if (firstError != null)
+            {
+                throw firstError;
+            }
         }
 
         public void Dispose()
@@ -3122,11 +3258,18 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle server,
             NnrpSessionHandle handle,
+            TransportId activeTransportId,
             Func<bool>? isServerClosed = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Server = server;
             Handle = handle;
+            if (activeTransportId == TransportId.Unspecified)
+            {
+                throw new ArgumentOutOfRangeException(nameof(activeTransportId));
+            }
+
+            ActiveTransportId = activeTransportId;
             IsServerClosed = isServerClosed ?? (() => false);
         }
 
@@ -3135,6 +3278,8 @@ namespace Nnrp.NativeBridge
         public NnrpConnectionHandle Server { get; }
 
         public NnrpSessionHandle Handle { get; }
+
+        public TransportId ActiveTransportId { get; }
 
         public bool IsClosed { get; private set; }
 
@@ -4251,7 +4396,7 @@ namespace Nnrp.NativeBridge
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
         public const ushort ExpectedAbiMajor = 4;
-        public const ushort ExpectedAbiMinor = 0;
+        public const ushort ExpectedAbiMinor = 1;
         public const ushort ExpectedAbiPatch = 0;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;

@@ -28,6 +28,8 @@
 - [ ] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.17`.
 - [x] Probe protocol version.
 - [x] Probe ABI version.
+  - [x] Require ABI `4.1.0` and bind the persistent server accept ticket entrypoints.
+  - [x] Remove the legacy one-shot `nnrp_server_accept` binding.
 - [x] Probe enabled transport slots.
 - [x] Probe runtime-control support.
 - [x] Probe runtime-object support.

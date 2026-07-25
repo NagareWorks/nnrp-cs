@@ -347,8 +347,8 @@ namespace Nnrp.NativeBridge.Tests
 
         [Theory]
         [InlineData(3, 0, 0)]
-        [InlineData(4, 1, 0)]
-        [InlineData(4, 0, 1)]
+        [InlineData(4, 0, 0)]
+        [InlineData(4, 1, 1)]
         public void ProbeRejectsAbiMismatch(ushort abiMajor, ushort abiMinor, ushort abiPatch)
         {
             var error = Assert.Throws<NnrpNativeArtifactException>(() =>
@@ -635,7 +635,17 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal((byte)0, pollResult.HasEvent);
 
             Assert.True(entrypoints.ServerBind(new NnrpServerBindRequest(4, 1, 2), out handle).Succeeded);
-            Assert.True(entrypoints.ServerAccept(MatchingServerAcceptRequest(), out handle).Succeeded);
+            Assert.True(entrypoints.ServerAcceptBegin(MatchingServerAcceptBeginRequest(), out handle).Succeeded);
+            Assert.Equal(NnrpHandleKind.ServerAccept, handle.Kind);
+            Assert.True(entrypoints.ServerAcceptWait(new NnrpServerAcceptWaitRequest(handle, 1)).Succeeded);
+            NnrpServerAcceptResult accepted;
+            Assert.True(entrypoints.ServerAcceptClaim(
+                new NnrpServerAcceptClaimRequest(handle, 3, 1),
+                out accepted).Succeeded);
+            Assert.Equal(NnrpHandleKind.Session, accepted.Session.Kind);
+            Assert.Equal((uint)TransportId.Tcp, accepted.ActiveTransportId);
+            Assert.True(entrypoints.ServerAcceptRelease(
+                new NnrpHandle(NnrpHandleKind.ServerAccept, 6, 1)).Succeeded);
             Assert.True(entrypoints.ServerReceiveSubmit(MatchingServerReceiveSubmitRequest(), out handle).Succeeded);
             Assert.True(entrypoints.ServerSendResult(new NnrpServerSendResultRequest(new NnrpHandle(NnrpHandleKind.Operation, 5, 1), NnrpBufferView.Empty)).Succeeded);
             Assert.True(entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(new NnrpHandle(NnrpHandleKind.Session, 3, 1), 7)).Succeeded);
@@ -986,7 +996,10 @@ namespace Nnrp.NativeBridge.Tests
                     ClientCancel,
                     AwaitEvent,
                     ServerBind,
-                    ServerAccept,
+                    ServerAcceptBegin,
+                    ServerAcceptWait,
+                    ServerAcceptClaim,
+                    ServerAcceptRelease,
                     ServerReceiveSubmit,
                     ServerSendResult,
                     ServerFlowUpdate,
@@ -1013,7 +1026,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1172,7 +1188,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitQueuedEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1268,7 +1287,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 CaptureServerReceiveSubmit,
                 CaptureServerSendResult,
                 ServerFlowUpdate,
@@ -1289,7 +1311,7 @@ namespace Nnrp.NativeBridge.Tests
                 session.Control(10, payload);
 
                 using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
-                var serverSession = server.AcceptSession(42, 3, 4, 5, 6);
+                var serverSession = server.AcceptSession(42, 3);
                 var operation = serverSession.ReceiveSubmit(100, 8, payload);
                 serverSession.SendResult(operation, payload);
                 serverSession.Control(11, payload);
@@ -1343,7 +1365,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1438,7 +1463,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 CaptureServerReceiveSubmit,
                 CaptureServerSendResult,
                 ServerFlowUpdate,
@@ -1459,7 +1487,7 @@ namespace Nnrp.NativeBridge.Tests
             session.Control(17, nativePayload);
 
             using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
-            var serverSession = server.AcceptSession(41, 3, 4, 5, 6);
+            var serverSession = server.AcceptSession(41, 3);
             var operation = serverSession.ReceiveSubmit(100, 8, nativePayload);
             serverSession.SendResult(operation, nativePayload);
             serverSession.Control(18, nativePayload);
@@ -1539,7 +1567,10 @@ namespace Nnrp.NativeBridge.Tests
                     ClientCancel,
                     AwaitCompletedEvent,
                     ServerBind,
-                    ServerAccept,
+                    ServerAcceptBegin,
+                    ServerAcceptWait,
+                    ServerAcceptClaim,
+                    ServerAcceptRelease,
                     CaptureServerReceiveSubmit,
                     CaptureServerSendResult,
                     ServerFlowUpdate,
@@ -1555,7 +1586,7 @@ namespace Nnrp.NativeBridge.Tests
                     .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
                     .OpenSession(41, 3, 4, 5, 6);
                 using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
-                var serverSession = server.AcceptSession(42, 3, 4, 5, 6);
+                var serverSession = server.AcceptSession(42, 3);
 
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
@@ -1601,7 +1632,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1679,7 +1713,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1719,7 +1756,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1802,7 +1842,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1839,7 +1882,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1881,7 +1927,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -1955,7 +2004,10 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2073,7 +2125,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitRoutedEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2149,7 +2204,10 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2274,7 +2332,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEventWithPayload,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2315,7 +2376,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitRoutedEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2369,7 +2433,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitRoutedEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2430,7 +2497,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -2497,7 +2567,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 CaptureServerReceiveSubmit,
                 CaptureServerSendResult,
                 CaptureServerFlowUpdate,
@@ -2511,7 +2584,7 @@ namespace Nnrp.NativeBridge.Tests
 
             using (var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp))
             {
-                var session = server.AcceptSession(41, 3, 4, 5, 6);
+                var session = server.AcceptSession(41, 3);
                 using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[] { 1, 2, 3 });
                 var operation = session.ReceiveSubmit(99, 7, nativePayload);
 
@@ -2534,7 +2607,7 @@ namespace Nnrp.NativeBridge.Tests
                 Assert.Equal(new UIntPtr(3), controlPayloadLength);
                 Assert.True(session.IsClosed);
                 Assert.True(server.IsClosed);
-                Assert.Throws<NnrpNativeInvalidStateException>(() => server.AcceptSession(42, 3, 4, 5, 6));
+                Assert.Throws<NnrpNativeInvalidStateException>(() => server.AcceptSession(42, 3));
             }
 
             Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServer.Bind(null!, 50, 2, NnrpNativeArtifact.TransportSlotTcp));
@@ -2544,7 +2617,7 @@ namespace Nnrp.NativeBridge.Tests
         public void NativeRuntimeServerSessionRejectsUseAfterServerClose()
         {
             var server = NnrpNativeRuntimeServer.Bind(CreateEntrypoints(), 50, 2, NnrpNativeArtifact.TransportSlotTcp);
-            var session = server.AcceptSession(41, 3, 4, 5, 6);
+            var session = server.AcceptSession(41, 3);
 
             server.Close();
 
@@ -2553,6 +2626,106 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<NnrpNativeInvalidStateException>(() => session.Control(17));
             Assert.Throws<NnrpNativeInvalidStateException>(() => session.Close());
             server.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeServerRetainsAcceptTicketAcrossWouldBlock()
+        {
+            var beginCount = 0;
+            var waitCount = 0;
+            var claimCount = 0;
+
+            NnrpFfiStatus Begin(NnrpServerAcceptBeginRequest request, out NnrpHandle accept)
+            {
+                beginCount += 1;
+                accept = new NnrpHandle(NnrpHandleKind.ServerAccept, request.AcceptHandleId, request.Generation);
+                return NnrpFfiStatus.Ok;
+            }
+
+            NnrpFfiStatus Wait(NnrpServerAcceptWaitRequest request)
+            {
+                waitCount += 1;
+                return waitCount == 1
+                    ? new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock)
+                    : NnrpFfiStatus.Ok;
+            }
+
+            NnrpFfiStatus Claim(NnrpServerAcceptClaimRequest request, out NnrpServerAcceptResult result)
+            {
+                claimCount += 1;
+                result = new NnrpServerAcceptResult(
+                    new NnrpHandle(NnrpHandleKind.Session, request.SessionHandleId, request.Generation),
+                    (uint)TransportId.Ipc);
+                return NnrpFfiStatus.Ok;
+            }
+
+            using var server = NnrpNativeRuntimeServer.Bind(
+                CreateEntrypoints(
+                    serverAcceptBegin: Begin,
+                    serverAcceptWait: Wait,
+                    serverAcceptClaim: Claim),
+                50,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.Throws<NnrpNativeWouldBlockException>(() => server.AcceptSession(41, 3, 1));
+            var session = server.AcceptSession(42, 4, 25);
+
+            Assert.Equal(1, beginCount);
+            Assert.Equal(2, waitCount);
+            Assert.Equal(1, claimCount);
+            Assert.Equal((ulong)42, session.Handle.Handle.Id);
+            Assert.Equal(TransportId.Ipc, session.ActiveTransportId);
+        }
+
+        [Fact]
+        public void NativeRuntimeServerReleasesPendingAcceptBeforeConnectionClose()
+        {
+            var releaseCount = 0;
+            var closeCount = 0;
+            var entrypoints = CreateEntrypoints(
+                serverAcceptWait: _ => new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock),
+                serverAcceptRelease: accept =>
+                {
+                    releaseCount += 1;
+                    Assert.Equal(NnrpHandleKind.ServerAccept, accept.Kind);
+                    return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState);
+                },
+                connectionClose: handle =>
+                {
+                    closeCount += 1;
+                    Assert.Equal(NnrpHandleKind.Connection, handle.Kind);
+                    return NnrpFfiStatus.Ok;
+                });
+            var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.Throws<NnrpNativeWouldBlockException>(() => server.AcceptSession(41, 3, 1));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => server.Close());
+
+            Assert.Equal(1, releaseCount);
+            Assert.Equal(1, closeCount);
+            Assert.True(server.IsClosed);
+            server.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeServerRejectsUnknownAcceptedTransport()
+        {
+            NnrpFfiStatus Claim(NnrpServerAcceptClaimRequest request, out NnrpServerAcceptResult result)
+            {
+                result = new NnrpServerAcceptResult(
+                    new NnrpHandle(NnrpHandleKind.Session, request.SessionHandleId, request.Generation),
+                    999);
+                return NnrpFfiStatus.Ok;
+            }
+
+            using var server = NnrpNativeRuntimeServer.Bind(
+                CreateEntrypoints(serverAcceptClaim: Claim),
+                50,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.Throws<NnrpNativeArtifactException>(() => server.AcceptSession(41, 3));
         }
 
         [Fact]
@@ -2604,7 +2777,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 CaptureServerReceiveSubmit,
                 CaptureServerSendResult,
                 CaptureServerFlowUpdate,
@@ -2697,7 +2873,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                ServerAcceptBegin,
+                ServerAcceptWait,
+                ServerAcceptClaim,
+                ServerAcceptRelease,
                 CaptureServerReceiveSubmit,
                 CaptureServerSendResult,
                 ServerFlowUpdate,
@@ -2942,7 +3121,8 @@ namespace Nnrp.NativeBridge.Tests
             var session = new NnrpNativeRuntimeServerSession(
                 entrypoints,
                 new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
-                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)),
+                TransportId.Tcp);
 
             session.SendProgress(new ProgressMetadata(20, 1, 5, 2500, 0, 1), new byte[] { 1 });
             session.SendPartialResult(new PartialResultMetadata(20, 2, 0, 0, 2, 1), new byte[] { 2, 3 });
@@ -3010,7 +3190,12 @@ namespace Nnrp.NativeBridge.Tests
 
         private static NnrpNativeRuntimeEntrypoints CreateEntrypoints(
             NnrpNativeRuntimeEntrypoints.RuntimeFrameSendInvoker? runtimeFrameSend = null,
-            NativeObjectStore? objectStore = null)
+            NativeObjectStore? objectStore = null,
+            NnrpNativeRuntimeEntrypoints.ServerAcceptBeginInvoker? serverAcceptBegin = null,
+            NnrpNativeRuntimeEntrypoints.ServerAcceptWaitInvoker? serverAcceptWait = null,
+            NnrpNativeRuntimeEntrypoints.ServerAcceptClaimInvoker? serverAcceptClaim = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? serverAcceptRelease = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? connectionClose = null)
         {
             return new NnrpNativeRuntimeEntrypoints(
                 CurrentProtocolVersion,
@@ -3026,7 +3211,10 @@ namespace Nnrp.NativeBridge.Tests
                 ClientCancel,
                 AwaitEvent,
                 ServerBind,
-                ServerAccept,
+                serverAcceptBegin ?? ServerAcceptBegin,
+                serverAcceptWait ?? ServerAcceptWait,
+                serverAcceptClaim ?? ServerAcceptClaim,
+                serverAcceptRelease ?? ServerAcceptRelease,
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
@@ -3034,6 +3222,7 @@ namespace Nnrp.NativeBridge.Tests
                 Control,
                 PollEmpty,
                 DispatchEvent,
+                connectionClose: connectionClose,
                 schemaRegistryCreate: SchemaRegistryCreate,
                 schemaRegistryInstall: SchemaRegistryInstall,
                 schemaRegistryLookup: SchemaRegistryLookup,
@@ -3234,15 +3423,44 @@ namespace Nnrp.NativeBridge.Tests
             return NnrpFfiStatus.Ok;
         }
 
-        private static NnrpServerAcceptRequest MatchingServerAcceptRequest()
+        private static NnrpServerAcceptBeginRequest MatchingServerAcceptBeginRequest()
         {
-            return new NnrpServerAcceptRequest(new NnrpHandle(NnrpHandleKind.Connection, 4, 1), 3, 1, 1, 10, 1);
+            return new NnrpServerAcceptBeginRequest(
+                new NnrpHandle(NnrpHandleKind.Connection, 4, 1),
+                3,
+                1);
         }
 
-        private static NnrpFfiStatus ServerAccept(NnrpServerAcceptRequest request, out NnrpHandle session)
+        private static NnrpFfiStatus ServerAcceptBegin(
+            NnrpServerAcceptBeginRequest request,
+            out NnrpHandle accept)
         {
-            session = new NnrpHandle(NnrpHandleKind.Session, request.SessionId, request.Generation);
+            accept = new NnrpHandle(NnrpHandleKind.ServerAccept, request.AcceptHandleId, request.Generation);
             return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ServerAcceptWait(NnrpServerAcceptWaitRequest request)
+        {
+            return request.Accept.Kind == NnrpHandleKind.ServerAccept
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus ServerAcceptClaim(
+            NnrpServerAcceptClaimRequest request,
+            out NnrpServerAcceptResult result)
+        {
+            result = new NnrpServerAcceptResult(
+                new NnrpHandle(NnrpHandleKind.Session, request.SessionHandleId, request.Generation),
+                (uint)TransportId.Tcp);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpFfiStatus ServerAcceptRelease(NnrpHandle accept)
+        {
+            return accept.Kind == NnrpHandleKind.ServerAccept
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
         }
 
         private static NnrpServerReceiveSubmitRequest MatchingServerReceiveSubmitRequest()

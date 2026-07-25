@@ -869,10 +869,7 @@ namespace Nnrp.NativeBridge
 
             var session = Server.AcceptSession(
                 options.SessionId,
-                options.SessionGeneration,
-                options.ProfileId,
-                options.SchemaId,
-                options.SchemaVersion);
+                options.SessionGeneration);
             sessions.Add(options.SessionId, session);
             return session;
         }

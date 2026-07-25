@@ -87,6 +87,8 @@
 - [ ] Add architecture tests preserving the coarse native boundary.
   - [ ] Keep one carrier per client and accepted-session handle.
   - [ ] Keep one provider listener per low-level native listener handle.
+  - [x] Retain one native accept ticket per provider listener across bounded host polls.
+  - [x] Release a pending accept ticket before closing its provider listener.
   - [ ] Reject per-frame managed dispatch across multiple transport libraries.
 
 ## TCP Package
