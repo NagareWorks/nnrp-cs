@@ -1,41 +1,71 @@
 # 06 - Release Packaging And Docs
 
-## NuGet And GitHub Packages
+## Version And Release Inputs
 
-- [ ] Add preview4 package version.
-- [ ] Publish client package.
-- [ ] Publish server package.
-- [ ] Publish TCP transport package.
-- [ ] Publish QUIC transport package.
-- [ ] Publish IPC transport package.
-- [ ] Publish WebSocket transport package.
-- [ ] Keep package dependency graph role-first and transport-explicit.
+- [ ] Set the C# package train to `1.0.0-preview.4`.
+- [ ] Default release workflow source to `main`.
+- [ ] Default Rust artifact input to the coordinated `1.0.0-preview.4.17` route/security release.
+- [ ] Validate that the requested Rust release tag and all required assets exist before packing.
+- [ ] Reject release when any Preview4 TODO checkbox is open.
+
+## NuGet Package Graph
+
+- [ ] Pack `Nnrp.Core`.
+- [ ] Pack `Nnrp.NativeBridge`.
+- [ ] Pack `Nnrp.Client` with production client orchestration and no transport artifact.
+- [ ] Pack `Nnrp.Server` with production server orchestration and no transport artifact.
+- [ ] Pack `Nnrp.Transport.Tcp` with only TCP provider code and artifacts.
+- [ ] Pack `Nnrp.Transport.Quic` with only QUIC provider code and artifacts.
+- [ ] Pack `Nnrp.Transport.Ipc` with only IPC provider code and artifacts.
+- [ ] Pack `Nnrp.Transport.WebSocket` with only WebSocket provider code and artifacts.
+- [ ] Validate role-first dependency direction in every generated nuspec.
+- [ ] Inspect every nupkg for README, symbols, license, repository metadata, tags, and deterministic file order.
+- [ ] Inspect every transport nupkg against the complete Windows, macOS, Linux, Android, iOS, and iOS Simulator RID matrix.
+- [ ] Install every package set into clean client and server smoke projects.
 
 ## Unity Package
 
-- [ ] Update Unity package manifest.
-- [ ] Include supported platform native artifacts.
-- [ ] Exclude unsupported platform artifacts.
+- [ ] Update `com.nnrp.client` to the Preview4 package version.
+- [ ] Include managed client, core, NativeBridge, and all four provider assemblies.
+- [ ] Include every supported transport-scoped native plugin.
+- [ ] Exclude server assemblies and NuGet runtime paths.
 - [ ] Generate deterministic `.meta` files in CI.
-- [ ] Add package inspection tests.
+- [ ] Inspect the generated UPM tarball and zip before publication.
+- [ ] Import the generated package in a Unity validation project.
+
+## Release Workflow
+
+- [ ] Build and test managed assemblies before downloading release artifacts.
+- [ ] Download and verify every transport/platform artifact.
+- [ ] Pack NuGet and Unity distributions once from the verified artifact tree.
+- [ ] Publish NuGet packages with trusted publishing.
+- [ ] Publish the Unity package and GitHub release assets from the same commit.
+- [ ] Create the repository tag only after package validation passes.
+- [ ] Make reruns idempotent for already-published packages and existing tags.
 
 ## Benchmarks
 
-- [ ] Add managed runtime-control benchmark.
-- [ ] Add runtime object declare/ref/release benchmark.
-- [ ] Add TCP loopback benchmark.
-- [ ] Add QUIC loopback benchmark.
-- [ ] Add IPC loopback benchmark.
-- [ ] Add WebSocket loopback benchmark.
-- [ ] Store benchmark results under `doc/benchmarks`.
+- [ ] Benchmark runtime-control encode/decode and native send/receive.
+- [ ] Benchmark object declare/ref/release and object delta.
+- [ ] Benchmark copied snapshots and borrowed views.
+- [ ] Benchmark TCP loopback throughput and latency.
+- [ ] Benchmark QUIC loopback throughput and latency.
+- [ ] Benchmark IPC loopback throughput and latency.
+- [ ] Benchmark WebSocket loopback throughput and latency.
+- [ ] Record allocation count, p50, p95, p99, throughput, and payload size.
+- [ ] Compare the same payload matrix with Rust, Python, and JavaScript SDK baselines.
+- [ ] Store reproducible commands and results under `doc/benchmarks`.
 
 ## Documentation
 
-- [ ] Update README for preview4 role and transport packages.
-- [ ] Update client quick-start.
-- [ ] Update server quick-start.
-- [ ] Update Unity integration docs.
-- [ ] Document runtime control examples.
-- [ ] Document runtime object examples.
-- [ ] Document wire conformance commands.
-- [ ] Document package selection for TCP, QUIC, IPC, and WebSocket.
+- [ ] Update the repository README for the Preview4 role-first package graph.
+- [ ] Update package READMEs for client, server, core, NativeBridge, and all four transports.
+- [ ] Update the English and Chinese C# SDK overview and quick start.
+- [ ] Document `NnrpClient` connection, session, control, object, cache, result, and shutdown workflows.
+- [ ] Document `NnrpServer` listen, accept, operation, event, result, and shutdown workflows.
+- [ ] Document provider registration, automatic selection, explicit selection, costs, limits, and diagnostics.
+- [ ] Document TCP, QUIC, IPC, and WebSocket endpoint and security rules.
+- [ ] Document runtime-frame encoding and WebSocket binary framing.
+- [ ] Document wire conformance commands and evidence outputs.
+- [ ] Verify every documented public symbol and signature against compiled reference assemblies.
+- [ ] Verify all internal links and English/Chinese navigation entries.
