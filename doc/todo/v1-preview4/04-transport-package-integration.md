@@ -2,18 +2,18 @@
 
 ## Frozen Provider Contracts
 
-- [ ] Add immutable provider value types in `Nnrp.Core`.
-  - [ ] `NnrpTransportProviderCost(ModelId, Units)`.
-  - [ ] `NnrpTransportProviderLimits(MaxFrameBytes)`.
-  - [ ] `NnrpTransportProviderLimitation` with every frozen limitation value.
-  - [ ] `NnrpTransportProviderMetadata(Id, Cost, PreferenceRank, Limits, Limitations)`.
-  - [ ] `NnrpTransportProviderDescriptor(Name, Version, TransportId, Kind, Available, LibraryPath, Metadata, Diagnostic)`.
-  - [ ] `NnrpTransportProbeState`.
-  - [ ] `NnrpTransportProbeMetrics(SampleCount, SuccessCount, MedianThroughputBytesPerSecond, MedianRttMicroseconds)`.
-  - [ ] `NnrpTransportRejectionReason`.
-  - [ ] `NnrpTransportCandidate`.
-  - [ ] `NnrpTransportSelection`.
-  - [ ] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
+- [x] Add immutable provider value types in `Nnrp.Core`.
+  - [x] `NnrpTransportProviderCost(ModelId, Units)`.
+  - [x] `NnrpTransportProviderLimits(MaxFrameBytes)`.
+  - [x] `NnrpTransportProviderLimitation` with every frozen limitation value.
+  - [x] `NnrpTransportProviderMetadata(Id, Cost, PreferenceRank, Limits, Limitations)`.
+  - [x] `NnrpTransportProviderDescriptor(Name, Version, TransportId, Kind, Available, LibraryPath, Metadata, Diagnostic)`.
+  - [x] `NnrpTransportProbeState`.
+  - [x] `NnrpTransportProbeMetrics(SampleCount, SuccessCount, MedianThroughputBytesPerSecond, MedianRttMicroseconds)`.
+  - [x] `NnrpTransportRejectionReason`.
+  - [x] `NnrpTransportCandidate`.
+  - [x] `NnrpTransportSelection`.
+  - [x] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
 - [ ] Add endpoint and security contracts in `Nnrp.Core`.
   - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
   - [x] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.
