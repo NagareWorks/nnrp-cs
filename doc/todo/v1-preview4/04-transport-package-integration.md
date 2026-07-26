@@ -15,9 +15,9 @@
   - [ ] `NnrpTransportSelection`.
   - [ ] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
 - [ ] Add endpoint and security contracts in `Nnrp.Core`.
-  - [ ] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
-  - [ ] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.
-  - [ ] Represent explicit carrier-local locators as `NnrpProviderEndpoint`.
+  - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
+  - [x] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.
+  - [x] Represent explicit carrier-local locators as `NnrpProviderEndpoint`.
   - [ ] Derive TCP and QUIC host/port locators from the application authority when no override is present.
   - [ ] Require a matching explicit `unix://` or `npipe://` provider endpoint before selecting IPC.
   - [ ] Require a matching explicit `ws://` or `wss://` provider endpoint before selecting WebSocket.
@@ -29,8 +29,8 @@
   - [ ] Reject provider-kind mismatches and platform-incompatible IPC locators before creating native handles.
   - [ ] Reject unknown route keys and report known-but-uninstalled routes as `LocalUnavailable`.
   - [ ] Apply the exact rejection precedence when multiple checks fail.
-  - [ ] Add `NnrpTransportClientSecurity(ServerName, TrustedCertificateDer)`.
-  - [ ] Add `NnrpTransportServerSecurity(CertificateDer, PrivateKeyPkcs8Der)`.
+  - [x] Add `NnrpTransportClientSecurity(ServerName, TrustedCertificateDer)`.
+  - [x] Add `NnrpTransportServerSecurity(CertificateDer, PrivateKeyPkcs8Der)`.
   - [ ] Reject client credentials on listen paths and server credentials on connect paths.
   - [ ] Add `RouteUnresolved` and `SecurityUnsatisfied` rejection reasons.
   - [ ] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.

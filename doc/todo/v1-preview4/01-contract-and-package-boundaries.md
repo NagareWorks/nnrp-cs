@@ -38,9 +38,9 @@
 ## API Surface Policy
 
 - [ ] Replace earlier preview entrypoints with the frozen Preview4 names and semantics.
-  - [ ] Add `NnrpEndpoint` for application-facing `nnrp://` and `nnrps://` endpoints.
-  - [ ] Add `NnrpProviderEndpoint` for explicit carrier-local overrides.
-  - [ ] Add `NnrpTransportClientSecurity` and `NnrpTransportServerSecurity`.
+  - [x] Add `NnrpEndpoint` for application-facing `nnrp://` and `nnrps://` endpoints.
+  - [x] Add `NnrpProviderEndpoint` for explicit carrier-local overrides.
+  - [x] Add `NnrpTransportClientSecurity` and `NnrpTransportServerSecurity`.
   - [ ] Add `NnrpClientProviderRoute` and an immutable `TransportId`-keyed client route dictionary.
   - [ ] Add `NnrpServerProviderRoute` and an immutable `TransportId`-keyed server route dictionary.
   - [ ] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
