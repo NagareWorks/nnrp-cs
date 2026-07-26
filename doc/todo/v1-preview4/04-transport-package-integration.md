@@ -22,7 +22,7 @@
   - [x] Require a matching explicit `unix://` or `npipe://` provider endpoint before selecting IPC.
   - [x] Require a matching explicit `ws://` or `wss://` provider endpoint before selecting WebSocket.
   - [x] Add `NnrpClientProviderRoute` and `NnrpServerProviderRoute` with route-local locator and security.
-  - [ ] Add immutable client and server route dictionaries keyed by `TransportId`.
+  - [x] Add immutable client and server route dictionaries keyed by `TransportId`.
   - [x] Keep the exact owned client/server security fields on each route.
   - [ ] Exclude unresolved client candidates under `Auto` and `Prefer*`; fail forced policies without fallback.
   - [ ] Treat an unresolved otherwise-eligible server route as a hard listen error.
@@ -36,15 +36,15 @@
   - [x] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.
   - [x] Reject IPC, plain TCP, and WS for `nnrps://`.
 - [ ] Replace the slot/priority-only provider contract.
-  - [ ] Expose the validated provider descriptor from `INnrpNativeTransportProvider`.
-  - [ ] Add `NnrpTransportConnectOptions`.
-  - [ ] Add `NnrpTransportListenOptions`.
-  - [ ] Add `NnrpTransportProbeOptions`.
-  - [ ] Add opaque `NnrpTransportConnection` ownership values without public FFI handles.
-  - [ ] Add opaque `NnrpTransportListener` ownership values without public FFI handles.
-  - [ ] Expose `ConnectAsync` from each provider.
-  - [ ] Expose `ListenAsync` from each provider.
-  - [ ] Expose `ProbeAsync` from each provider.
+  - [x] Expose the validated provider descriptor from `INnrpNativeTransportProvider`.
+  - [x] Add `NnrpTransportConnectOptions`.
+  - [x] Add `NnrpTransportListenOptions`.
+  - [x] Add `NnrpTransportProbeOptions`.
+  - [x] Add opaque `NnrpTransportConnection` ownership values without public FFI handles.
+  - [x] Add opaque `NnrpTransportListener` ownership values without public FFI handles.
+  - [x] Expose `ConnectAsync` from each provider.
+  - [x] Expose `ListenAsync` from each provider.
+  - [x] Expose `ProbeAsync` from each provider.
   - [ ] Reject metadata that disagrees with the artifact manifest or transport slot.
 
 ## Provider Registration And Selection
@@ -93,21 +93,21 @@
 
 ## TCP Package
 
-- [ ] Update `Nnrp.Transport.Tcp` to the frozen provider contract.
+- [x] Update `Nnrp.Transport.Tcp` to the frozen provider contract.
 - [ ] Validate TCP provider metadata against the TCP artifact manifest.
 - [ ] Keep TCP connect, listen, and probe calls inside the TCP package.
 - [ ] Package only TCP native artifacts for every supported RID.
-- [ ] Add TCP client/server loopback integration tests.
+- [x] Add TCP client/server loopback integration tests.
 - [ ] Add TCP NuGet content inspection tests.
 
 ## QUIC Package
 
-- [ ] Update `Nnrp.Transport.Quic` to the frozen provider contract.
+- [x] Update `Nnrp.Transport.Quic` to the frozen provider contract.
 - [ ] Validate QUIC provider metadata against the QUIC artifact manifest.
 - [ ] Keep QUIC connect, listen, and probe calls inside the QUIC package.
-- [ ] Require client/server security for secure QUIC endpoints.
+- [x] Require client/server security for secure QUIC endpoints.
 - [ ] Package only QUIC native artifacts for every supported RID.
-- [ ] Add QUIC client/server loopback integration tests.
+- [x] Add QUIC client/server loopback integration tests.
 - [ ] Add QUIC NuGet content inspection tests.
 
 ## IPC Package

@@ -1,19 +1,19 @@
 # Nnrp.Transport.Quic
 
-Nnrp.Transport.Quic owns the QUIC entry surface for NNRP Preview4 hosts.
+`Nnrp.Transport.Quic` owns the Preview4 QUIC provider implementation and QUIC-scoped Rust artifacts.
 
-Install this package when the host should expose QUIC as an installed transport candidate. The package provides
-transport-specific native runtime options and factory methods that pin the QUIC transport id before calling into
-`Nnrp.NativeBridge`. Install only `Nnrp.Transport.Quic` to expose QUIC, install only `Nnrp.Transport.Tcp` to expose TCP, or
-install both packages when the host should probe and select between installed transport candidates.
+Install this package when a host should expose QUIC. `NnrpNativeQuicTransportProvider` performs QUIC connect, listen, and
+probe operations through the packaged QUIC native library and returns opaque carriers to `Nnrp.NativeBridge`. Installing
+the package adds real QUIC behavior; it is not a configuration switch over an implementation hidden in another package.
 
-This package depends on Nnrp.Core and Nnrp.NativeBridge.
-
-Install:
+QUIC routes use route-local client or server security material as required by the frozen Preview4 endpoint contract.
 
 ```powershell
 dotnet add package Nnrp.Transport.Quic --version <published-version>
 ```
+
+Install QUIC alone to use QUIC without probing. Install multiple provider packages when Auto or Prefer policy should probe
+and compare eligible carriers.
 
 Repository and full SDK documentation:
 

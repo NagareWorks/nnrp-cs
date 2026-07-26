@@ -8,7 +8,6 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeSessionHostOptions(
             ulong connectionId,
             uint connectionGeneration,
-            uint transportId,
             uint sessionId,
             uint sessionGeneration,
             ushort profileId,
@@ -17,7 +16,6 @@ namespace Nnrp.NativeBridge
         {
             ConnectionId = connectionId;
             ConnectionGeneration = connectionGeneration;
-            TransportId = transportId;
             SessionId = sessionId;
             SessionGeneration = sessionGeneration;
             ProfileId = profileId;
@@ -29,8 +27,6 @@ namespace Nnrp.NativeBridge
 
         public uint ConnectionGeneration { get; }
 
-        public uint TransportId { get; }
-
         public uint SessionId { get; }
 
         public uint SessionGeneration { get; }
@@ -41,35 +37,19 @@ namespace Nnrp.NativeBridge
 
         public uint SchemaVersion { get; }
 
-        public bool BootstrapConnection { get; set; }
-
-        public string? ArtifactPath { get; set; }
-
-        public string? ArtifactRoot { get; set; }
-
-        public NnrpNativePlatform? Platform { get; set; }
-
-        public INnrpNativeRuntimeBackend? FallbackBackend { get; set; }
-
-        public NnrpNativeRuntimeFallbackPolicy FallbackPolicy { get; set; } =
-            NnrpNativeRuntimeFallbackPolicy.RequireNative;
     }
 
     public sealed class NnrpNativeRuntimeSessionHost : IDisposable
     {
         private NnrpNativeRuntimeSessionHost(
-            INnrpNativeRuntimeBackend backend,
             NnrpNativeRuntimeSessionHostOptions options,
             NnrpNativeRuntimeConnection connection,
             NnrpNativeRuntimeSession session)
         {
-            Backend = backend;
             Options = options;
             Connection = connection;
             Session = session;
         }
-
-        public INnrpNativeRuntimeBackend Backend { get; }
 
         public NnrpNativeRuntimeSessionHostOptions Options { get; }
 
@@ -79,31 +59,13 @@ namespace Nnrp.NativeBridge
 
         public bool IsClosed { get; private set; }
 
-        public static NnrpNativeRuntimeSessionHost Open(NnrpNativeRuntimeSessionHostOptions options)
-        {
-            if (options == null)
-            {
-                throw new ArgumentNullException(nameof(options));
-            }
-
-            var backend = NnrpNativeRuntimeBackendSelector.Select(
-                options.ArtifactPath,
-                options.ArtifactRoot,
-                options.Platform,
-                options.FallbackBackend,
-                options.FallbackPolicy,
-                options.TransportId,
-                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
-            return Open(backend, options);
-        }
-
         public static NnrpNativeRuntimeSessionHost Open(
-            INnrpNativeRuntimeBackend backend,
+            NnrpTransportConnection transportConnection,
             NnrpNativeRuntimeSessionHostOptions options)
         {
-            if (backend == null)
+            if (transportConnection == null)
             {
-                throw new ArgumentNullException(nameof(backend));
+                throw new ArgumentNullException(nameof(transportConnection));
             }
 
             if (options == null)
@@ -111,16 +73,16 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentNullException(nameof(options));
             }
 
-            var connection = options.BootstrapConnection
-                ? backend.BootstrapConnection(options.ConnectionId, options.ConnectionGeneration, options.TransportId)
-                : backend.Connect(options.ConnectionId, options.ConnectionGeneration, options.TransportId);
+            var connection = transportConnection.AdoptClient(
+                options.ConnectionId,
+                options.ConnectionGeneration);
             var session = connection.OpenSession(
                 options.SessionId,
                 options.SessionGeneration,
                 options.ProfileId,
                 options.SchemaId,
                 options.SchemaVersion);
-            return new NnrpNativeRuntimeSessionHost(backend, options, connection, session);
+            return new NnrpNativeRuntimeSessionHost(options, connection, session);
         }
 
         public NnrpNativeRuntimeOperation SubmitOperation(
@@ -364,32 +326,16 @@ namespace Nnrp.NativeBridge
     {
         public NnrpNativeRuntimeConnectionHostOptions(
             ulong connectionId,
-            uint connectionGeneration,
-            uint transportId)
+            uint connectionGeneration)
         {
             ConnectionId = connectionId;
             ConnectionGeneration = connectionGeneration;
-            TransportId = transportId;
         }
 
         public ulong ConnectionId { get; }
 
         public uint ConnectionGeneration { get; }
 
-        public uint TransportId { get; }
-
-        public bool BootstrapConnection { get; set; }
-
-        public string? ArtifactPath { get; set; }
-
-        public string? ArtifactRoot { get; set; }
-
-        public NnrpNativePlatform? Platform { get; set; }
-
-        public INnrpNativeRuntimeBackend? FallbackBackend { get; set; }
-
-        public NnrpNativeRuntimeFallbackPolicy FallbackPolicy { get; set; } =
-            NnrpNativeRuntimeFallbackPolicy.RequireNative;
     }
 
     public sealed class NnrpNativeRuntimeSessionOptions
@@ -425,16 +371,12 @@ namespace Nnrp.NativeBridge
             new Dictionary<uint, NnrpNativeRuntimeSession>();
 
         private NnrpNativeRuntimeConnectionHost(
-            INnrpNativeRuntimeBackend backend,
             NnrpNativeRuntimeConnectionHostOptions options,
             NnrpNativeRuntimeConnection connection)
         {
-            Backend = backend;
             Options = options;
             Connection = connection;
         }
-
-        public INnrpNativeRuntimeBackend Backend { get; }
 
         public NnrpNativeRuntimeConnectionHostOptions Options { get; }
 
@@ -444,31 +386,13 @@ namespace Nnrp.NativeBridge
 
         public bool IsClosed { get; private set; }
 
-        public static NnrpNativeRuntimeConnectionHost Open(NnrpNativeRuntimeConnectionHostOptions options)
-        {
-            if (options == null)
-            {
-                throw new ArgumentNullException(nameof(options));
-            }
-
-            var backend = NnrpNativeRuntimeBackendSelector.Select(
-                options.ArtifactPath,
-                options.ArtifactRoot,
-                options.Platform,
-                options.FallbackBackend,
-                options.FallbackPolicy,
-                options.TransportId,
-                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
-            return Open(backend, options);
-        }
-
         public static NnrpNativeRuntimeConnectionHost Open(
-            INnrpNativeRuntimeBackend backend,
+            NnrpTransportConnection transportConnection,
             NnrpNativeRuntimeConnectionHostOptions options)
         {
-            if (backend == null)
+            if (transportConnection == null)
             {
-                throw new ArgumentNullException(nameof(backend));
+                throw new ArgumentNullException(nameof(transportConnection));
             }
 
             if (options == null)
@@ -476,10 +400,10 @@ namespace Nnrp.NativeBridge
                 throw new ArgumentNullException(nameof(options));
             }
 
-            var connection = options.BootstrapConnection
-                ? backend.BootstrapConnection(options.ConnectionId, options.ConnectionGeneration, options.TransportId)
-                : backend.Connect(options.ConnectionId, options.ConnectionGeneration, options.TransportId);
-            return new NnrpNativeRuntimeConnectionHost(backend, options, connection);
+            var connection = transportConnection.AdoptClient(
+                options.ConnectionId,
+                options.ConnectionGeneration);
+            return new NnrpNativeRuntimeConnectionHost(options, connection);
         }
 
         public NnrpNativeRuntimeSession OpenSession(NnrpNativeRuntimeSessionOptions options)
@@ -770,25 +694,16 @@ namespace Nnrp.NativeBridge
     {
         public NnrpNativeRuntimeServerHostOptions(
             ulong serverId,
-            uint serverGeneration,
-            uint transportId)
+            uint serverGeneration)
         {
             ServerId = serverId;
             ServerGeneration = serverGeneration;
-            TransportId = transportId;
         }
 
         public ulong ServerId { get; }
 
         public uint ServerGeneration { get; }
 
-        public uint TransportId { get; }
-
-        public string? ArtifactPath { get; set; }
-
-        public string? ArtifactRoot { get; set; }
-
-        public NnrpNativePlatform? Platform { get; set; }
     }
 
     public sealed class NnrpNativeRuntimeServerHost : IDisposable
@@ -797,16 +712,14 @@ namespace Nnrp.NativeBridge
             new Dictionary<uint, NnrpNativeRuntimeServerSession>();
 
         private NnrpNativeRuntimeServerHost(
-            NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpNativeRuntimeServerHostOptions options,
             NnrpNativeRuntimeServer server)
         {
-            Entrypoints = entrypoints;
             Options = options;
             Server = server;
         }
 
-        public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
+        public NnrpNativeRuntimeEntrypoints Entrypoints => Server.Entrypoints;
 
         public NnrpNativeRuntimeServerHostOptions Options { get; }
 
@@ -816,29 +729,13 @@ namespace Nnrp.NativeBridge
 
         public bool IsClosed { get; private set; }
 
-        public static NnrpNativeRuntimeServerHost Open(NnrpNativeRuntimeServerHostOptions options)
-        {
-            if (options == null)
-            {
-                throw new ArgumentNullException(nameof(options));
-            }
-
-            var entrypoints = NnrpNativeRuntimeEntrypoints.Load(
-                options.ArtifactPath,
-                options.ArtifactRoot,
-                options.Platform,
-                options.TransportId,
-                NnrpNativeArtifact.TransportScopeFromTransportId(options.TransportId));
-            return Open(entrypoints, options);
-        }
-
         public static NnrpNativeRuntimeServerHost Open(
-            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpTransportListener transportListener,
             NnrpNativeRuntimeServerHostOptions options)
         {
-            if (entrypoints == null)
+            if (transportListener == null)
             {
-                throw new ArgumentNullException(nameof(entrypoints));
+                throw new ArgumentNullException(nameof(transportListener));
             }
 
             if (options == null)
@@ -847,11 +744,10 @@ namespace Nnrp.NativeBridge
             }
 
             var server = NnrpNativeRuntimeServer.Bind(
-                entrypoints,
+                transportListener,
                 options.ServerId,
-                options.ServerGeneration,
-                options.TransportId);
-            return new NnrpNativeRuntimeServerHost(entrypoints, options, server);
+                options.ServerGeneration);
+            return new NnrpNativeRuntimeServerHost(options, server);
         }
 
         public NnrpNativeRuntimeServerSession AcceptSession(NnrpNativeRuntimeSessionOptions options)

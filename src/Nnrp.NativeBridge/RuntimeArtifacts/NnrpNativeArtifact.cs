@@ -1466,23 +1466,29 @@ namespace Nnrp.NativeBridge
     {
         public NnrpEvent(
             uint kind,
+            uint messageType,
             NnrpHandle connection,
             NnrpHandle session,
             NnrpHandle operation,
             uint frameId,
+            NnrpHandle payloadOwner,
             NnrpBufferView payload,
             NnrpFfiDiagnostic diagnostic)
         {
             Kind = kind;
+            MessageType = messageType;
             Connection = connection;
             Session = session;
             Operation = operation;
             FrameId = frameId;
+            PayloadOwner = payloadOwner;
             Payload = payload;
             Diagnostic = diagnostic;
         }
 
         public readonly uint Kind;
+
+        public readonly uint MessageType;
 
         public readonly NnrpHandle Connection;
 
@@ -1491,6 +1497,8 @@ namespace Nnrp.NativeBridge
         public readonly NnrpHandle Operation;
 
         public readonly uint FrameId;
+
+        public readonly NnrpHandle PayloadOwner;
 
         public readonly NnrpBufferView Payload;
 
@@ -1572,35 +1580,211 @@ namespace Nnrp.NativeBridge
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpClientConnectRequest
     {
-        public NnrpClientConnectRequest(ulong connectionId, uint generation, uint transportId)
+        public NnrpClientConnectRequest(ulong connectionId, uint generation, NnrpHandle transportConnection)
         {
+            transportConnection.RequireKind(NnrpHandleKind.TransportConnection);
             ConnectionId = connectionId;
             Generation = generation;
-            TransportId = transportId;
+            Reserved0 = 0;
+            TransportConnection = transportConnection;
         }
 
         public readonly ulong ConnectionId;
 
         public readonly uint Generation;
 
-        public readonly uint TransportId;
+        public readonly uint Reserved0;
+
+        public readonly NnrpHandle TransportConnection;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpServerBindRequest
     {
-        public NnrpServerBindRequest(ulong serverId, uint generation, uint transportId)
+        public NnrpServerBindRequest(ulong serverId, uint generation, NnrpHandle transportListener)
         {
+            transportListener.RequireKind(NnrpHandleKind.TransportListener);
             ServerId = serverId;
             Generation = generation;
-            TransportId = transportId;
+            Reserved0 = 0;
+            TransportListener = transportListener;
         }
 
         public readonly ulong ServerId;
 
         public readonly uint Generation;
 
+        public readonly uint Reserved0;
+
+        public readonly NnrpHandle TransportListener;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportOpenRequest
+    {
+        public NnrpTransportOpenRequest(
+            TransportId transportId,
+            NnrpBufferView endpoint,
+            NnrpHandle config,
+            ulong maxPacketBytes,
+            uint timeoutMilliseconds)
+        {
+            if (transportId == Nnrp.Core.TransportId.Unspecified
+                || !Enum.IsDefined(typeof(Nnrp.Core.TransportId), transportId))
+            {
+                throw new ArgumentOutOfRangeException(nameof(transportId));
+            }
+
+            if (maxPacketBytes == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxPacketBytes));
+            }
+
+            if (config.IsValid)
+            {
+                config.RequireKind(NnrpHandleKind.TransportSecurityConfig);
+            }
+
+            TransportId = (uint)transportId;
+            Flags = 0;
+            Endpoint = endpoint;
+            Config = config;
+            MaxPacketBytes = maxPacketBytes;
+            TimeoutMilliseconds = timeoutMilliseconds;
+            Reserved0 = 0;
+        }
+
         public readonly uint TransportId;
+
+        public readonly uint Flags;
+
+        public readonly NnrpBufferView Endpoint;
+
+        public readonly NnrpHandle Config;
+
+        public readonly ulong MaxPacketBytes;
+
+        public readonly uint TimeoutMilliseconds;
+
+        public readonly uint Reserved0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportAcceptRequest
+    {
+        public NnrpTransportAcceptRequest(NnrpHandle listener, uint timeoutMilliseconds)
+        {
+            listener.RequireKind(NnrpHandleKind.TransportListener);
+            Listener = listener;
+            TimeoutMilliseconds = timeoutMilliseconds;
+            Reserved0 = 0;
+        }
+
+        public readonly NnrpHandle Listener;
+
+        public readonly uint TimeoutMilliseconds;
+
+        public readonly uint Reserved0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportProbeRequest
+    {
+        public NnrpTransportProbeRequest(
+            NnrpTransportOpenRequest open,
+            uint sampleCount,
+            uint probePayloadBytes)
+        {
+            if (sampleCount == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sampleCount));
+            }
+
+            if (probePayloadBytes == 0 || probePayloadBytes > open.MaxPacketBytes)
+            {
+                throw new ArgumentOutOfRangeException(nameof(probePayloadBytes));
+            }
+
+            Open = open;
+            SampleCount = sampleCount;
+            ProbePayloadBytes = probePayloadBytes;
+        }
+
+        public readonly NnrpTransportOpenRequest Open;
+
+        public readonly uint SampleCount;
+
+        public readonly uint ProbePayloadBytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportProbeResult
+    {
+        public NnrpTransportProbeResult(
+            uint sampleCount,
+            uint successCount,
+            ulong medianThroughputBytesPerSecond,
+            ulong medianRttMicroseconds)
+        {
+            SampleCount = sampleCount;
+            SuccessCount = successCount;
+            MedianThroughputBytesPerSecond = medianThroughputBytesPerSecond;
+            MedianRttMicroseconds = medianRttMicroseconds;
+        }
+
+        public readonly uint SampleCount;
+
+        public readonly uint SuccessCount;
+
+        public readonly ulong MedianThroughputBytesPerSecond;
+
+        public readonly ulong MedianRttMicroseconds;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportClientSecurityConfigRequest
+    {
+        public NnrpTransportClientSecurityConfigRequest(
+            TransportId transportId,
+            NnrpBufferView serverName,
+            NnrpBufferView trustedCertificateDer)
+        {
+            TransportId = (uint)transportId;
+            Flags = 0;
+            ServerName = serverName;
+            TrustedCertificateDer = trustedCertificateDer;
+        }
+
+        public readonly uint TransportId;
+
+        public readonly uint Flags;
+
+        public readonly NnrpBufferView ServerName;
+
+        public readonly NnrpBufferView TrustedCertificateDer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpTransportServerSecurityConfigRequest
+    {
+        public NnrpTransportServerSecurityConfigRequest(
+            TransportId transportId,
+            NnrpBufferView certificateDer,
+            NnrpBufferView privateKeyPkcs8Der)
+        {
+            TransportId = (uint)transportId;
+            Flags = 0;
+            CertificateDer = certificateDer;
+            PrivateKeyPkcs8Der = privateKeyPkcs8Der;
+        }
+
+        public readonly uint TransportId;
+
+        public readonly uint Flags;
+
+        public readonly NnrpBufferView CertificateDer;
+
+        public readonly NnrpBufferView PrivateKeyPkcs8Der;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1834,6 +2018,32 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpRoleEventPollRequest
+    {
+        public NnrpRoleEventPollRequest(
+            NnrpHandle scope,
+            uint maxEvents,
+            uint timeoutMilliseconds)
+        {
+            Scope = scope;
+            MaxEvents = maxEvents;
+            TimeoutMilliseconds = timeoutMilliseconds;
+            Flags = 0;
+            Reserved0 = 0;
+        }
+
+        public readonly NnrpHandle Scope;
+
+        public readonly uint MaxEvents;
+
+        public readonly uint TimeoutMilliseconds;
+
+        public readonly uint Flags;
+
+        public readonly uint Reserved0;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpServerReceiveSubmitRequest
     {
         public NnrpServerReceiveSubmitRequest(NnrpHandle session, ulong operationId, uint frameId, NnrpBufferView payload)
@@ -1924,6 +2134,12 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeEntrypoints : IDisposable
     {
+        private static readonly object PinnedLibraryGate = new object();
+        private static readonly Dictionary<string, IntPtr> PinnedLibraries = new Dictionary<string, IntPtr>(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal);
+
         public NnrpNativeRuntimeEntrypoints(
             CurrentProtocolVersionInvoker currentProtocolVersion,
             NnrpNativeArtifact.RuntimeCapabilitiesInvoker runtimeCapabilities,
@@ -1985,7 +2201,16 @@ namespace Nnrp.NativeBridge
             CacheReferenceDescriptorCreateInvoker? cacheReferenceDescriptorCreate = null,
             CacheReferenceDescriptorViewInvoker? cacheReferenceDescriptorView = null,
             DescriptorMetadataSnapshotInvoker? cacheReferenceDescriptorMetadataSnapshot = null,
-            HandleStatusInvoker? cacheReferenceDescriptorRelease = null)
+            HandleStatusInvoker? cacheReferenceDescriptorRelease = null,
+            TransportSecurityConfigCreateInvoker? transportClientSecurityConfigCreate = null,
+            TransportServerSecurityConfigCreateInvoker? transportServerSecurityConfigCreate = null,
+            TransportOpenInvoker? transportConnect = null,
+            TransportOpenInvoker? transportListen = null,
+            TransportAcceptInvoker? transportAccept = null,
+            TransportListenerEndpointInvoker? transportListenerEndpoint = null,
+            TransportProbeInvoker? transportProbe = null,
+            HandleStatusInvoker? transportClose = null,
+            RoleAwaitEventsInvoker? serverAwaitEvents = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -2048,7 +2273,16 @@ namespace Nnrp.NativeBridge
                 cacheReferenceDescriptorCreate,
                 cacheReferenceDescriptorView,
                 cacheReferenceDescriptorMetadataSnapshot,
-                cacheReferenceDescriptorRelease)
+                cacheReferenceDescriptorRelease,
+                transportClientSecurityConfigCreate,
+                transportServerSecurityConfigCreate,
+                transportConnect,
+                transportListen,
+                transportAccept,
+                transportListenerEndpoint,
+                transportProbe,
+                transportClose,
+                serverAwaitEvents)
         {
         }
 
@@ -2114,7 +2348,16 @@ namespace Nnrp.NativeBridge
             CacheReferenceDescriptorCreateInvoker? cacheReferenceDescriptorCreate,
             CacheReferenceDescriptorViewInvoker? cacheReferenceDescriptorView,
             DescriptorMetadataSnapshotInvoker? cacheReferenceDescriptorMetadataSnapshot,
-            HandleStatusInvoker? cacheReferenceDescriptorRelease)
+            HandleStatusInvoker? cacheReferenceDescriptorRelease,
+            TransportSecurityConfigCreateInvoker? transportClientSecurityConfigCreate,
+            TransportServerSecurityConfigCreateInvoker? transportServerSecurityConfigCreate,
+            TransportOpenInvoker? transportConnect,
+            TransportOpenInvoker? transportListen,
+            TransportAcceptInvoker? transportAccept,
+            TransportListenerEndpointInvoker? transportListenerEndpoint,
+            TransportProbeInvoker? transportProbe,
+            HandleStatusInvoker? transportClose,
+            RoleAwaitEventsInvoker? serverAwaitEvents)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -2178,6 +2421,15 @@ namespace Nnrp.NativeBridge
             CacheReferenceDescriptorView = cacheReferenceDescriptorView ?? MissingCacheReferenceDescriptorView;
             CacheReferenceDescriptorMetadataSnapshot = cacheReferenceDescriptorMetadataSnapshot ?? MissingDescriptorMetadataSnapshot;
             CacheReferenceDescriptorRelease = cacheReferenceDescriptorRelease ?? MissingRuntimeObjectHandleStatus;
+            TransportClientSecurityConfigCreate = transportClientSecurityConfigCreate ?? MissingTransportClientSecurityConfigCreate;
+            TransportServerSecurityConfigCreate = transportServerSecurityConfigCreate ?? MissingTransportServerSecurityConfigCreate;
+            TransportConnect = transportConnect ?? MissingTransportOpen;
+            TransportListen = transportListen ?? MissingTransportOpen;
+            TransportAccept = transportAccept ?? MissingTransportAccept;
+            TransportListenerEndpoint = transportListenerEndpoint ?? MissingTransportListenerEndpoint;
+            TransportProbe = transportProbe ?? MissingTransportProbe;
+            TransportClose = transportClose ?? MissingHandleStatus;
+            ServerAwaitEvents = serverAwaitEvents ?? MissingRoleAwaitEvents;
         }
 
         private IntPtr _libraryHandle;
@@ -2195,87 +2447,108 @@ namespace Nnrp.NativeBridge
                     ? NnrpNativeArtifact.Resolve(artifactRoot, platform)
                     : NnrpNativeArtifact.ResolveTransport(transportScope!, artifactRoot, platform)
                 : artifactPath!;
-            IntPtr handle = IntPtr.Zero;
-            try
+            resolvedPath = Path.GetFullPath(resolvedPath);
+            lock (PinnedLibraryGate)
             {
-                handle = NativeDynamicLibrary.Load(resolvedPath);
-                var runtimeCapabilities = Bind<NnrpNativeArtifact.RuntimeCapabilitiesInvoker>(handle, "nnrp_runtime_capabilities");
-                NnrpNativeArtifact.Probe(
-                    resolvedPath,
-                    runtimeCapabilities: runtimeCapabilities,
-                    requiredTransportSlots: requiredTransportSlots);
-                return new NnrpNativeRuntimeEntrypoints(
-                    handle,
-                    Bind<CurrentProtocolVersionInvoker>(handle, "nnrp_current_protocol_version"),
-                    runtimeCapabilities,
-                    MissingConnectionBootstrap,
-                    Bind<ClientConnectInvoker>(handle, "nnrp_client_connect"),
-                    Bind<SessionOpenInvoker>(handle, "nnrp_session_open"),
-                    Bind<SessionOpenInvoker>(handle, "nnrp_client_open_session"),
-                    Bind<SubmitInvoker>(handle, "nnrp_submit"),
-                    Bind<SubmitInvoker>(handle, "nnrp_client_submit"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_session_close"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close"),
-                    Bind<ClientCancelInvoker>(handle, "nnrp_client_cancel"),
-                    Bind<AwaitEventInvoker>(handle, "nnrp_client_await_event"),
-                    Bind<ServerBindInvoker>(handle, "nnrp_server_bind"),
-                    Bind<ServerAcceptBeginInvoker>(handle, "nnrp_server_accept_begin"),
-                    Bind<ServerAcceptWaitInvoker>(handle, "nnrp_server_accept_wait"),
-                    Bind<ServerAcceptClaimInvoker>(handle, "nnrp_server_accept_claim"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_server_accept_release"),
-                    MissingServerReceiveSubmit,
-                    Bind<ServerSendResultInvoker>(handle, "nnrp_server_send_result"),
-                    MissingServerFlowUpdate,
-                    Bind<HandleStatusInvoker>(handle, "nnrp_server_close"),
-                    MissingControl,
-                    Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
-                    Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_connection_close"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_client_close_connection"),
-                    Bind<SchemaRegistryCreateInvoker>(handle, "nnrp_schema_registry_create"),
-                    Bind<SchemaRegistryInstallInvoker>(handle, "nnrp_schema_registry_install"),
-                    Bind<SchemaRegistryLookupInvoker>(handle, "nnrp_schema_registry_lookup"),
-                    Bind<SchemaRegistryInvalidateInvoker>(handle, "nnrp_schema_registry_invalidate"),
-                    Bind<SchemaRegistryValidateBindingInvoker>(handle, "nnrp_schema_registry_validate_binding"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_schema_registry_release"),
-                    Bind<ClientResumeSessionInvoker>(handle, "nnrp_client_resume_session"),
-                    Bind<SchemaDescriptorParseInvoker>(handle, "nnrp_schema_descriptor_parse"),
-                    Bind<SchemaDescriptorWriteInvoker>(handle, "nnrp_schema_descriptor_write"),
-                    Bind<TokenDeltaSchemaDescriptorInvoker>(handle, "nnrp_token_delta_schema_descriptor"),
-                    Bind<TypedPayloadValidateBindingInvoker>(handle, "nnrp_typed_payload_validate_binding"),
-                    Bind<RecoveryRequestValidateInvoker>(handle, "nnrp_session_recovery_request_validate"),
-                    Bind<RecoveryAckValidateInvoker>(handle, "nnrp_session_recovery_ack_validate"),
-                    Bind<MigrationRecoveryValidateInvoker>(handle, "nnrp_migration_recovery_validate"),
-                    Bind<MigrationShouldReplayFrameInvoker>(handle, "nnrp_migration_should_replay_frame"),
-                    Bind<BufferAcquireCopyInvoker>(handle, "nnrp_buffer_acquire_copy"),
-                    Bind<BufferViewInvoker>(handle, "nnrp_buffer_view"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_buffer_release"),
-                    Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_query"),
-                    Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
-                    Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
-                    Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"),
-                    MissingClientSubmitResultCompactBatch,
-                    Bind<RuntimeFrameSendInvoker>(handle, "nnrp_runtime_frame_send"),
-                    Bind<BufferAcquireCopyInvoker>(handle, "nnrp_object_metadata_buffer_acquire_copy"),
-                    Bind<BufferViewInvoker>(handle, "nnrp_object_metadata_buffer_view"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_object_metadata_buffer_release"),
-                    Bind<ObjectDescriptorCreateInvoker>(handle, "nnrp_object_descriptor_create"),
-                    Bind<ObjectDescriptorViewInvoker>(handle, "nnrp_object_descriptor_view"),
-                    Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_object_descriptor_metadata_snapshot"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_object_descriptor_release"),
-                    Bind<CacheReferenceDescriptorCreateInvoker>(handle, "nnrp_cache_reference_descriptor_create"),
-                    Bind<CacheReferenceDescriptorViewInvoker>(handle, "nnrp_cache_reference_descriptor_view"),
-                    Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_cache_reference_descriptor_metadata_snapshot"),
-                    Bind<HandleStatusInvoker>(handle, "nnrp_cache_reference_descriptor_release"));
-            }
-            catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
-            {
-                if (handle != IntPtr.Zero)
+                IntPtr handle = IntPtr.Zero;
+                bool loadedHere = false;
+                try
                 {
-                    NativeDynamicLibrary.Free(handle);
-                }
+                    if (!PinnedLibraries.TryGetValue(resolvedPath, out handle))
+                    {
+                        handle = NativeDynamicLibrary.Load(resolvedPath);
+                        PinnedLibraries.Add(resolvedPath, handle);
+                        loadedHere = true;
+                    }
 
-                throw new NnrpNativeArtifactException("Failed to load native runtime entrypoints from " + resolvedPath + ": " + error.Message, error);
+                    var runtimeCapabilities = Bind<NnrpNativeArtifact.RuntimeCapabilitiesInvoker>(handle, "nnrp_runtime_capabilities");
+                    NnrpNativeArtifact.Probe(
+                        resolvedPath,
+                        runtimeCapabilities: runtimeCapabilities,
+                        requiredTransportSlots: requiredTransportSlots);
+                    return new NnrpNativeRuntimeEntrypoints(
+                        handle,
+                        Bind<CurrentProtocolVersionInvoker>(handle, "nnrp_current_protocol_version"),
+                        runtimeCapabilities,
+                        MissingConnectionBootstrap,
+                        Bind<ClientConnectInvoker>(handle, "nnrp_client_connect"),
+                        Bind<SessionOpenInvoker>(handle, "nnrp_session_open"),
+                        Bind<SessionOpenInvoker>(handle, "nnrp_client_open_session"),
+                        Bind<SubmitInvoker>(handle, "nnrp_submit"),
+                        Bind<SubmitInvoker>(handle, "nnrp_client_submit"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_session_close"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_client_close"),
+                        Bind<ClientCancelInvoker>(handle, "nnrp_client_cancel"),
+                        Bind<AwaitEventInvoker>(handle, "nnrp_client_await_event"),
+                        Bind<ServerBindInvoker>(handle, "nnrp_server_bind"),
+                        Bind<ServerAcceptBeginInvoker>(handle, "nnrp_server_accept_begin"),
+                        Bind<ServerAcceptWaitInvoker>(handle, "nnrp_server_accept_wait"),
+                        Bind<ServerAcceptClaimInvoker>(handle, "nnrp_server_accept_claim"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_server_accept_release"),
+                        MissingServerReceiveSubmit,
+                        Bind<ServerSendResultInvoker>(handle, "nnrp_server_send_result"),
+                        MissingServerFlowUpdate,
+                        Bind<HandleStatusInvoker>(handle, "nnrp_server_close"),
+                        MissingControl,
+                        Bind<PollEmptyInvoker>(handle, "nnrp_poll_empty"),
+                        Bind<DispatchEventInvoker>(handle, "nnrp_dispatch_event"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_connection_close"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_client_close_connection"),
+                        Bind<SchemaRegistryCreateInvoker>(handle, "nnrp_schema_registry_create"),
+                        Bind<SchemaRegistryInstallInvoker>(handle, "nnrp_schema_registry_install"),
+                        Bind<SchemaRegistryLookupInvoker>(handle, "nnrp_schema_registry_lookup"),
+                        Bind<SchemaRegistryInvalidateInvoker>(handle, "nnrp_schema_registry_invalidate"),
+                        Bind<SchemaRegistryValidateBindingInvoker>(handle, "nnrp_schema_registry_validate_binding"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_schema_registry_release"),
+                        Bind<ClientResumeSessionInvoker>(handle, "nnrp_client_resume_session"),
+                        Bind<SchemaDescriptorParseInvoker>(handle, "nnrp_schema_descriptor_parse"),
+                        Bind<SchemaDescriptorWriteInvoker>(handle, "nnrp_schema_descriptor_write"),
+                        Bind<TokenDeltaSchemaDescriptorInvoker>(handle, "nnrp_token_delta_schema_descriptor"),
+                        Bind<TypedPayloadValidateBindingInvoker>(handle, "nnrp_typed_payload_validate_binding"),
+                        Bind<RecoveryRequestValidateInvoker>(handle, "nnrp_session_recovery_request_validate"),
+                        Bind<RecoveryAckValidateInvoker>(handle, "nnrp_session_recovery_ack_validate"),
+                        Bind<MigrationRecoveryValidateInvoker>(handle, "nnrp_migration_recovery_validate"),
+                        Bind<MigrationShouldReplayFrameInvoker>(handle, "nnrp_migration_should_replay_frame"),
+                        Bind<BufferAcquireCopyInvoker>(handle, "nnrp_buffer_acquire_copy"),
+                        Bind<BufferViewInvoker>(handle, "nnrp_buffer_view"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_buffer_release"),
+                        Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_query"),
+                        Bind<CacheLeaseRequestInvoker>(handle, "nnrp_cache_touch"),
+                        Bind<CachePrefetchInvoker>(handle, "nnrp_cache_prefetch"),
+                        Bind<CacheReleaseInvoker>(handle, "nnrp_cache_release"),
+                        MissingClientSubmitResultCompactBatch,
+                        Bind<RuntimeFrameSendInvoker>(handle, "nnrp_runtime_frame_send"),
+                        Bind<BufferAcquireCopyInvoker>(handle, "nnrp_object_metadata_buffer_acquire_copy"),
+                        Bind<BufferViewInvoker>(handle, "nnrp_object_metadata_buffer_view"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_object_metadata_buffer_release"),
+                        Bind<ObjectDescriptorCreateInvoker>(handle, "nnrp_object_descriptor_create"),
+                        Bind<ObjectDescriptorViewInvoker>(handle, "nnrp_object_descriptor_view"),
+                        Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_object_descriptor_metadata_snapshot"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_object_descriptor_release"),
+                        Bind<CacheReferenceDescriptorCreateInvoker>(handle, "nnrp_cache_reference_descriptor_create"),
+                        Bind<CacheReferenceDescriptorViewInvoker>(handle, "nnrp_cache_reference_descriptor_view"),
+                        Bind<DescriptorMetadataSnapshotInvoker>(handle, "nnrp_cache_reference_descriptor_metadata_snapshot"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_cache_reference_descriptor_release"),
+                        Bind<TransportSecurityConfigCreateInvoker>(handle, "nnrp_transport_client_security_config_create"),
+                        Bind<TransportServerSecurityConfigCreateInvoker>(handle, "nnrp_transport_server_security_config_create"),
+                        Bind<TransportOpenInvoker>(handle, "nnrp_transport_connect"),
+                        Bind<TransportOpenInvoker>(handle, "nnrp_transport_listen"),
+                        Bind<TransportAcceptInvoker>(handle, "nnrp_transport_accept"),
+                        Bind<TransportListenerEndpointInvoker>(handle, "nnrp_transport_listener_endpoint"),
+                        Bind<TransportProbeInvoker>(handle, "nnrp_transport_probe"),
+                        Bind<HandleStatusInvoker>(handle, "nnrp_transport_close"),
+                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_server_await_events"));
+                }
+                catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
+                {
+                    RemoveFailedPinnedLibrary(resolvedPath, handle, loadedHere);
+                    throw new NnrpNativeArtifactException("Failed to load native runtime entrypoints from " + resolvedPath + ": " + error.Message, error);
+                }
+                catch
+                {
+                    RemoveFailedPinnedLibrary(resolvedPath, handle, loadedHere);
+                    throw;
+                }
             }
         }
 
@@ -2286,8 +2559,21 @@ namespace Nnrp.NativeBridge
                 return;
             }
 
-            NativeDynamicLibrary.Free(_libraryHandle);
+            // Native transports may retain asynchronous runtime workers after their handles close.
+            // Keep the module process-pinned so those workers never return through unloaded code.
             _libraryHandle = IntPtr.Zero;
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static void RemoveFailedPinnedLibrary(string path, IntPtr handle, bool loadedHere)
+        {
+            if (!loadedHere || handle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            PinnedLibraries.Remove(path);
+            NativeDynamicLibrary.Free(handle);
         }
 
         [ExcludeFromCodeCoverage]
@@ -2349,6 +2635,13 @@ namespace Nnrp.NativeBridge
         public delegate NnrpFfiStatus ServerAcceptClaimInvoker(
             NnrpServerAcceptClaimRequest request,
             out NnrpServerAcceptResult result);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus RoleAwaitEventsInvoker(
+            NnrpRoleEventPollRequest request,
+            IntPtr events,
+            UIntPtr eventCapacity,
+            out UIntPtr eventCount);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ServerReceiveSubmitInvoker(NnrpServerReceiveSubmitRequest request, out NnrpHandle operation);
@@ -2472,6 +2765,37 @@ namespace Nnrp.NativeBridge
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus CacheReleaseInvoker(NnrpHandle lease, out NnrpCacheLeaseResult result);
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportSecurityConfigCreateInvoker(
+            NnrpTransportClientSecurityConfigRequest request,
+            out NnrpHandle config);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportServerSecurityConfigCreateInvoker(
+            NnrpTransportServerSecurityConfigRequest request,
+            out NnrpHandle config);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportOpenInvoker(
+            NnrpTransportOpenRequest request,
+            out NnrpHandle handle);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportAcceptInvoker(
+            NnrpTransportAcceptRequest request,
+            out NnrpHandle connection);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportListenerEndpointInvoker(
+            NnrpHandle listener,
+            out NnrpHandle buffer,
+            out NnrpBufferView endpoint);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus TransportProbeInvoker(
+            NnrpTransportProbeRequest request,
+            out NnrpTransportProbeResult result);
+
         public CurrentProtocolVersionInvoker CurrentProtocolVersion { get; }
 
         public NnrpNativeArtifact.RuntimeCapabilitiesInvoker RuntimeCapabilities { get; }
@@ -2511,6 +2835,8 @@ namespace Nnrp.NativeBridge
         public ServerAcceptWaitInvoker ServerAcceptWait { get; }
 
         public ServerAcceptClaimInvoker ServerAcceptClaim { get; }
+
+        public RoleAwaitEventsInvoker ServerAwaitEvents { get; }
 
         public HandleStatusInvoker ServerAcceptRelease { get; }
 
@@ -2593,6 +2919,22 @@ namespace Nnrp.NativeBridge
         public CachePrefetchInvoker CachePrefetch { get; }
 
         public CacheReleaseInvoker CacheRelease { get; }
+
+        public TransportSecurityConfigCreateInvoker TransportClientSecurityConfigCreate { get; }
+
+        public TransportServerSecurityConfigCreateInvoker TransportServerSecurityConfigCreate { get; }
+
+        public TransportOpenInvoker TransportConnect { get; }
+
+        public TransportOpenInvoker TransportListen { get; }
+
+        public TransportAcceptInvoker TransportAccept { get; }
+
+        public TransportListenerEndpointInvoker TransportListenerEndpoint { get; }
+
+        public TransportProbeInvoker TransportProbe { get; }
+
+        public HandleStatusInvoker TransportClose { get; }
 
         private static NnrpFfiStatus MissingSchemaRegistryCreate(out NnrpHandle registry)
         {
@@ -2840,6 +3182,66 @@ namespace Nnrp.NativeBridge
             result = default(NnrpCacheLeaseResult);
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Cache);
         }
+
+        private static NnrpFfiStatus MissingTransportClientSecurityConfigCreate(
+            NnrpTransportClientSecurityConfigRequest request,
+            out NnrpHandle config)
+        {
+            config = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingTransportServerSecurityConfigCreate(
+            NnrpTransportServerSecurityConfigRequest request,
+            out NnrpHandle config)
+        {
+            config = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingTransportOpen(
+            NnrpTransportOpenRequest request,
+            out NnrpHandle handle)
+        {
+            handle = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingTransportAccept(
+            NnrpTransportAcceptRequest request,
+            out NnrpHandle connection)
+        {
+            connection = NnrpHandle.Invalid;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingTransportListenerEndpoint(
+            NnrpHandle listener,
+            out NnrpHandle buffer,
+            out NnrpBufferView endpoint)
+        {
+            buffer = NnrpHandle.Invalid;
+            endpoint = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingTransportProbe(
+            NnrpTransportProbeRequest request,
+            out NnrpTransportProbeResult result)
+        {
+            result = default(NnrpTransportProbeResult);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Transport);
+        }
+
+        private static NnrpFfiStatus MissingRoleAwaitEvents(
+            NnrpRoleEventPollRequest request,
+            IntPtr events,
+            UIntPtr eventCapacity,
+            out UIntPtr eventCount)
+        {
+            eventCount = UIntPtr.Zero;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Internal);
+        }
     }
 
     public readonly struct NnrpNativeRuntimeDiagnostic
@@ -2883,6 +3285,7 @@ namespace Nnrp.NativeBridge
     {
         public NnrpNativeRuntimeEvent(
             uint kind,
+            uint messageType,
             NnrpHandle connection,
             NnrpHandle session,
             NnrpHandle operation,
@@ -2891,6 +3294,7 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeDiagnostic diagnostic)
         {
             Kind = kind;
+            MessageType = messageType;
             Connection = connection;
             Session = session;
             Operation = operation;
@@ -2900,6 +3304,8 @@ namespace Nnrp.NativeBridge
         }
 
         public uint Kind { get; }
+
+        public uint MessageType { get; }
 
         public NnrpHandle Connection { get; }
 
@@ -2917,10 +3323,48 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeDiagnostic Diagnostic { get; }
 
+        public static NnrpNativeRuntimeEvent FromFfi(
+            NnrpEvent @event,
+            NnrpNativeRuntimeEntrypoints entrypoints)
+        {
+            if (entrypoints == null)
+            {
+                throw new ArgumentNullException(nameof(entrypoints));
+            }
+
+            try
+            {
+                return new NnrpNativeRuntimeEvent(
+                    @event.Kind,
+                    @event.MessageType,
+                    @event.Connection,
+                    @event.Session,
+                    @event.Operation,
+                    @event.FrameId,
+                    CopyPayload(@event.Payload),
+                    NnrpNativeRuntimeDiagnostic.FromFfi(@event.Diagnostic));
+            }
+            finally
+            {
+                if (@event.PayloadOwner.IsValid)
+                {
+                    entrypoints.BufferRelease(@event.PayloadOwner).ThrowIfError();
+                }
+            }
+        }
+
         public static NnrpNativeRuntimeEvent FromFfi(NnrpEvent @event)
         {
+            if (@event.PayloadOwner.IsValid)
+            {
+                throw new ArgumentException(
+                    "An owned native event requires entrypoints so its payload owner can be released.",
+                    nameof(@event));
+            }
+
             return new NnrpNativeRuntimeEvent(
                 @event.Kind,
+                @event.MessageType,
                 @event.Connection,
                 @event.Session,
                 @event.Operation,
@@ -3027,61 +3471,17 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeEvent? Event { get; }
 
-        public static NnrpNativeRuntimePollResult FromFfi(NnrpPollResult result)
+        public static NnrpNativeRuntimePollResult FromFfi(
+            NnrpPollResult result,
+            NnrpNativeRuntimeEntrypoints entrypoints)
         {
             return new NnrpNativeRuntimePollResult(
                 result.Status,
-                result.HasEvent != 0 ? NnrpNativeRuntimeEvent.FromFfi(result.Event) : null);
+                result.HasEvent != 0 ? NnrpNativeRuntimeEvent.FromFfi(result.Event, entrypoints) : null);
         }
     }
 
-    public interface INnrpNativeRuntimeBackend
-    {
-        NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId);
-
-        NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId);
-    }
-
-    public enum NnrpNativeRuntimeFallbackPolicy
-    {
-        RequireNative = 0,
-        UseFallbackForDiagnostics = 1,
-    }
-
-    public static class NnrpNativeRuntimeBackendSelector
-    {
-        public static INnrpNativeRuntimeBackend Select(
-            string? artifactPath = null,
-            string? artifactRoot = null,
-            NnrpNativePlatform? platform = null,
-            INnrpNativeRuntimeBackend? fallback = null,
-            NnrpNativeRuntimeFallbackPolicy fallbackPolicy = NnrpNativeRuntimeFallbackPolicy.RequireNative,
-            uint requiredTransportSlots = NnrpNativeArtifact.RequiredTransportSlots,
-            string? transportScope = null)
-        {
-            try
-            {
-                return new NnrpNativeRuntimeClient(
-                    NnrpNativeRuntimeEntrypoints.Load(
-                        artifactPath,
-                        artifactRoot,
-                        platform,
-                        requiredTransportSlots,
-                        transportScope));
-            }
-            catch (NnrpNativeArtifactException)
-            {
-                if (fallback == null || fallbackPolicy == NnrpNativeRuntimeFallbackPolicy.RequireNative)
-                {
-                    throw;
-                }
-
-                return fallback;
-            }
-        }
-    }
-
-    public sealed class NnrpNativeRuntimeClient : INnrpNativeRuntimeBackend
+    public sealed class NnrpNativeRuntimeClient
     {
         public NnrpNativeRuntimeClient(NnrpNativeRuntimeEntrypoints entrypoints)
         {
@@ -3090,35 +3490,34 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
 
-        public NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId)
+        public NnrpNativeRuntimeConnection Connect(
+            ulong connectionId,
+            uint generation,
+            NnrpTransportConnection transportConnection)
         {
-            NnrpHandle connection;
-            var status = Entrypoints.ClientConnect(
-                new NnrpClientConnectRequest(connectionId, generation, transportId),
-                out connection);
-            status.ThrowIfError();
-            return new NnrpNativeRuntimeConnection(Entrypoints, new NnrpConnectionHandle(connection));
+            if (transportConnection == null)
+            {
+                throw new ArgumentNullException(nameof(transportConnection));
+            }
+
+            return transportConnection.AdoptClient(connectionId, generation);
         }
 
-        public NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId)
-        {
-            NnrpHandle connection;
-            var status = Entrypoints.ConnectionBootstrap(
-                new NnrpConnectionBootstrap(connectionId, generation, transportId),
-                out connection);
-            status.ThrowIfError();
-            return new NnrpNativeRuntimeConnection(Entrypoints, new NnrpConnectionHandle(connection));
-        }
     }
 
     public sealed class NnrpNativeRuntimeServer : IDisposable
     {
         private NnrpHandle pendingAccept = NnrpHandle.Invalid;
+        private readonly IDisposable? nativeOwnership;
 
-        public NnrpNativeRuntimeServer(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
+        public NnrpNativeRuntimeServer(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpConnectionHandle handle,
+            IDisposable? nativeOwnership = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Handle = handle;
+            this.nativeOwnership = nativeOwnership;
         }
 
         public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
@@ -3128,20 +3527,16 @@ namespace Nnrp.NativeBridge
         public bool IsClosed { get; private set; }
 
         public static NnrpNativeRuntimeServer Bind(
-            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpTransportListener transportListener,
             ulong serverId,
-            uint generation,
-            uint transportId)
+            uint generation)
         {
-            if (entrypoints == null)
+            if (transportListener == null)
             {
-                throw new ArgumentNullException(nameof(entrypoints));
+                throw new ArgumentNullException(nameof(transportListener));
             }
 
-            NnrpHandle server;
-            var status = entrypoints.ServerBind(new NnrpServerBindRequest(serverId, generation, transportId), out server);
-            status.ThrowIfError();
-            return new NnrpNativeRuntimeServer(entrypoints, new NnrpConnectionHandle(server));
+            return transportListener.AdoptServer(serverId, generation);
         }
 
         public NnrpNativeRuntimeServerSession AcceptSession(
@@ -3223,8 +3618,12 @@ namespace Nnrp.NativeBridge
             {
                 firstError = firstError ?? error;
             }
+            finally
+            {
+                IsClosed = true;
+                nativeOwnership?.Dispose();
+            }
 
-            IsClosed = true;
             if (firstError != null)
             {
                 throw firstError;
@@ -3491,10 +3890,90 @@ namespace Nnrp.NativeBridge
             NnrpNativeRuntimeSession.SendControl(Entrypoints, Handle.Handle, controlCode, payload);
         }
 
+        public IReadOnlyList<NnrpNativeRuntimeEvent> AwaitEvents(
+            uint maxEvents = 1,
+            uint timeoutMilliseconds = 0)
+        {
+            EnsureOpen();
+            if (maxEvents == 0)
+            {
+                return Array.Empty<NnrpNativeRuntimeEvent>();
+            }
+
+            var eventSize = Marshal.SizeOf<NnrpEvent>();
+            var allocationSize = checked(eventSize * checked((int)maxEvents));
+            var events = Marshal.AllocHGlobal(allocationSize);
+            try
+            {
+                UIntPtr eventCount;
+                var status = Entrypoints.ServerAwaitEvents(
+                    new NnrpRoleEventPollRequest(Handle.Handle, maxEvents, timeoutMilliseconds),
+                    events,
+                    new UIntPtr(maxEvents),
+                    out eventCount);
+                var count = eventCount.ToUInt64();
+                if (count > maxEvents)
+                {
+                    throw new NnrpNativeArtifactException(
+                        "Native server event poll returned more events than the supplied capacity.");
+                }
+
+                if (!status.Succeeded)
+                {
+                    ReleaseRemainingEventPayloads(events, eventSize, checked((int)count));
+                    status.ThrowIfError();
+                }
+
+                var snapshots = new NnrpNativeRuntimeEvent[checked((int)count)];
+                var consumed = 0;
+                try
+                {
+                    for (var index = 0; index < snapshots.Length; index++)
+                    {
+                        var nativeEvent = Marshal.PtrToStructure<NnrpEvent>(
+                            IntPtr.Add(events, checked(index * eventSize)));
+                        consumed = index + 1;
+                        snapshots[index] = NnrpNativeRuntimeEvent.FromFfi(nativeEvent, Entrypoints);
+                    }
+                }
+                catch
+                {
+                    ReleaseRemainingEventPayloads(events, eventSize, snapshots.Length, consumed);
+                    throw;
+                }
+
+                return snapshots;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(events);
+            }
+        }
+
+        private void ReleaseRemainingEventPayloads(IntPtr events, int eventSize, int count, int startIndex = 0)
+        {
+            for (var index = startIndex; index < count; index++)
+            {
+                var nativeEvent = Marshal.PtrToStructure<NnrpEvent>(
+                    IntPtr.Add(events, checked(index * eventSize)));
+                if (nativeEvent.PayloadOwner.IsValid)
+                {
+                    try
+                    {
+                        Entrypoints.BufferRelease(nativeEvent.PayloadOwner).ThrowIfError();
+                    }
+                    catch
+                    {
+                        // Cleanup must not hide the poll or conversion failure that selected this path.
+                    }
+                }
+            }
+        }
+
         public void Close()
         {
             EnsureOpen();
-            Entrypoints.SessionClose(Handle.Handle).ThrowIfError();
+            Entrypoints.ServerClose(Handle.Handle).ThrowIfError();
             IsClosed = true;
         }
 
@@ -3534,11 +4013,16 @@ namespace Nnrp.NativeBridge
     {
         private readonly object eventGate = new object();
         private readonly Queue<NnrpNativeRuntimeEvent> bufferedEvents = new Queue<NnrpNativeRuntimeEvent>();
+        private readonly IDisposable? nativeOwnership;
 
-        public NnrpNativeRuntimeConnection(NnrpNativeRuntimeEntrypoints entrypoints, NnrpConnectionHandle handle)
+        public NnrpNativeRuntimeConnection(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpConnectionHandle handle,
+            IDisposable? nativeOwnership = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Handle = handle;
+            this.nativeOwnership = nativeOwnership;
         }
 
         public NnrpNativeRuntimeEntrypoints Entrypoints { get; }
@@ -3622,7 +4106,7 @@ namespace Nnrp.NativeBridge
             var status = Entrypoints.ClientAwaitEvent(Handle.Handle, out result);
             status.ThrowIfError();
             result.Status.ThrowIfError();
-            return NnrpNativeRuntimePollResult.FromFfi(result);
+            return NnrpNativeRuntimePollResult.FromFfi(result, Entrypoints);
         }
 
         public NnrpNativeRuntimeEvent? PollEvent()
@@ -3673,13 +4157,20 @@ namespace Nnrp.NativeBridge
         public void Close()
         {
             EnsureOpen();
-            Entrypoints.ClientCloseConnection(Handle.Handle).ThrowIfError();
-            lock (eventGate)
+            try
             {
-                bufferedEvents.Clear();
+                Entrypoints.ClientCloseConnection(Handle.Handle).ThrowIfError();
             }
+            finally
+            {
+                lock (eventGate)
+                {
+                    bufferedEvents.Clear();
+                }
 
-            IsClosed = true;
+                IsClosed = true;
+                nativeOwnership?.Dispose();
+            }
         }
 
         public void Dispose()
@@ -3970,7 +4461,7 @@ namespace Nnrp.NativeBridge
                 status.ThrowIfError();
                 result.Status.ThrowIfError();
 
-                var snapshot = NnrpNativeRuntimePollResult.FromFfi(result);
+                var snapshot = NnrpNativeRuntimePollResult.FromFfi(result, Entrypoints);
                 var @event = snapshot.Event;
                 if (@event == null)
                 {

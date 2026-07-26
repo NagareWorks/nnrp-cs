@@ -111,6 +111,73 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void ProviderOperationOptionsOwnFrozenEndpointSecurityAndLimits()
+        {
+            var endpoint = NnrpEndpoint.Parse("nnrps://render.example:7443");
+            var providerEndpoint = NnrpProviderEndpoint.Parse("tcp://render.example:7443");
+            var clientSecurity = new NnrpTransportClientSecurity("render.example", new byte[] { 1 });
+            var serverSecurity = new NnrpTransportServerSecurity(new byte[] { 2 }, new byte[] { 3 });
+            var connect = new NnrpTransportConnectOptions(endpoint, providerEndpoint, clientSecurity, 4096, 50);
+            var listen = new NnrpTransportListenOptions(endpoint, providerEndpoint, serverSecurity, 8192, 60);
+            var probe = new NnrpTransportProbeOptions(
+                endpoint,
+                providerEndpoint,
+                4,
+                1024,
+                clientSecurity,
+                16384,
+                70,
+                includeWarmup: true);
+
+            Assert.Same(endpoint, connect.Endpoint);
+            Assert.Same(providerEndpoint, connect.ProviderEndpoint);
+            Assert.Same(clientSecurity, connect.Security);
+            Assert.Equal((ulong)4096, connect.MaxPacketBytes);
+            Assert.Equal((uint)50, connect.TimeoutMilliseconds);
+            Assert.Same(endpoint, listen.Endpoint);
+            Assert.Same(providerEndpoint, listen.ProviderEndpoint);
+            Assert.Same(serverSecurity, listen.Security);
+            Assert.Equal((ulong)8192, listen.MaxPacketBytes);
+            Assert.Equal((uint)60, listen.TimeoutMilliseconds);
+            Assert.Same(endpoint, probe.Endpoint);
+            Assert.Same(providerEndpoint, probe.ProviderEndpoint);
+            Assert.Same(clientSecurity, probe.Security);
+            Assert.Equal((ulong)16384, probe.MaxPacketBytes);
+            Assert.Equal((uint)70, probe.TimeoutMilliseconds);
+            Assert.Equal((uint)4, probe.SampleCount);
+            Assert.Equal((uint)1024, probe.PayloadBytes);
+            Assert.True(probe.IncludeWarmup);
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportConnectOptions(null!, providerEndpoint));
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportConnectOptions(endpoint, null!));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportConnectOptions(
+                endpoint,
+                providerEndpoint,
+                maxPacketBytes: 0));
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportListenOptions(null!, providerEndpoint));
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportListenOptions(endpoint, null!));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportListenOptions(
+                endpoint,
+                providerEndpoint,
+                maxPacketBytes: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportProbeOptions(
+                endpoint,
+                providerEndpoint,
+                0,
+                1));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportProbeOptions(
+                endpoint,
+                providerEndpoint,
+                1,
+                0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportProbeOptions(
+                endpoint,
+                providerEndpoint,
+                1,
+                2,
+                maxPacketBytes: 1));
+        }
+
+        [Fact]
         public void CandidateEnforcesProbeAndRejectionState()
         {
             var metadata = Metadata("nnrp.transport.tcp.native", Array.Empty<NnrpTransportProviderLimitation>());

@@ -29,92 +29,119 @@ namespace Nnrp.Transport.Tcp.Tests
         {
             var provider = NnrpNativeTcpTransportProvider.Instance;
 
-            Assert.Equal(TransportId.Tcp, provider.TransportId);
-            Assert.Equal("native-tcp", provider.BindingName);
-            Assert.Equal(NnrpNativeArtifact.TransportSlotTcp, provider.NativeTransportSlot);
-            Assert.Equal(NnrpNativeTcpRuntime.TransportId, provider.TransportId);
-            Assert.Equal(NnrpNativeTcpRuntime.BindingName, provider.BindingName);
-            Assert.Equal(NnrpNativeTcpRuntime.NativeTransportSlot, provider.NativeTransportSlot);
+            Assert.Equal(TransportId.Tcp, provider.Descriptor.TransportId);
+            Assert.Equal("tcp", provider.Descriptor.Name);
+            Assert.Equal("nnrp.transport.tcp.native", provider.Descriptor.Metadata.Id);
+            Assert.Equal((ushort)2, provider.Descriptor.Metadata.PreferenceRank);
+            Assert.Contains(
+                NnrpTransportProviderLimitation.RequiresTcp,
+                provider.Descriptor.Metadata.Limitations);
         }
 
-        [Fact]
-        public void NativeTcpSessionOptionsPinTcpTransportIdAndCopyRuntimeSettings()
+        [LiveNativeTransportFact]
+        public async Task NativeTcpProviderOpensRealListenerAndConnection()
         {
-            var fallback = new CapturingBackend();
-            var options = new NnrpNativeTcpRuntimeSessionHostOptions(11, 2, 41, 3, 4, 5, 6)
-            {
-                BootstrapConnection = true,
-                ArtifactPath = "tcp-runtime.dll",
-                ArtifactRoot = "native-root",
-                FallbackBackend = fallback,
-                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics,
-            };
+            var artifactPath = Environment.GetEnvironmentVariable(
+                LiveNativeTransportFactAttribute.ArtifactPathVariableName);
+            Assert.False(string.IsNullOrWhiteSpace(artifactPath));
+            Assert.True(File.Exists(artifactPath));
 
-            var native = NnrpNativeTcpRuntime.ToNativeOptions(options);
+            var provider = new NnrpNativeTcpTransportProvider(artifactPath);
+            var endpoint = NnrpEndpoint.Parse("nnrp://127.0.0.1:0");
+            await using var listener = await provider.ListenAsync(
+                new NnrpTransportListenOptions(
+                    endpoint,
+                    NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
 
-            Assert.Equal((uint)TransportId.Tcp, native.TransportId);
-            Assert.Equal((ulong)11, native.ConnectionId);
-            Assert.Equal((uint)2, native.ConnectionGeneration);
-            Assert.Equal((uint)41, native.SessionId);
-            Assert.Equal((uint)3, native.SessionGeneration);
-            Assert.Equal((ushort)4, native.ProfileId);
-            Assert.Equal((uint)5, native.SchemaId);
-            Assert.Equal((uint)6, native.SchemaVersion);
-            Assert.True(native.BootstrapConnection);
-            Assert.Equal("tcp-runtime.dll", native.ArtifactPath);
-            Assert.Equal("native-root", native.ArtifactRoot);
-            Assert.Same(fallback, native.FallbackBackend);
-            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics, native.FallbackPolicy);
+            Assert.Equal(TransportId.Tcp, listener.TransportId);
+            Assert.NotEqual(0, new Uri(listener.BoundEndpoint.ToString()).Port);
+
+            await using var connection = await provider.ConnectAsync(
+                new NnrpTransportConnectOptions(endpoint, listener.BoundEndpoint));
+
+            Assert.Equal(TransportId.Tcp, connection.TransportId);
         }
 
-        [Fact]
-        public void NativeTcpConnectionAndServerOptionsPinTcpTransportId()
+        [LiveNativeTransportFact]
+        public async Task NativeTcpProviderCarriesRealClientServerSessionLifecycle()
         {
-            var connectionOptions = new NnrpNativeTcpRuntimeConnectionHostOptions(12, 7)
+            var artifactPath = Environment.GetEnvironmentVariable(
+                LiveNativeTransportFactAttribute.ArtifactPathVariableName);
+            Assert.False(string.IsNullOrWhiteSpace(artifactPath));
+            Assert.True(File.Exists(artifactPath));
+
+            var provider = new NnrpNativeTcpTransportProvider(artifactPath);
+            var endpoint = NnrpEndpoint.Parse("nnrp://127.0.0.1:0");
+            await using var listener = await provider.ListenAsync(
+                new NnrpTransportListenOptions(
+                    endpoint,
+                    NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
+            using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+            using var acceptCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var acceptStarted = new ManualResetEventSlim();
+            var acceptTask = Task.Factory.StartNew(
+                () => AcceptSession(server, acceptCancellation.Token, acceptStarted),
+                acceptCancellation.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+            try
             {
-                BootstrapConnection = true,
-                ArtifactPath = "tcp-runtime.dll",
-                ArtifactRoot = "native-root",
-                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics,
-            };
-            var serverOptions = new NnrpNativeTcpRuntimeServerHostOptions(51, 8)
+                Assert.True(acceptStarted.Wait(TimeSpan.FromSeconds(5)));
+                await using var connection = await provider.ConnectAsync(
+                    new NnrpTransportConnectOptions(endpoint, listener.BoundEndpoint));
+                var client = NnrpNativeRuntimeConnectionHost.Open(
+                    connection,
+                    new NnrpNativeRuntimeConnectionHostOptions(60, 1));
+                Exception? clientFailure = null;
+                try
+                {
+                    var clientSession = client.OpenSession(
+                        new NnrpNativeRuntimeSessionOptions(70, 1, 2, 0x1001, 3));
+                    var serverSession = await acceptTask;
+                    Assert.Equal((ulong)71, serverSession.Handle.Handle.Id);
+
+                    var clientClose = Task.Factory.StartNew(
+                        clientSession.Close,
+                        CancellationToken.None,
+                        TaskCreationOptions.LongRunning,
+                        TaskScheduler.Default);
+                    var closeEvent = Assert.Single(
+                        serverSession.AwaitEvents(timeoutMilliseconds: 5_000));
+                    Assert.Equal((uint)MessageType.SessionClose, closeEvent.MessageType);
+                    serverSession.Close();
+                    await clientClose;
+                    Assert.True(clientSession.IsClosed);
+                }
+                catch (Exception error)
+                {
+                    clientFailure = error;
+                    throw;
+                }
+                finally
+                {
+                    try
+                    {
+                        client.Dispose();
+                    }
+                    catch when (clientFailure != null)
+                    {
+                    }
+                }
+            }
+            finally
             {
-                ArtifactPath = "tcp-runtime.dll",
-                ArtifactRoot = "native-root",
-            };
-
-            var nativeConnection = NnrpNativeTcpRuntime.ToNativeOptions(connectionOptions);
-            var nativeServer = NnrpNativeTcpRuntime.ToNativeOptions(serverOptions);
-
-            Assert.Equal((uint)TransportId.Tcp, nativeConnection.TransportId);
-            Assert.Equal((ulong)12, nativeConnection.ConnectionId);
-            Assert.Equal((uint)7, nativeConnection.ConnectionGeneration);
-            Assert.True(nativeConnection.BootstrapConnection);
-            Assert.Equal("tcp-runtime.dll", nativeConnection.ArtifactPath);
-            Assert.Equal("native-root", nativeConnection.ArtifactRoot);
-            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics, nativeConnection.FallbackPolicy);
-            Assert.Equal((uint)TransportId.Tcp, nativeServer.TransportId);
-            Assert.Equal((ulong)51, nativeServer.ServerId);
-            Assert.Equal((uint)8, nativeServer.ServerGeneration);
-            Assert.Equal("tcp-runtime.dll", nativeServer.ArtifactPath);
-            Assert.Equal("native-root", nativeServer.ArtifactRoot);
-        }
-
-        [Fact]
-        public void NativeTcpRuntimeRejectsNullOptions()
-        {
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.ToNativeOptions((NnrpNativeTcpRuntimeSessionHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.ToNativeOptions((NnrpNativeTcpRuntimeConnectionHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.ToNativeOptions((NnrpNativeTcpRuntimeServerHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.OpenSessionHost((NnrpNativeTcpRuntimeSessionHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.OpenConnectionHost((NnrpNativeTcpRuntimeConnectionHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() =>
-                NnrpNativeTcpRuntime.OpenServerHost((NnrpNativeTcpRuntimeServerHostOptions)null!));
+                acceptCancellation.Cancel();
+                try
+                {
+                    await acceptTask;
+                }
+                catch (OperationCanceledException) when (acceptCancellation.IsCancellationRequested)
+                {
+                }
+                catch (NnrpNativeWouldBlockException) when (acceptCancellation.IsCancellationRequested)
+                {
+                }
+            }
         }
 
         [Fact]
@@ -372,17 +399,15 @@ namespace Nnrp.Transport.Tcp.Tests
             return port;
         }
 
-        private sealed class CapturingBackend : INnrpNativeRuntimeBackend
+        private static NnrpNativeRuntimeServerSession AcceptSession(
+            NnrpNativeRuntimeServer server,
+            CancellationToken cancellationToken,
+            ManualResetEventSlim started)
         {
-            public NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId)
-            {
-                throw new NotSupportedException();
-            }
-
-            public NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId)
-            {
-                throw new NotSupportedException();
-            }
+            started.Set();
+            cancellationToken.ThrowIfCancellationRequested();
+            return server.AcceptSession(71, 1, timeoutMilliseconds: 10_000);
         }
+
     }
 }

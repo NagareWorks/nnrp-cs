@@ -248,6 +248,53 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void Preview4RoleEventInteropLayoutsMatchAbi4()
+        {
+            Assert.Equal(8, IntPtr.Size);
+
+            Assert.Equal(16, Marshal.SizeOf<NnrpFfiStatus>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpFfiStatus>(nameof(NnrpFfiStatus.StatusCode)));
+            Assert.Equal(new IntPtr(4), Marshal.OffsetOf<NnrpFfiStatus>(nameof(NnrpFfiStatus.ErrorFamily)));
+            Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpFfiStatus>(nameof(NnrpFfiStatus.ProtocolErrorCode)));
+            Assert.Equal(new IntPtr(12), Marshal.OffsetOf<NnrpFfiStatus>(nameof(NnrpFfiStatus.DetailCode)));
+
+            Assert.Equal(24, Marshal.SizeOf<NnrpHandle>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Kind)));
+            Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Id)));
+            Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Generation)));
+            Assert.Equal(new IntPtr(20), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Flags)));
+
+            Assert.Equal(16, Marshal.SizeOf<NnrpBufferView>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpBufferView>(nameof(NnrpBufferView.Pointer)));
+            Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpBufferView>(nameof(NnrpBufferView.Length)));
+
+            Assert.Equal(48, Marshal.SizeOf<NnrpFfiDiagnostic>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.Status)));
+            Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedConnectionId)));
+            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedSessionId)));
+            Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedOperationId)));
+            Assert.Equal(new IntPtr(40), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedFrameId)));
+
+            Assert.Equal(176, Marshal.SizeOf<NnrpEvent>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Kind)));
+            Assert.Equal(new IntPtr(4), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.MessageType)));
+            Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Connection)));
+            Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Session)));
+            Assert.Equal(new IntPtr(56), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Operation)));
+            Assert.Equal(new IntPtr(80), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.FrameId)));
+            Assert.Equal(new IntPtr(88), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.PayloadOwner)));
+            Assert.Equal(new IntPtr(112), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Payload)));
+            Assert.Equal(new IntPtr(128), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Diagnostic)));
+
+            Assert.Equal(40, Marshal.SizeOf<NnrpRoleEventPollRequest>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Scope)));
+            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.MaxEvents)));
+            Assert.Equal(new IntPtr(28), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.TimeoutMilliseconds)));
+            Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Flags)));
+            Assert.Equal(new IntPtr(36), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Reserved0)));
+        }
+
+        [Fact]
         public void ResolveTransportRejectsUnknownScopeAndMissingTransportArtifact()
         {
             var scopeError = Assert.Throws<NnrpNativeArtifactException>(() =>
@@ -606,7 +653,12 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(entrypoints.ConnectionBootstrap(new NnrpConnectionBootstrap(1, 1, 2), out handle).Succeeded);
             Assert.Equal(NnrpHandleKind.Connection, handle.Kind);
 
-            Assert.True(entrypoints.ClientConnect(new NnrpClientConnectRequest(2, 1, 2), out handle).Succeeded);
+            Assert.True(entrypoints.ClientConnect(
+                new NnrpClientConnectRequest(
+                    2,
+                    1,
+                    new NnrpHandle(NnrpHandleKind.TransportConnection, 20, 1)),
+                out handle).Succeeded);
             Assert.True(entrypoints.SessionOpen(MatchingSessionOpenRequest(), out handle).Succeeded);
             Assert.True(entrypoints.ClientOpenSession(MatchingSessionOpenRequest(), out handle).Succeeded);
             NnrpSessionRecoveryOutcome recoveryOutcome;
@@ -634,7 +686,12 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(entrypoints.ClientAwaitEvent(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), out pollResult).Succeeded);
             Assert.Equal((byte)0, pollResult.HasEvent);
 
-            Assert.True(entrypoints.ServerBind(new NnrpServerBindRequest(4, 1, 2), out handle).Succeeded);
+            Assert.True(entrypoints.ServerBind(
+                new NnrpServerBindRequest(
+                    4,
+                    1,
+                    new NnrpHandle(NnrpHandleKind.TransportListener, 21, 1)),
+                out handle).Succeeded);
             Assert.True(entrypoints.ServerAcceptBegin(MatchingServerAcceptBeginRequest(), out handle).Succeeded);
             Assert.Equal(NnrpHandleKind.ServerAccept, handle.Kind);
             Assert.True(entrypoints.ServerAcceptWait(new NnrpServerAcceptWaitRequest(handle, 1)).Succeeded);
@@ -655,13 +712,47 @@ namespace Nnrp.NativeBridge.Tests
 
             var eventValue = new NnrpEvent(
                 0,
+                0,
                 NnrpHandle.Invalid,
                 NnrpHandle.Invalid,
                 NnrpHandle.Invalid,
                 0,
+                NnrpHandle.Invalid,
                 NnrpBufferView.Empty,
                 new NnrpFfiDiagnostic(NnrpFfiStatus.Ok));
             Assert.True(entrypoints.DispatchEvent(new NnrpCallbackSink(IntPtr.Zero, IntPtr.Zero), ref eventValue).Succeeded);
+
+            Assert.True(entrypoints.TransportClientSecurityConfigCreate(
+                new NnrpTransportClientSecurityConfigRequest(
+                    TransportId.Tcp,
+                    NnrpBufferView.Empty,
+                    NnrpBufferView.Empty),
+                out handle).Succeeded);
+            Assert.Equal(NnrpHandleKind.TransportSecurityConfig, handle.Kind);
+            Assert.True(entrypoints.TransportServerSecurityConfigCreate(
+                new NnrpTransportServerSecurityConfigRequest(
+                    TransportId.Tcp,
+                    NnrpBufferView.Empty,
+                    NnrpBufferView.Empty),
+                out handle).Succeeded);
+            Assert.True(entrypoints.TransportConnect(
+                MatchingTransportOpenRequest(),
+                out handle).Succeeded);
+            Assert.Equal(NnrpHandleKind.TransportConnection, handle.Kind);
+            Assert.True(entrypoints.TransportListen(
+                MatchingTransportOpenRequest(),
+                out handle).Succeeded);
+            Assert.Equal(NnrpHandleKind.TransportListener, handle.Kind);
+            Assert.True(entrypoints.TransportAccept(
+                new NnrpTransportAcceptRequest(handle, 10),
+                out var acceptedTransport).Succeeded);
+            Assert.Equal(NnrpHandleKind.TransportConnection, acceptedTransport.Kind);
+            Assert.True(entrypoints.TransportProbe(
+                new NnrpTransportProbeRequest(MatchingTransportOpenRequest(), 3, 64),
+                out var transportProbe).Succeeded);
+            Assert.Equal((uint)3, transportProbe.SampleCount);
+            Assert.Equal((uint)3, transportProbe.SuccessCount);
+            Assert.True(entrypoints.TransportClose(acceptedTransport).Succeeded);
 
             NnrpHandle registry;
             Assert.True(entrypoints.SchemaRegistryCreate(out registry).Succeeded);
@@ -765,6 +856,67 @@ namespace Nnrp.NativeBridge.Tests
 
             entrypoints.Dispose();
             entrypoints.Dispose();
+        }
+
+        [Fact]
+        public void TransportAbiUsesOwnedHandleAdoptionLayout()
+        {
+            Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpClientConnectRequest>(nameof(NnrpClientConnectRequest.TransportConnection)));
+            Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpServerBindRequest>(nameof(NnrpServerBindRequest.TransportListener)));
+            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Config)));
+            Assert.Equal(new IntPtr(60), Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Reserved0)));
+            Assert.Throws<ArgumentException>(() => new NnrpClientConnectRequest(
+                1,
+                1,
+                new NnrpHandle(NnrpHandleKind.TransportListener, 1, 1)));
+            Assert.Throws<ArgumentException>(() => new NnrpServerBindRequest(
+                1,
+                1,
+                new NnrpHandle(NnrpHandleKind.TransportConnection, 1, 1)));
+        }
+
+        [Fact]
+        public void OpaqueTransportOwnershipClosesOrTransfersExactlyOnce()
+        {
+            var transportCloseCount = 0;
+            var entrypoints = CreateEntrypoints(
+                transportClose: handle =>
+                {
+                    transportCloseCount++;
+                    return HandleStatus(handle);
+                });
+            var connection = new NnrpTransportConnection(
+                new NnrpNativeEntrypointLease(entrypoints),
+                TransportId.Tcp,
+                new NnrpHandle(NnrpHandleKind.TransportConnection, 30, 1));
+
+            using (var runtime = connection.AdoptClient(40, 1))
+            {
+                connection.Dispose();
+                Assert.Equal(NnrpHandleKind.Connection, runtime.Handle.Handle.Kind);
+            }
+
+            Assert.Equal(0, transportCloseCount);
+
+            var listenerEntrypoints = CreateEntrypoints(
+                transportClose: handle =>
+                {
+                    transportCloseCount++;
+                    return HandleStatus(handle);
+                });
+            var listener = new NnrpTransportListener(
+                new NnrpNativeEntrypointLease(listenerEntrypoints),
+                TransportId.Tcp,
+                NnrpProviderEndpoint.Parse("tcp://127.0.0.1:7443"),
+                new NnrpHandle(NnrpHandleKind.TransportListener, 31, 1));
+            var accepted = listener.Accept(10);
+
+            listener.Dispose();
+            listener.Dispose();
+            accepted.Dispose();
+            accepted.Dispose();
+
+            Assert.Equal(2, transportCloseCount);
         }
 
         [Fact]
@@ -1199,9 +1351,10 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent);
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2);
             using var host = NnrpNativeRuntimeSessionHost.Open(
-                new NnrpNativeRuntimeClient(entrypoints),
-                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+                carrier,
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, 41, 3, 4, 5, 6));
             var source = new byte[] { 0, 1, 2, 3, 4 };
             var payload = source.AsMemory(1, 3);
 
@@ -1211,10 +1364,12 @@ namespace Nnrp.NativeBridge.Tests
                 1,
                 new NnrpEvent(
                     6,
+                    (uint)MessageType.ResultPush,
                     connection,
                     new NnrpHandle(NnrpHandleKind.Session, 41, 3),
                     new NnrpHandle(NnrpHandleKind.Operation, 100, 1),
                     8,
+                    NnrpHandle.Invalid,
                     NnrpBufferView.Empty,
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok))));
             pendingEvents.Enqueue(connection => new NnrpPollResult(
@@ -1222,10 +1377,12 @@ namespace Nnrp.NativeBridge.Tests
                 1,
                 new NnrpEvent(
                     6,
+                    (uint)MessageType.ResultPush,
                     connection,
                     new NnrpHandle(NnrpHandleKind.Session, 41, 3),
                     new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
                     7,
+                    NnrpHandle.Invalid,
                     new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length)),
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok))));
             var polledResult = host.SubmitAndPollResult(99, 7, payload, maxEvents: 2);
@@ -1310,7 +1467,7 @@ namespace Nnrp.NativeBridge.Tests
                 session.SubmitOperation(99, 7, payload);
                 session.Control(10, payload);
 
-                using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+                using var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
                 var serverSession = server.AcceptSession(42, 3);
                 var operation = serverSession.ReceiveSubmit(100, 8, payload);
                 serverSession.SendResult(operation, payload);
@@ -1376,9 +1533,10 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent);
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2);
             using var connectionHost = NnrpNativeRuntimeConnectionHost.Open(
-                new NnrpNativeRuntimeClient(entrypoints),
-                new NnrpNativeRuntimeConnectionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp));
+                carrier,
+                new NnrpNativeRuntimeConnectionHostOptions(11, 2));
             var session = connectionHost.OpenSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
             var source = new byte[] { 0, 1, 2, 3, 4 };
             var payload = source.AsMemory(1, 3);
@@ -1486,7 +1644,7 @@ namespace Nnrp.NativeBridge.Tests
             session.SubmitOperation(99, 7, nativePayload);
             session.Control(17, nativePayload);
 
-            using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            using var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
             var serverSession = server.AcceptSession(41, 3);
             var operation = serverSession.ReceiveSubmit(100, 8, nativePayload);
             serverSession.SendResult(operation, nativePayload);
@@ -1585,7 +1743,7 @@ namespace Nnrp.NativeBridge.Tests
                 var clientSession = new NnrpNativeRuntimeClient(entrypoints)
                     .Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp)
                     .OpenSession(41, 3, 4, 5, 6);
-                using var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+                using var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
                 var serverSession = server.AcceptSession(42, 3);
 
                 GC.Collect();
@@ -1685,11 +1843,11 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void NativeRuntimeClientBootstrapsAndAwaitsEmptyEvent()
+        public void NativeRuntimeClientAdoptsCarrierAndAwaitsEmptyEvent()
         {
             var client = new NnrpNativeRuntimeClient(CreateEntrypoints());
 
-            var connection = client.BootstrapConnection(12, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var connection = client.Connect(12, 2, NnrpNativeArtifact.TransportSlotTcp);
             var result = connection.AwaitEvent();
 
             Assert.Equal((ulong)12, connection.Handle.Handle.Id);
@@ -1793,6 +1951,7 @@ namespace Nnrp.NativeBridge.Tests
         {
             var errorEvent = new NnrpNativeRuntimeEvent(
                 10,
+                (uint)MessageType.Error,
                 new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
                 new NnrpHandle(NnrpHandleKind.Session, 41, 3),
                 new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
@@ -1801,6 +1960,7 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpNativeRuntimeDiagnostic(new NnrpFfiStatus(NnrpFfiStatusCode.InternalError), 12, 41, 99, 7));
             var dropEvent = new NnrpNativeRuntimeEvent(
                 7,
+                (uint)MessageType.ResultDropReason,
                 new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
                 new NnrpHandle(NnrpHandleKind.Session, 41, 3),
                 new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
@@ -1941,22 +2101,20 @@ namespace Nnrp.NativeBridge.Tests
             var options = new NnrpNativeRuntimeSessionHostOptions(
                 12,
                 2,
-                NnrpNativeArtifact.TransportSlotTcp,
                 41,
                 3,
                 4,
                 5,
                 6);
 
-            var client = new NnrpNativeRuntimeClient(entrypoints);
-            using (var host = NnrpNativeRuntimeSessionHost.Open(client, options))
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
+            using (var host = NnrpNativeRuntimeSessionHost.Open(carrier, options))
             {
                 var operation = host.SubmitOperation(99, 7, parentOperationId: 1, operationGroupId: 2);
                 var polled = host.PollResult(operation, maxEvents: 1);
                 var events = host.PollAvailableEvents(1);
                 var result = host.SubmitAndPollResult(99, 7, new byte[] { 1, 2, 3 }, maxEvents: 1);
 
-                Assert.Same(client, host.Backend);
                 Assert.Equal((ulong)99, operation.OperationId);
                 Assert.Equal((uint)7, operation.FrameId);
                 Assert.Equal((ulong)99, polled.OperationId);
@@ -2025,16 +2183,13 @@ namespace Nnrp.NativeBridge.Tests
             var options = new NnrpNativeRuntimeSessionHostOptions(
                 12,
                 2,
-                NnrpNativeArtifact.TransportSlotTcp,
                 41,
                 3,
                 4,
                 5,
-                6)
-            {
-                BootstrapConnection = true
-            };
-            var host = NnrpNativeRuntimeSessionHost.Open(new NnrpNativeRuntimeClient(entrypoints), options);
+                6);
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
+            var host = NnrpNativeRuntimeSessionHost.Open(carrier, options);
             var objectId = MatchingCacheObjectId();
             using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[] { 1, 2, 3 });
 
@@ -2063,40 +2218,30 @@ namespace Nnrp.NativeBridge.Tests
             Assert.True(host.Connection.IsClosed);
             Assert.Throws<NnrpNativeInvalidStateException>(() => host.Cancel(72));
             host.Dispose();
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(null!));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open((INnrpNativeRuntimeBackend)null!, options));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(new NnrpNativeRuntimeClient(CreateEntrypoints()), null!));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(null!, options));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeSessionHost.Open(carrier, null!));
         }
 
         [Fact]
-        public void NativeRuntimeSessionHostSelectsFallbackBackendWhenArtifactIsUnavailable()
+        public void NativeRuntimeSessionHostRequiresProviderCarrier()
         {
-            var fallback = new NnrpNativeRuntimeClient(CreateEntrypoints());
+            var entrypoints = CreateEntrypoints();
             var options = new NnrpNativeRuntimeSessionHostOptions(
                 12,
                 2,
-                NnrpNativeArtifact.TransportSlotTcp,
                 41,
                 3,
                 4,
                 5,
-                6)
-            {
-                ArtifactPath = "missing-native-runtime.dll",
-                ArtifactRoot = "unused-native-root",
-                Platform = new NnrpNativePlatform("windows", "x86_64"),
-                FallbackBackend = fallback,
-                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics
-            };
+                6);
 
-            using (var host = NnrpNativeRuntimeSessionHost.Open(options))
+            Assert.Throws<ArgumentNullException>(() =>
+                NnrpNativeRuntimeSessionHost.Open(null!, options));
+
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
+            using (var host = NnrpNativeRuntimeSessionHost.Open(carrier, options))
             {
-                Assert.Same(fallback, host.Backend);
-                Assert.Equal("missing-native-runtime.dll", host.Options.ArtifactPath);
-                Assert.Equal("unused-native-root", host.Options.ArtifactRoot);
-                Assert.Equal(new NnrpNativePlatform("windows", "x86_64"), host.Options.Platform);
-                Assert.Same(fallback, host.Options.FallbackBackend);
-                Assert.Equal(NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics, host.Options.FallbackPolicy);
+                Assert.Equal((ulong)12, host.Connection.Handle.Handle.Id);
             }
         }
 
@@ -2136,12 +2281,11 @@ namespace Nnrp.NativeBridge.Tests
                 Control,
                 PollEmpty,
                 DispatchEvent);
-            var backend = new NnrpNativeRuntimeClient(entrypoints);
             var options = new NnrpNativeRuntimeConnectionHostOptions(
                 12,
-                2,
-                NnrpNativeArtifact.TransportSlotTcp);
-            using (var host = NnrpNativeRuntimeConnectionHost.Open(backend, options))
+                2);
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
+            using (var host = NnrpNativeRuntimeConnectionHost.Open(carrier, options))
             {
                 var firstSession = host.OpenSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
                 var secondSession = host.OpenSession(new NnrpNativeRuntimeSessionOptions(42, 4, 4, 5, 6));
@@ -2154,7 +2298,6 @@ namespace Nnrp.NativeBridge.Tests
                 var firstResult = host.PollResult(41, firstOperation, maxEvents: 2);
                 var secondResult = host.PollResult(42, secondOperation, maxEvents: 1);
 
-                Assert.Same(backend, host.Backend);
                 Assert.Same(options, host.Options);
                 Assert.True(host.TryGetSession(41, out var resolvedSession));
                 Assert.Same(firstSession, resolvedSession);
@@ -2171,7 +2314,7 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void NativeRuntimeConnectionHostSelectsFallbackAndManagesControls()
+        public void NativeRuntimeConnectionHostManagesControlsThroughProviderCarrier()
         {
             uint cancelledFrameId = 0;
             uint controlCode = 0;
@@ -2218,20 +2361,11 @@ namespace Nnrp.NativeBridge.Tests
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
-            var fallback = new NnrpNativeRuntimeClient(entrypoints);
             var options = new NnrpNativeRuntimeConnectionHostOptions(
                 12,
-                2,
-                NnrpNativeArtifact.TransportSlotTcp)
-            {
-                BootstrapConnection = true,
-                ArtifactPath = "missing-native-runtime.dll",
-                ArtifactRoot = "unused-native-root",
-                Platform = new NnrpNativePlatform("windows", "x86_64"),
-                FallbackBackend = fallback,
-                FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics
-            };
-            var host = NnrpNativeRuntimeConnectionHost.Open(options);
+                2);
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
+            var host = NnrpNativeRuntimeConnectionHost.Open(carrier, options);
             var session = host.OpenSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
             using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[] { 1, 2, 3 });
 
@@ -2242,8 +2376,6 @@ namespace Nnrp.NativeBridge.Tests
             host.Control(41, 17, nativePayload);
             host.Close();
 
-            Assert.Same(fallback, host.Backend);
-            Assert.Equal(new NnrpNativePlatform("windows", "x86_64"), host.Options.Platform);
             Assert.Equal((ulong)98, routedOperation.OperationId);
             Assert.Equal((ulong)99, result.OperationId);
             Assert.Single(events);
@@ -2257,21 +2389,20 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<NnrpNativeInvalidStateException>(() => host.OpenSession(new NnrpNativeRuntimeSessionOptions(43, 4, 4, 5, 6)));
             Assert.Throws<NnrpNativeInvalidStateException>(() => host.TryGetSession(41, out _));
             host.Dispose();
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(null!));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open((INnrpNativeRuntimeBackend)null!, options));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(new NnrpNativeRuntimeClient(CreateEntrypoints()), null!));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(null!, options));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeConnectionHost.Open(carrier, null!));
         }
 
         [Fact]
         public void NativeRuntimeConnectionHostRoutesSchemaAndCacheLeaseHelpers()
         {
             var entrypoints = CreateEntrypoints();
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2);
             var host = NnrpNativeRuntimeConnectionHost.Open(
-                new NnrpNativeRuntimeClient(entrypoints),
+                carrier,
                 new NnrpNativeRuntimeConnectionHostOptions(
                     12,
-                    2,
-                    NnrpNativeArtifact.TransportSlotTcp));
+                    2));
             var session = host.OpenSession(new NnrpNativeRuntimeSessionOptions(3, 1, 4, 0x1001, 3));
             var objectId = MatchingCacheObjectId();
 
@@ -2507,10 +2638,15 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 Control,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                transportClose: HandleStatus);
             var client = new NnrpNativeRuntimeClient(entrypoints);
+            using var transportConnection = new NnrpTransportConnection(
+                new NnrpNativeEntrypointLease(entrypoints),
+                TransportId.Tcp,
+                new NnrpHandle(NnrpHandleKind.TransportConnection, 30, 1));
 
-            Assert.Throws<NnrpNativeInvalidStateException>(() => client.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp));
+            Assert.Throws<NnrpNativeInvalidStateException>(() => client.Connect(11, 2, transportConnection));
             Assert.Throws<ArgumentNullException>(() => new NnrpNativeRuntimeClient(null!));
         }
 
@@ -2582,7 +2718,7 @@ namespace Nnrp.NativeBridge.Tests
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
 
-            using (var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp))
+            using (var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp))
             {
                 var session = server.AcceptSession(41, 3);
                 using var nativePayload = new NnrpNativeBuffers(entrypoints).AcquireCopy(new byte[] { 1, 2, 3 });
@@ -2610,13 +2746,13 @@ namespace Nnrp.NativeBridge.Tests
                 Assert.Throws<NnrpNativeInvalidStateException>(() => server.AcceptSession(42, 3));
             }
 
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServer.Bind(null!, 50, 2, NnrpNativeArtifact.TransportSlotTcp));
+            Assert.Throws<ArgumentNullException>(() => CreateRuntimeServer(null!, 50, 2, NnrpNativeArtifact.TransportSlotTcp));
         }
 
         [Fact]
         public void NativeRuntimeServerSessionRejectsUseAfterServerClose()
         {
-            var server = NnrpNativeRuntimeServer.Bind(CreateEntrypoints(), 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var server = CreateRuntimeServer(CreateEntrypoints(), 50, 2, NnrpNativeArtifact.TransportSlotTcp);
             var session = server.AcceptSession(41, 3);
 
             server.Close();
@@ -2626,6 +2762,150 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<NnrpNativeInvalidStateException>(() => session.Control(17));
             Assert.Throws<NnrpNativeInvalidStateException>(() => session.Close());
             server.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeServerSessionClosesThroughServerRoleEntrypoint()
+        {
+            var sessionCloseCount = 0;
+            var serverCloseCount = 0;
+            var entrypoints = CreateEntrypoints(
+                sessionClose: _ =>
+                {
+                    sessionCloseCount += 1;
+                    return NnrpFfiStatus.Ok;
+                },
+                serverClose: _ =>
+                {
+                    serverCloseCount += 1;
+                    return NnrpFfiStatus.Ok;
+                });
+            var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var session = server.AcceptSession(41, 3);
+
+            session.Close();
+
+            Assert.Equal(0, sessionCloseCount);
+            Assert.Equal(1, serverCloseCount);
+            Assert.True(session.IsClosed);
+            server.Dispose();
+        }
+
+        [Fact]
+        public void NativeRuntimeServerSessionCopiesBatchEventsAndReleasesEveryPayloadOwner()
+        {
+            var firstPayload = Marshal.AllocHGlobal(2);
+            var secondPayload = Marshal.AllocHGlobal(3);
+            var releasedOwners = new List<ulong>();
+            var sessionHandle = new NnrpHandle(NnrpHandleKind.Session, 41, 3);
+            try
+            {
+                Marshal.Copy(new byte[] { 1, 2 }, 0, firstPayload, 2);
+                Marshal.Copy(new byte[] { 3, 4, 5 }, 0, secondPayload, 3);
+
+                NnrpFfiStatus AwaitBatch(
+                    NnrpRoleEventPollRequest request,
+                    IntPtr events,
+                    UIntPtr eventCapacity,
+                    out UIntPtr eventCount)
+                {
+                    Assert.Equal(sessionHandle, request.Scope);
+                    Assert.Equal((uint)2, request.MaxEvents);
+                    Assert.Equal((uint)25, request.TimeoutMilliseconds);
+                    Assert.Equal(new UIntPtr(2), eventCapacity);
+                    var eventSize = Marshal.SizeOf<NnrpEvent>();
+                    Marshal.StructureToPtr(
+                        new NnrpEvent(
+                            1,
+                            (uint)MessageType.Progress,
+                            new NnrpHandle(NnrpHandleKind.Connection, 11, 2),
+                            sessionHandle,
+                            new NnrpHandle(NnrpHandleKind.Operation, 91, 1),
+                            7,
+                            new NnrpHandle(NnrpHandleKind.Buffer, 101, 1),
+                            new NnrpBufferView(firstPayload, new UIntPtr(2)),
+                            new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)),
+                        events,
+                        false);
+                    Marshal.StructureToPtr(
+                        new NnrpEvent(
+                            2,
+                            (uint)MessageType.PartialResult,
+                            new NnrpHandle(NnrpHandleKind.Connection, 11, 2),
+                            sessionHandle,
+                            new NnrpHandle(NnrpHandleKind.Operation, 92, 1),
+                            8,
+                            new NnrpHandle(NnrpHandleKind.Buffer, 102, 1),
+                            new NnrpBufferView(secondPayload, new UIntPtr(3)),
+                            new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)),
+                        IntPtr.Add(events, eventSize),
+                        false);
+                    eventCount = new UIntPtr(2);
+                    return NnrpFfiStatus.Ok;
+                }
+
+                NnrpFfiStatus ReleaseOwner(NnrpHandle owner)
+                {
+                    owner.RequireKind(NnrpHandleKind.Buffer);
+                    releasedOwners.Add(owner.Id);
+                    return NnrpFfiStatus.Ok;
+                }
+
+                var entrypoints = CreateEntrypoints(
+                    serverAwaitEvents: AwaitBatch,
+                    bufferRelease: ReleaseOwner);
+                var session = new NnrpNativeRuntimeServerSession(
+                    entrypoints,
+                    new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 11, 2)),
+                    new NnrpSessionHandle(sessionHandle),
+                    TransportId.Tcp);
+
+                var events = session.AwaitEvents(2, 25);
+
+                Assert.Collection(
+                    events,
+                    item =>
+                    {
+                        Assert.Equal((uint)MessageType.Progress, item.MessageType);
+                        Assert.Equal(new byte[] { 1, 2 }, item.Payload);
+                    },
+                    item =>
+                    {
+                        Assert.Equal((uint)MessageType.PartialResult, item.MessageType);
+                        Assert.Equal(new byte[] { 3, 4, 5 }, item.Payload);
+                    });
+                Assert.Equal(new ulong[] { 101, 102 }, releasedOwners);
+                session.Close();
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(firstPayload);
+                Marshal.FreeHGlobal(secondPayload);
+            }
+        }
+
+        [Fact]
+        public void NativeRuntimeServerSessionRejectsEventCountsBeyondNativeCapacity()
+        {
+            var entrypoints = CreateEntrypoints(
+                serverAwaitEvents: (
+                    NnrpRoleEventPollRequest _,
+                    IntPtr _,
+                    UIntPtr _,
+                    out UIntPtr eventCount) =>
+                {
+                    eventCount = new UIntPtr(2);
+                    return NnrpFfiStatus.Ok;
+                });
+            var session = new NnrpNativeRuntimeServerSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 11, 2)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 41, 3)),
+                TransportId.Tcp);
+
+            Assert.Empty(session.AwaitEvents(0));
+            Assert.Throws<NnrpNativeArtifactException>(() => session.AwaitEvents(1));
+            session.Close();
         }
 
         [Fact]
@@ -2659,7 +2939,7 @@ namespace Nnrp.NativeBridge.Tests
                 return NnrpFfiStatus.Ok;
             }
 
-            using var server = NnrpNativeRuntimeServer.Bind(
+            using var server = CreateRuntimeServer(
                 CreateEntrypoints(
                     serverAcceptBegin: Begin,
                     serverAcceptWait: Wait,
@@ -2697,7 +2977,7 @@ namespace Nnrp.NativeBridge.Tests
                     Assert.Equal(NnrpHandleKind.Connection, handle.Kind);
                     return NnrpFfiStatus.Ok;
                 });
-            var server = NnrpNativeRuntimeServer.Bind(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var server = CreateRuntimeServer(entrypoints, 50, 2, NnrpNativeArtifact.TransportSlotTcp);
 
             Assert.Throws<NnrpNativeWouldBlockException>(() => server.AcceptSession(41, 3, 1));
             Assert.Throws<NnrpNativeInvalidStateException>(() => server.Close());
@@ -2719,7 +2999,7 @@ namespace Nnrp.NativeBridge.Tests
                 return NnrpFfiStatus.Ok;
             }
 
-            using var server = NnrpNativeRuntimeServer.Bind(
+            using var server = CreateRuntimeServer(
                 CreateEntrypoints(serverAcceptClaim: Claim),
                 50,
                 2,
@@ -2791,9 +3071,10 @@ namespace Nnrp.NativeBridge.Tests
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
-            var options = new NnrpNativeRuntimeServerHostOptions(50, 2, NnrpNativeArtifact.TransportSlotTcp);
+            var options = new NnrpNativeRuntimeServerHostOptions(50, 2);
+            using var listener = CreateTransportListener(entrypoints, TransportId.Tcp, 50, 2);
 
-            using (var host = NnrpNativeRuntimeServerHost.Open(entrypoints, options))
+            using (var host = NnrpNativeRuntimeServerHost.Open(listener, options))
             {
                 var first = host.AcceptSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
                 var second = host.AcceptSession(new NnrpNativeRuntimeSessionOptions(42, 4, 4, 5, 6));
@@ -2828,9 +3109,8 @@ namespace Nnrp.NativeBridge.Tests
                 host.Dispose();
             }
 
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open((NnrpNativeRuntimeServerHostOptions)null!));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open((NnrpNativeRuntimeEntrypoints)null!, options));
-            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open(entrypoints, null!));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open(null!, options));
+            Assert.Throws<ArgumentNullException>(() => NnrpNativeRuntimeServerHost.Open(listener, null!));
         }
 
         [Fact]
@@ -2884,9 +3164,10 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent);
+            using var listener = CreateTransportListener(entrypoints, TransportId.Tcp, 50, 2);
             using var host = NnrpNativeRuntimeServerHost.Open(
-                entrypoints,
-                new NnrpNativeRuntimeServerHostOptions(50, 2, NnrpNativeArtifact.TransportSlotTcp));
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(50, 2));
             host.AcceptSession(new NnrpNativeRuntimeSessionOptions(41, 3, 4, 5, 6));
             var source = new byte[] { 0, 1, 2, 3, 4 };
             var payload = source.AsMemory(1, 3);
@@ -2905,12 +3186,12 @@ namespace Nnrp.NativeBridge.Tests
         public void NativeRuntimeServerHostRoutesSchemaAndCacheLeaseHelpers()
         {
             var entrypoints = CreateEntrypoints();
+            using var listener = CreateTransportListener(entrypoints, TransportId.Tcp, 50, 2);
             var host = NnrpNativeRuntimeServerHost.Open(
-                entrypoints,
+                listener,
                 new NnrpNativeRuntimeServerHostOptions(
                     50,
-                    2,
-                    NnrpNativeArtifact.TransportSlotTcp));
+                    2));
             var session = host.AcceptSession(new NnrpNativeRuntimeSessionOptions(3, 1, 4, 0x1001, 3));
             var objectId = MatchingCacheObjectId();
 
@@ -2944,76 +3225,13 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void NativeRuntimeServerHostRequiresNativeArtifactWhenOpeningFromOptions()
-        {
-            var options = new NnrpNativeRuntimeServerHostOptions(50, 2, NnrpNativeArtifact.TransportSlotTcp)
-            {
-                ArtifactPath = "missing-native-runtime.dll",
-                ArtifactRoot = "unused-native-root",
-                Platform = new NnrpNativePlatform("windows", "x86_64")
-            };
-
-            Assert.Throws<NnrpNativeArtifactException>(() => NnrpNativeRuntimeServerHost.Open(options));
-        }
-
-        [Fact]
-        public void NativeRuntimeBackendSelectorRequiresNativeByDefault()
-        {
-            Assert.Throws<NnrpNativeArtifactException>(() =>
-                NnrpNativeRuntimeBackendSelector.Select(
-                    artifactPath: "missing-native-artifact.dll",
-                    fallback: new FakeRuntimeBackend()));
-        }
-
-        [Fact]
-        public void NativeRuntimeBackendSelectorUsesFallbackOnlyForDiagnosticsPolicy()
-        {
-            var fallback = new FakeRuntimeBackend();
-
-            var selected = NnrpNativeRuntimeBackendSelector.Select(
-                artifactPath: "missing-native-artifact.dll",
-                fallback: fallback,
-                fallbackPolicy: NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics);
-
-            Assert.Same(fallback, selected);
-        }
-
-        [Fact]
-        public void NativeRuntimeBackendSelectorExplicitRequireNativeRejectsFallback()
-        {
-            Assert.Throws<NnrpNativeArtifactException>(() =>
-                NnrpNativeRuntimeBackendSelector.Select(
-                    artifactPath: "missing-native-artifact.dll",
-                    fallback: new FakeRuntimeBackend(),
-                    fallbackPolicy: NnrpNativeRuntimeFallbackPolicy.RequireNative));
-        }
-
-        [Fact]
-        public void NativeRuntimeHostOptionsRequireNativeByDefault()
-        {
-            var sessionOptions = new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6);
-            var connectionOptions = new NnrpNativeRuntimeConnectionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp);
-
-            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.RequireNative, sessionOptions.FallbackPolicy);
-            Assert.Equal(NnrpNativeRuntimeFallbackPolicy.RequireNative, connectionOptions.FallbackPolicy);
-        }
-
-        [Fact]
-        public void NativeRuntimeClientImplementsBackendInterface()
-        {
-            INnrpNativeRuntimeBackend backend = new NnrpNativeRuntimeClient(CreateEntrypoints());
-
-            var connection = backend.Connect(11, 2, NnrpNativeArtifact.TransportSlotTcp);
-
-            Assert.Equal((ulong)11, connection.Handle.Handle.Id);
-        }
-
-        [Fact]
         public void NativeRuntimeSessionSubmitResultCompactBatchReturnsCompletedOperations()
         {
+            var entrypoints = CreateEntrypoints();
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2);
             var host = NnrpNativeRuntimeSessionHost.Open(
-                new NnrpNativeRuntimeClient(CreateEntrypoints()),
-                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+                carrier,
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, 41, 3, 4, 5, 6));
 
             using (host)
             {
@@ -3033,9 +3251,11 @@ namespace Nnrp.NativeBridge.Tests
         [Fact]
         public void NativeRuntimeSessionSubmitResultCompactBatchRejectsInvalidArguments()
         {
+            var entrypoints = CreateEntrypoints();
+            using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2);
             var host = NnrpNativeRuntimeSessionHost.Open(
-                new NnrpNativeRuntimeClient(CreateEntrypoints()),
-                new NnrpNativeRuntimeSessionHostOptions(11, 2, NnrpNativeArtifact.TransportSlotTcp, 41, 3, 4, 5, 6));
+                carrier,
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, 41, 3, 4, 5, 6));
 
             using (host)
             {
@@ -3188,6 +3408,53 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(tail, decoded.Tail.ToArray());
         }
 
+        private static NnrpNativeRuntimeServer CreateRuntimeServer(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            ulong serverId,
+            uint generation,
+            uint transportId)
+        {
+            if (entrypoints == null)
+            {
+                throw new ArgumentNullException(nameof(entrypoints));
+            }
+
+            var listener = CreateTransportListener(
+                entrypoints,
+                transportId == NnrpNativeArtifact.TransportSlotQuic ? TransportId.Quic : TransportId.Tcp,
+                transportId,
+                generation == 0 ? 1u : generation);
+            return NnrpNativeRuntimeServer.Bind(listener, serverId, generation);
+        }
+
+        private static NnrpTransportListener CreateTransportListener(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            TransportId transportId,
+            ulong handleId,
+            uint generation)
+        {
+            var endpoint = transportId == TransportId.Quic
+                ? NnrpProviderEndpoint.Parse("quic://127.0.0.1:0")
+                : NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0");
+            return new NnrpTransportListener(
+                new NnrpNativeEntrypointLease(entrypoints),
+                transportId,
+                endpoint,
+                new NnrpHandle(NnrpHandleKind.TransportListener, handleId, generation));
+        }
+
+        private static NnrpTransportConnection CreateTransportCarrier(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            TransportId transportId,
+            ulong handleId,
+            uint generation)
+        {
+            return new NnrpTransportConnection(
+                new NnrpNativeEntrypointLease(entrypoints),
+                transportId,
+                new NnrpHandle(NnrpHandleKind.TransportConnection, handleId, generation));
+        }
+
         private static NnrpNativeRuntimeEntrypoints CreateEntrypoints(
             NnrpNativeRuntimeEntrypoints.RuntimeFrameSendInvoker? runtimeFrameSend = null,
             NativeObjectStore? objectStore = null,
@@ -3195,7 +3462,18 @@ namespace Nnrp.NativeBridge.Tests
             NnrpNativeRuntimeEntrypoints.ServerAcceptWaitInvoker? serverAcceptWait = null,
             NnrpNativeRuntimeEntrypoints.ServerAcceptClaimInvoker? serverAcceptClaim = null,
             NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? serverAcceptRelease = null,
-            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? connectionClose = null)
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? connectionClose = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? transportClose = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? sessionClose = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? serverClose = null,
+            NnrpNativeRuntimeEntrypoints.RoleAwaitEventsInvoker? serverAwaitEvents = null,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? bufferRelease = null,
+            NnrpNativeRuntimeEntrypoints.TransportSecurityConfigCreateInvoker? transportClientSecurityConfigCreate = null,
+            NnrpNativeRuntimeEntrypoints.TransportServerSecurityConfigCreateInvoker? transportServerSecurityConfigCreate = null,
+            NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportConnect = null,
+            NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportListen = null,
+            NnrpNativeRuntimeEntrypoints.TransportListenerEndpointInvoker? transportListenerEndpoint = null,
+            NnrpNativeRuntimeEntrypoints.TransportProbeInvoker? transportProbe = null)
         {
             return new NnrpNativeRuntimeEntrypoints(
                 CurrentProtocolVersion,
@@ -3206,7 +3484,7 @@ namespace Nnrp.NativeBridge.Tests
                 SessionOpen,
                 Submit,
                 Submit,
-                HandleStatus,
+                sessionClose ?? HandleStatus,
                 HandleStatus,
                 ClientCancel,
                 AwaitEvent,
@@ -3218,7 +3496,7 @@ namespace Nnrp.NativeBridge.Tests
                 ServerReceiveSubmit,
                 ServerSendResult,
                 ServerFlowUpdate,
-                HandleStatus,
+                serverClose ?? HandleStatus,
                 Control,
                 PollEmpty,
                 DispatchEvent,
@@ -3240,7 +3518,7 @@ namespace Nnrp.NativeBridge.Tests
                 migrationShouldReplayFrame: MigrationShouldReplayFrame,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
-                bufferRelease: HandleStatus,
+                bufferRelease: bufferRelease ?? HandleStatus,
                 cacheQuery: CacheQuery,
                 cacheTouch: CacheTouch,
                 cachePrefetch: CachePrefetch,
@@ -3257,7 +3535,37 @@ namespace Nnrp.NativeBridge.Tests
                 cacheReferenceDescriptorCreate: objectStore == null ? null : objectStore.CacheReferenceDescriptorCreate,
                 cacheReferenceDescriptorView: objectStore == null ? null : objectStore.CacheReferenceDescriptorView,
                 cacheReferenceDescriptorMetadataSnapshot: objectStore == null ? null : objectStore.CacheReferenceDescriptorMetadataSnapshot,
-                cacheReferenceDescriptorRelease: objectStore == null ? null : objectStore.CacheReferenceDescriptorRelease);
+                cacheReferenceDescriptorRelease: objectStore == null ? null : objectStore.CacheReferenceDescriptorRelease,
+                transportClientSecurityConfigCreate: transportClientSecurityConfigCreate ?? TransportClientSecurityConfigCreate,
+                transportServerSecurityConfigCreate: transportServerSecurityConfigCreate ?? TransportServerSecurityConfigCreate,
+                transportConnect: transportConnect ?? TransportConnect,
+                transportListen: transportListen ?? TransportListen,
+                transportAccept: TransportAccept,
+                transportListenerEndpoint: transportListenerEndpoint ?? TransportListenerEndpoint,
+                transportProbe: transportProbe ?? TransportProbe,
+                transportClose: transportClose ?? HandleStatus,
+                serverAwaitEvents: serverAwaitEvents);
+        }
+
+        internal static NnrpNativeRuntimeEntrypoints CreateTransportEntrypointsForTests(
+            NnrpNativeRuntimeEntrypoints.TransportSecurityConfigCreateInvoker? transportClientSecurityConfigCreate,
+            NnrpNativeRuntimeEntrypoints.TransportServerSecurityConfigCreateInvoker? transportServerSecurityConfigCreate,
+            NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportConnect,
+            NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportListen,
+            NnrpNativeRuntimeEntrypoints.TransportListenerEndpointInvoker transportListenerEndpoint,
+            NnrpNativeRuntimeEntrypoints.TransportProbeInvoker? transportProbe,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker? transportClose,
+            NnrpNativeRuntimeEntrypoints.HandleStatusInvoker bufferRelease)
+        {
+            return CreateEntrypoints(
+                transportClose: transportClose,
+                bufferRelease: bufferRelease,
+                transportClientSecurityConfigCreate: transportClientSecurityConfigCreate,
+                transportServerSecurityConfigCreate: transportServerSecurityConfigCreate,
+                transportConnect: transportConnect,
+                transportListen: transportListen,
+                transportListenerEndpoint: transportListenerEndpoint,
+                transportProbe: transportProbe);
         }
 
         private static byte[] CopyBufferView(NnrpBufferView view)
@@ -3297,6 +3605,90 @@ namespace Nnrp.NativeBridge.Tests
         private static NnrpFfiStatus ConnectionBootstrap(NnrpConnectionBootstrap request, out NnrpHandle connection)
         {
             connection = new NnrpHandle(NnrpHandleKind.Connection, request.ConnectionId, request.Generation);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private static NnrpTransportOpenRequest MatchingTransportOpenRequest()
+        {
+            return new NnrpTransportOpenRequest(
+                TransportId.Tcp,
+                NnrpBufferView.Empty,
+                NnrpHandle.Invalid,
+                1024,
+                10);
+        }
+
+        private static NnrpFfiStatus TransportClientSecurityConfigCreate(
+            NnrpTransportClientSecurityConfigRequest request,
+            out NnrpHandle config)
+        {
+            config = new NnrpHandle(NnrpHandleKind.TransportSecurityConfig, 22, 1);
+            return request.TransportId == (uint)TransportId.Tcp
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus TransportServerSecurityConfigCreate(
+            NnrpTransportServerSecurityConfigRequest request,
+            out NnrpHandle config)
+        {
+            config = new NnrpHandle(NnrpHandleKind.TransportSecurityConfig, 23, 1);
+            return request.TransportId == (uint)TransportId.Tcp
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus TransportConnect(
+            NnrpTransportOpenRequest request,
+            out NnrpHandle connection)
+        {
+            connection = new NnrpHandle(NnrpHandleKind.TransportConnection, 30, 1);
+            return request.TransportId == (uint)TransportId.Tcp
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus TransportListen(
+            NnrpTransportOpenRequest request,
+            out NnrpHandle listener)
+        {
+            listener = new NnrpHandle(NnrpHandleKind.TransportListener, 31, 1);
+            return request.TransportId == (uint)TransportId.Tcp
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
+        }
+
+        private static NnrpFfiStatus TransportAccept(
+            NnrpTransportAcceptRequest request,
+            out NnrpHandle connection)
+        {
+            connection = new NnrpHandle(NnrpHandleKind.TransportConnection, 32, 1);
+            return request.Listener.Kind == NnrpHandleKind.TransportListener
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus TransportListenerEndpoint(
+            NnrpHandle listener,
+            out NnrpHandle buffer,
+            out NnrpBufferView endpoint)
+        {
+            buffer = NnrpHandle.Invalid;
+            endpoint = NnrpBufferView.Empty;
+            return listener.Kind == NnrpHandleKind.TransportListener
+                ? NnrpFfiStatus.Ok
+                : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+        }
+
+        private static NnrpFfiStatus TransportProbe(
+            NnrpTransportProbeRequest request,
+            out NnrpTransportProbeResult result)
+        {
+            result = new NnrpTransportProbeResult(
+                request.SampleCount,
+                request.SampleCount,
+                1_000_000,
+                100);
             return NnrpFfiStatus.Ok;
         }
 
@@ -3408,10 +3800,12 @@ namespace Nnrp.NativeBridge.Tests
                 1,
                 new NnrpEvent(
                     6,
+                    (uint)MessageType.ResultPush,
                     connection,
                     new NnrpHandle(NnrpHandleKind.Session, 41, 3),
                     new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
                     7,
+                    NnrpHandle.Invalid,
                     new NnrpBufferView(EventPayloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)EventPayload.Length)),
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
             return NnrpFfiStatus.Ok;
@@ -3765,10 +4159,12 @@ namespace Nnrp.NativeBridge.Tests
                 0,
                 new NnrpEvent(
                     0,
+                    0,
                     NnrpHandle.Invalid,
                     NnrpHandle.Invalid,
                     NnrpHandle.Invalid,
                     0,
+                    NnrpHandle.Invalid,
                     NnrpBufferView.Empty,
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
         }
@@ -3784,10 +4180,12 @@ namespace Nnrp.NativeBridge.Tests
                 1,
                 new NnrpEvent(
                     6,
+                    (uint)MessageType.ResultPush,
                     connection,
                     session,
                     operation,
                     frameId,
+                    NnrpHandle.Invalid,
                     NnrpBufferView.Empty,
                     new NnrpFfiDiagnostic(NnrpFfiStatus.Ok)));
         }
@@ -4061,17 +4459,5 @@ namespace Nnrp.NativeBridge.Tests
             }
         }
 
-        private sealed class FakeRuntimeBackend : INnrpNativeRuntimeBackend
-        {
-            public NnrpNativeRuntimeConnection Connect(ulong connectionId, uint generation, uint transportId)
-            {
-                throw new NotSupportedException("fixture connect");
-            }
-
-            public NnrpNativeRuntimeConnection BootstrapConnection(ulong connectionId, uint generation, uint transportId)
-            {
-                throw new NotSupportedException("fixture bootstrap");
-            }
-        }
     }
 }

@@ -5,8 +5,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
-using Nnrp.Transport.Quic;
-using Nnrp.Transport.Tcp;
 
 namespace Nnrp.BenchmarkAdapter;
 
@@ -392,10 +390,12 @@ public static class Program
         {
             var ffiEvent = new NnrpEvent(
                 kind: 6,
+                messageType: (uint)MessageType.ResultPush,
                 NnrpHandle.Invalid,
                 NnrpHandle.Invalid,
                 NnrpHandle.Invalid,
                 frameId: 1,
+                payloadOwner: NnrpHandle.Invalid,
                 new NnrpBufferView(payloadHandle.AddrOfPinnedObject(), new UIntPtr((uint)payload.Length)),
                 default);
 
@@ -722,40 +722,108 @@ public static class Program
         };
     }
 
-    private static NnrpNativeRuntimeSessionHost OpenNativeSessionHost(
+    private static NativeBenchmarkSessionHost OpenNativeSessionHost(
         string artifactPath,
         uint transportSlot,
         ulong connectionId,
         uint sessionId)
     {
-        if (transportSlot == NnrpNativeArtifact.TransportSlotQuic)
+        var transportScope = NnrpNativeArtifact.TransportScopeFromTransportId(transportSlot);
+        var entrypoints = NnrpNativeRuntimeEntrypoints.Load(
+            artifactPath,
+            requiredTransportSlots: transportSlot,
+            transportScope: transportScope);
+        try
         {
-            return NnrpNativeQuicRuntime.OpenSessionHost(
-                new NnrpNativeQuicRuntimeSessionHostOptions(
-                    connectionId,
-                    connectionGeneration: 1,
-                    sessionId,
-                    sessionGeneration: 1,
-                    profileId: 0,
-                    schemaId: 0,
-                    schemaVersion: 0)
-                {
-                    ArtifactPath = artifactPath,
-                });
+            entrypoints.ConnectionBootstrap(
+                new NnrpConnectionBootstrap(connectionId, 1, transportSlot),
+                out var connectionHandle).ThrowIfError();
+            var connection = new NnrpNativeRuntimeConnection(
+                entrypoints,
+                new NnrpConnectionHandle(connectionHandle));
+            try
+            {
+                var session = connection.OpenSession(sessionId, 1, 0, 0, 0);
+                return new NativeBenchmarkSessionHost(entrypoints, connection, session);
+            }
+            catch
+            {
+                connection.Dispose();
+                throw;
+            }
+        }
+        catch
+        {
+            entrypoints.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class NativeBenchmarkSessionHost : IDisposable
+    {
+        private readonly NnrpNativeRuntimeEntrypoints entrypoints;
+        private readonly NnrpNativeRuntimeConnection connection;
+        private readonly NnrpNativeRuntimeSession session;
+        private bool isClosed;
+
+        internal NativeBenchmarkSessionHost(
+            NnrpNativeRuntimeEntrypoints entrypoints,
+            NnrpNativeRuntimeConnection connection,
+            NnrpNativeRuntimeSession session)
+        {
+            this.entrypoints = entrypoints;
+            this.connection = connection;
+            this.session = session;
         }
 
-        return NnrpNativeTcpRuntime.OpenSessionHost(
-            new NnrpNativeTcpRuntimeSessionHostOptions(
-                connectionId,
-                connectionGeneration: 1,
-                sessionId,
-                sessionGeneration: 1,
-                profileId: 0,
-                schemaId: 0,
-                schemaVersion: 0)
+        internal ulong SubmitResultCompactBatch(
+            ulong operationIdStart,
+            uint frameIdStart,
+            uint frameIdStride,
+            ReadOnlyMemory<byte> submitPayload,
+            ReadOnlyMemory<byte> resultPayload,
+            int maxEvents,
+            int iterations)
+        {
+            return session.SubmitResultCompactBatch(
+                operationIdStart,
+                frameIdStart,
+                frameIdStride,
+                submitPayload,
+                resultPayload,
+                maxEvents,
+                iterations);
+        }
+
+        internal void Close()
+        {
+            if (isClosed)
             {
-                ArtifactPath = artifactPath,
-            });
+                return;
+            }
+
+            try
+            {
+                session.Close();
+            }
+            finally
+            {
+                try
+                {
+                    connection.Dispose();
+                }
+                finally
+                {
+                    entrypoints.Dispose();
+                    isClosed = true;
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            Close();
+        }
     }
 
     private static uint NativeTransportSlot(JsonElement workload)

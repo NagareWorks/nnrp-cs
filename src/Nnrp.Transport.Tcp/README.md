@@ -1,24 +1,20 @@
 # Nnrp.Transport.Tcp
 
-Nnrp.Transport.Tcp owns the TCP entry surface for NNRP Preview4 hosts plus managed TCP helpers for framed NNRP messages in
-fixture inspection, diagnostics, and unsupported-runtime flows.
+`Nnrp.Transport.Tcp` owns the Preview4 TCP provider implementation and TCP-scoped Rust artifacts.
 
-Install this package when the host should expose TCP as an installed transport candidate. The package provides
-transport-specific native runtime options and factory methods that pin the TCP transport id before calling into
-`Nnrp.NativeBridge`. Install only `Nnrp.Transport.Tcp` to expose TCP, install only `Nnrp.Transport.Quic` to expose QUIC, or
-install both packages when the host should probe and select between installed transport candidates.
+Install this package when a host should expose TCP. `NnrpNativeTcpTransportProvider` performs TCP connect, listen, and
+probe operations through the packaged TCP native library and returns opaque carriers to `Nnrp.NativeBridge`. Installing
+the package adds real TCP behavior; it is not a configuration switch over an implementation hidden in another package.
 
-Use the managed TCP implementation when you need a diagnostic implementation that works with the NNRP core framing model
-outside the Preview4 native-backed hot path. For Preview4 production-style connection/session bootstrap, submit/result
-polling, cancellation, and control paths, prefer `NnrpNativeTcpRuntime`.
-
-This package depends on Nnrp.Core and Nnrp.NativeBridge.
-
-Install:
+The package also contains `NnrpTcpMessageTransport`, a managed framed-message helper for diagnostics and fixture
+inspection. Production Preview4 role adoption uses the native provider path.
 
 ```powershell
 dotnet add package Nnrp.Transport.Tcp --version <published-version>
 ```
+
+Install TCP alone to use TCP without probing. Install multiple provider packages when Auto or Prefer policy should probe
+and compare eligible carriers.
 
 Repository and full SDK documentation:
 

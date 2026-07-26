@@ -5,6 +5,124 @@ using System.Linq;
 
 namespace Nnrp.Core
 {
+    public sealed class NnrpTransportConnectOptions
+    {
+        public NnrpTransportConnectOptions(
+            NnrpEndpoint endpoint,
+            NnrpProviderEndpoint providerEndpoint,
+            NnrpTransportClientSecurity? security = null,
+            ulong maxPacketBytes = 16 * 1024 * 1024,
+            uint timeoutMilliseconds = 0)
+        {
+            if (maxPacketBytes == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxPacketBytes));
+            }
+
+            Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
+            ProviderEndpoint = providerEndpoint ?? throw new ArgumentNullException(nameof(providerEndpoint));
+            Security = security;
+            MaxPacketBytes = maxPacketBytes;
+            TimeoutMilliseconds = timeoutMilliseconds;
+        }
+
+        public NnrpEndpoint Endpoint { get; }
+
+        public NnrpProviderEndpoint ProviderEndpoint { get; }
+
+        public NnrpTransportClientSecurity? Security { get; }
+
+        public ulong MaxPacketBytes { get; }
+
+        public uint TimeoutMilliseconds { get; }
+    }
+
+    public sealed class NnrpTransportListenOptions
+    {
+        public NnrpTransportListenOptions(
+            NnrpEndpoint endpoint,
+            NnrpProviderEndpoint providerEndpoint,
+            NnrpTransportServerSecurity? security = null,
+            ulong maxPacketBytes = 16 * 1024 * 1024,
+            uint timeoutMilliseconds = 0)
+        {
+            if (maxPacketBytes == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxPacketBytes));
+            }
+
+            Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
+            ProviderEndpoint = providerEndpoint ?? throw new ArgumentNullException(nameof(providerEndpoint));
+            Security = security;
+            MaxPacketBytes = maxPacketBytes;
+            TimeoutMilliseconds = timeoutMilliseconds;
+        }
+
+        public NnrpEndpoint Endpoint { get; }
+
+        public NnrpProviderEndpoint ProviderEndpoint { get; }
+
+        public NnrpTransportServerSecurity? Security { get; }
+
+        public ulong MaxPacketBytes { get; }
+
+        public uint TimeoutMilliseconds { get; }
+    }
+
+    public sealed class NnrpTransportProbeOptions
+    {
+        public NnrpTransportProbeOptions(
+            NnrpEndpoint endpoint,
+            NnrpProviderEndpoint providerEndpoint,
+            uint sampleCount,
+            uint payloadBytes,
+            NnrpTransportClientSecurity? security = null,
+            ulong maxPacketBytes = 16 * 1024 * 1024,
+            uint timeoutMilliseconds = 0,
+            bool includeWarmup = false)
+        {
+            if (sampleCount == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sampleCount));
+            }
+
+            if (payloadBytes == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(payloadBytes));
+            }
+
+            if (maxPacketBytes == 0 || payloadBytes > maxPacketBytes)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxPacketBytes));
+            }
+
+            Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
+            ProviderEndpoint = providerEndpoint ?? throw new ArgumentNullException(nameof(providerEndpoint));
+            Security = security;
+            MaxPacketBytes = maxPacketBytes;
+            TimeoutMilliseconds = timeoutMilliseconds;
+            SampleCount = sampleCount;
+            PayloadBytes = payloadBytes;
+            IncludeWarmup = includeWarmup;
+        }
+
+        public NnrpEndpoint Endpoint { get; }
+
+        public NnrpProviderEndpoint ProviderEndpoint { get; }
+
+        public NnrpTransportClientSecurity? Security { get; }
+
+        public ulong MaxPacketBytes { get; }
+
+        public uint TimeoutMilliseconds { get; }
+
+        public uint SampleCount { get; }
+
+        public uint PayloadBytes { get; }
+
+        public bool IncludeWarmup { get; }
+    }
+
     public enum NnrpTransportProviderKind
     {
         PureRust = 0,

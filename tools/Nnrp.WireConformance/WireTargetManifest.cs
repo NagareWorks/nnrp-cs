@@ -40,8 +40,8 @@ public sealed class WireTargetSupport
     public static WireTargetSupport Compiled { get; } = new(
         [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer],
         [
-            ToSchemaTransportName(NnrpNativeTcpRuntime.TransportId),
-            ToSchemaTransportName(NnrpNativeQuicRuntime.TransportId),
+            ToSchemaTransportName(NnrpNativeTcpTransportProvider.Instance.Descriptor.TransportId),
+            ToSchemaTransportName(NnrpNativeQuicTransportProvider.Instance.Descriptor.TransportId),
         ],
         NnrpPreview4CapabilityTokens.AllCapabilities);
 

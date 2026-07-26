@@ -1,5 +1,7 @@
 using System;
 using Nnrp.Core;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace Nnrp.NativeBridge.Tests
@@ -21,7 +23,7 @@ namespace Nnrp.NativeBridge.Tests
                     Provider(TransportId.Quic, "quic", NnrpNativeArtifact.TransportSlotQuic, priority: 20),
                 });
 
-            Assert.Equal(TransportId.Quic, resolution.SelectedProvider.TransportId);
+            Assert.Equal(TransportId.Quic, resolution.SelectedProvider.Descriptor.TransportId);
             Assert.True(resolution.ShouldProbe);
             Assert.Equal((uint)TransportId.Quic, resolution.TransportId);
             Assert.Equal(2, resolution.AvailableProviders.Length);
@@ -56,7 +58,7 @@ namespace Nnrp.NativeBridge.Tests
                 },
                 policy);
 
-            Assert.Equal(expectedTransportId, resolution.SelectedProvider.TransportId);
+            Assert.Equal(expectedTransportId, resolution.SelectedProvider.Descriptor.TransportId);
             Assert.Equal(expectedProbe, resolution.ShouldProbe);
         }
 
@@ -71,7 +73,7 @@ namespace Nnrp.NativeBridge.Tests
                     Provider(TransportId.Quic, "quic", NnrpNativeArtifact.TransportSlotQuic, priority: 20),
                 });
 
-            Assert.Equal(TransportId.Tcp, resolution.SelectedProvider.TransportId);
+            Assert.Equal(TransportId.Tcp, resolution.SelectedProvider.Descriptor.TransportId);
             Assert.False(resolution.ShouldProbe);
             Assert.Single(resolution.AvailableProviders);
         }
@@ -103,15 +105,15 @@ namespace Nnrp.NativeBridge.Tests
                 NnrpNativeTransportResolver.Resolve(
                     Probe(NnrpNativeArtifact.TransportSlotTcp),
                     new INnrpNativeTransportProvider?[] { null! }!));
-            Assert.Throws<ArgumentException>(() =>
+            Assert.ThrowsAny<ArgumentException>(() =>
                 NnrpNativeTransportResolver.Resolve(
                     Probe(NnrpNativeArtifact.TransportSlotTcp),
                     new[] { Provider(TransportId.Unspecified, "tcp", NnrpNativeArtifact.TransportSlotTcp, priority: 10) }));
-            Assert.Throws<ArgumentException>(() =>
+            Assert.Throws<InvalidOperationException>(() =>
                 NnrpNativeTransportResolver.Resolve(
                     Probe(NnrpNativeArtifact.TransportSlotTcp),
                     new[] { Provider(TransportId.Tcp, "tcp", 0, priority: 10) }));
-            Assert.Throws<ArgumentException>(() =>
+            Assert.ThrowsAny<ArgumentException>(() =>
                 NnrpNativeTransportResolver.Resolve(
                     Probe(NnrpNativeArtifact.TransportSlotTcp),
                     new[] { Provider(TransportId.Tcp, " ", NnrpNativeArtifact.TransportSlotTcp, priority: 10) }));
@@ -122,6 +124,14 @@ namespace Nnrp.NativeBridge.Tests
                     {
                         Provider(TransportId.Tcp, "tcp-a", NnrpNativeArtifact.TransportSlotTcp, priority: 10),
                         Provider(TransportId.Tcp, "tcp-b", NnrpNativeArtifact.TransportSlotTcp, priority: 20),
+                    }));
+            Assert.Throws<ArgumentException>(() =>
+                NnrpNativeTransportResolver.Resolve(
+                    Probe(NnrpNativeArtifact.TransportSlotTcp | NnrpNativeArtifact.TransportSlotQuic),
+                    new INnrpNativeTransportProvider[]
+                    {
+                        new StubProvider(TransportId.Tcp, "shared", NnrpNativeArtifact.TransportSlotTcp, 10),
+                        new StubProvider(TransportId.Quic, "shared", NnrpNativeArtifact.TransportSlotQuic, 20),
                     }));
         }
 
@@ -181,19 +191,61 @@ namespace Nnrp.NativeBridge.Tests
                 uint nativeTransportSlot,
                 int probePriority)
             {
-                TransportId = transportId;
-                BindingName = bindingName;
-                NativeTransportSlot = nativeTransportSlot;
-                ProbePriority = probePriority;
+                if (nativeTransportSlot == 0)
+                {
+                    Descriptor = new NnrpTransportProviderDescriptor(
+                        bindingName,
+                        "1",
+                        transportId,
+                        NnrpTransportProviderKind.NativeDynamic,
+                        false,
+                        null,
+                        Metadata(bindingName, probePriority));
+                    return;
+                }
+
+                Descriptor = new NnrpTransportProviderDescriptor(
+                    bindingName,
+                    "1",
+                    transportId,
+                    NnrpTransportProviderKind.NativeDynamic,
+                    true,
+                    null,
+                    Metadata(bindingName, probePriority));
             }
 
-            public TransportId TransportId { get; }
+            public NnrpTransportProviderDescriptor Descriptor { get; }
 
-            public string BindingName { get; }
+            public ValueTask<NnrpTransportConnection> ConnectAsync(
+                NnrpTransportConnectOptions options,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
 
-            public uint NativeTransportSlot { get; }
+            public ValueTask<NnrpTransportListener> ListenAsync(
+                NnrpTransportListenOptions options,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
 
-            public int ProbePriority { get; }
+            public ValueTask<NnrpTransportProbeMetrics> ProbeAsync(
+                NnrpTransportProbeOptions options,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            private static NnrpTransportProviderMetadata Metadata(string id, int priority)
+            {
+                return new NnrpTransportProviderMetadata(
+                    id,
+                    default,
+                    checked((ushort)(ushort.MaxValue - priority)),
+                    new NnrpTransportProviderLimits(1024),
+                    Array.Empty<NnrpTransportProviderLimitation>());
+            }
         }
     }
 }
