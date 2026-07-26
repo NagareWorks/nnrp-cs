@@ -1,4 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Nnrp.Client")]
+[assembly: InternalsVisibleTo("Nnrp.Server")]
+[assembly: InternalsVisibleTo("Nnrp.NativeBridge")]
+[assembly: InternalsVisibleTo("Nnrp.Core.Tests")]
 
 namespace Nnrp.Core
 {
@@ -240,5 +249,212 @@ namespace Nnrp.Core
         public NnrpProviderEndpoint? ProviderEndpoint { get; init; }
 
         public NnrpTransportServerSecurity? Security { get; init; }
+    }
+
+    internal static class NnrpTransportRouteSet
+    {
+        internal static IReadOnlyDictionary<TransportId, NnrpClientProviderRoute> CopyClient(
+            IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? routes)
+        {
+            var copy = new Dictionary<TransportId, NnrpClientProviderRoute>();
+            if (routes != null)
+            {
+                foreach (var pair in routes)
+                {
+                    ValidateTransportId(pair.Key);
+                    var route = pair.Value ?? throw new ArgumentException(
+                        "Client provider routes must not contain null values.",
+                        nameof(routes));
+                    copy.Add(pair.Key, new NnrpClientProviderRoute
+                    {
+                        ProviderEndpoint = route.ProviderEndpoint,
+                        Security = route.Security,
+                    });
+                }
+            }
+
+            return new ReadOnlyDictionary<TransportId, NnrpClientProviderRoute>(copy);
+        }
+
+        internal static IReadOnlyDictionary<TransportId, NnrpServerProviderRoute> CopyServer(
+            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? routes)
+        {
+            var copy = new Dictionary<TransportId, NnrpServerProviderRoute>();
+            if (routes != null)
+            {
+                foreach (var pair in routes)
+                {
+                    ValidateTransportId(pair.Key);
+                    var route = pair.Value ?? throw new ArgumentException(
+                        "Server provider routes must not contain null values.",
+                        nameof(routes));
+                    copy.Add(pair.Key, new NnrpServerProviderRoute
+                    {
+                        ProviderEndpoint = route.ProviderEndpoint,
+                        Security = route.Security,
+                    });
+                }
+            }
+
+            return new ReadOnlyDictionary<TransportId, NnrpServerProviderRoute>(copy);
+        }
+
+        private static void ValidateTransportId(TransportId transportId)
+        {
+            if (transportId == TransportId.Unspecified || !Enum.IsDefined(typeof(TransportId), transportId))
+            {
+                throw new ArgumentException("Provider route keys must be known non-zero transport ids.");
+            }
+        }
+    }
+
+    internal static class NnrpTransportRouteResolver
+    {
+        internal static bool TryResolveClient(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpClientProviderRoute? route,
+            out NnrpProviderEndpoint? providerEndpoint,
+            out NnrpTransportRejectionReason? rejectionReason,
+            out string? diagnostic)
+        {
+            providerEndpoint = ResolveEndpoint(endpoint, transportId, route?.ProviderEndpoint, out diagnostic);
+            if (providerEndpoint == null)
+            {
+                rejectionReason = NnrpTransportRejectionReason.RouteUnresolved;
+                return false;
+            }
+
+            if (!IsClientSecurityValid(endpoint, transportId, providerEndpoint, route?.Security, out diagnostic))
+            {
+                rejectionReason = NnrpTransportRejectionReason.SecurityUnsatisfied;
+                return false;
+            }
+
+            rejectionReason = null;
+            diagnostic = null;
+            return true;
+        }
+
+        internal static bool TryResolveServer(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpServerProviderRoute? route,
+            out NnrpProviderEndpoint? providerEndpoint,
+            out NnrpTransportRejectionReason? rejectionReason,
+            out string? diagnostic)
+        {
+            providerEndpoint = ResolveEndpoint(endpoint, transportId, route?.ProviderEndpoint, out diagnostic);
+            if (providerEndpoint == null)
+            {
+                rejectionReason = NnrpTransportRejectionReason.RouteUnresolved;
+                return false;
+            }
+
+            if (!IsServerSecurityValid(endpoint, transportId, providerEndpoint, route?.Security, out diagnostic))
+            {
+                rejectionReason = NnrpTransportRejectionReason.SecurityUnsatisfied;
+                return false;
+            }
+
+            rejectionReason = null;
+            diagnostic = null;
+            return true;
+        }
+
+        private static NnrpProviderEndpoint? ResolveEndpoint(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpProviderEndpoint? providerEndpoint,
+            out string? diagnostic)
+        {
+            if (endpoint == null)
+            {
+                throw new ArgumentNullException(nameof(endpoint));
+            }
+
+            if (transportId == TransportId.Unspecified || !Enum.IsDefined(typeof(TransportId), transportId))
+            {
+                throw new ArgumentOutOfRangeException(nameof(transportId));
+            }
+
+            if (providerEndpoint == null)
+            {
+                if (transportId == TransportId.Tcp || transportId == TransportId.Quic)
+                {
+                    diagnostic = null;
+                    var scheme = transportId == TransportId.Tcp ? "tcp" : "quic";
+                    return NnrpProviderEndpoint.Parse(scheme + "://" + endpoint.Authority);
+                }
+
+                diagnostic = transportId + " requires an explicit provider endpoint.";
+                return null;
+            }
+
+            if (!providerEndpoint.MatchesTransport(transportId))
+            {
+                diagnostic = "Provider endpoint scheme does not match " + transportId + ".";
+                return null;
+            }
+
+            if (transportId == TransportId.Ipc
+                && ((string.Equals(providerEndpoint.Scheme, "unix", StringComparison.Ordinal)
+                        && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    || (string.Equals(providerEndpoint.Scheme, "npipe", StringComparison.Ordinal)
+                        && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))))
+            {
+                diagnostic = "IPC provider endpoint is not supported on this platform.";
+                return null;
+            }
+
+            diagnostic = null;
+            return providerEndpoint;
+        }
+
+        private static bool IsClientSecurityValid(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpProviderEndpoint providerEndpoint,
+            NnrpTransportClientSecurity? security,
+            out string? diagnostic)
+        {
+            var valid = IsSecurityValid(endpoint, transportId, providerEndpoint, security != null);
+            diagnostic = valid ? null : "Client route security does not satisfy the application endpoint.";
+            return valid;
+        }
+
+        private static bool IsServerSecurityValid(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpProviderEndpoint providerEndpoint,
+            NnrpTransportServerSecurity? security,
+            out string? diagnostic)
+        {
+            var valid = IsSecurityValid(endpoint, transportId, providerEndpoint, security != null);
+            diagnostic = valid ? null : "Server route security does not satisfy the application endpoint.";
+            return valid;
+        }
+
+        internal static bool IsSecurityValid(
+            NnrpEndpoint endpoint,
+            TransportId transportId,
+            NnrpProviderEndpoint providerEndpoint,
+            bool hasSecurity)
+        {
+            switch (transportId)
+            {
+                case TransportId.Tcp:
+                    return !endpoint.IsSecure || hasSecurity;
+                case TransportId.Quic:
+                    return hasSecurity;
+                case TransportId.Ipc:
+                    return !endpoint.IsSecure && !hasSecurity;
+                case TransportId.WebSocket:
+                    return providerEndpoint.IsSecure == hasSecurity
+                        && (!endpoint.IsSecure || providerEndpoint.IsSecure);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(transportId));
+            }
+        }
     }
 }

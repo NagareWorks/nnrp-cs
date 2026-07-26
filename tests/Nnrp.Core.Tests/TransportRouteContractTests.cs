@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Nnrp.Core;
 using Xunit;
 
@@ -130,6 +131,232 @@ namespace Nnrp.Core.Tests
             Assert.Same(clientSecurity, client.Security);
             Assert.Same(endpoint, server.ProviderEndpoint);
             Assert.Same(serverSecurity, server.Security);
+        }
+
+        [Fact]
+        public void RouteSetsOwnStableRoleSpecificSnapshots()
+        {
+            var clientRoute = new NnrpClientProviderRoute
+            {
+                ProviderEndpoint = NnrpProviderEndpoint.Parse("tcp://127.0.0.1:7001"),
+            };
+            var serverRoute = new NnrpServerProviderRoute
+            {
+                ProviderEndpoint = NnrpProviderEndpoint.Parse("tcp://127.0.0.1:7002"),
+            };
+            var clientSource = new Dictionary<TransportId, NnrpClientProviderRoute>
+            {
+                [TransportId.Tcp] = clientRoute,
+            };
+            var serverSource = new Dictionary<TransportId, NnrpServerProviderRoute>
+            {
+                [TransportId.Tcp] = serverRoute,
+            };
+
+            var clients = NnrpTransportRouteSet.CopyClient(clientSource);
+            var servers = NnrpTransportRouteSet.CopyServer(serverSource);
+            clientSource.Clear();
+            serverSource.Clear();
+
+            Assert.Equal("tcp://127.0.0.1:7001", clients[TransportId.Tcp].ProviderEndpoint!.ToString());
+            Assert.Equal("tcp://127.0.0.1:7002", servers[TransportId.Tcp].ProviderEndpoint!.ToString());
+            Assert.Throws<NotSupportedException>(() =>
+                ((IDictionary<TransportId, NnrpClientProviderRoute>)clients).Clear());
+        }
+
+        [Fact]
+        public void RouteSetsRejectUnknownAndNullEntries()
+        {
+            Assert.Throws<ArgumentException>(() => NnrpTransportRouteSet.CopyClient(
+                new Dictionary<TransportId, NnrpClientProviderRoute>
+                {
+                    [TransportId.Unspecified] = new NnrpClientProviderRoute(),
+                }));
+            Assert.Throws<ArgumentException>(() => NnrpTransportRouteSet.CopyServer(
+                new Dictionary<TransportId, NnrpServerProviderRoute>
+                {
+                    [TransportId.Tcp] = null!,
+                }));
+        }
+
+        [Theory]
+        [InlineData(TransportId.Tcp, "tcp://runtime.example:7443")]
+        [InlineData(TransportId.Quic, "quic://runtime.example:7443")]
+        public void NetworkRoutesDeriveProviderEndpointFromApplicationAuthority(
+            TransportId transportId,
+            string expected)
+        {
+            Assert.True(NnrpTransportRouteResolver.TryResolveClient(
+                NnrpEndpoint.Parse("nnrp://runtime.example:7443/runtime/default"),
+                transportId,
+                transportId == TransportId.Quic
+                    ? new NnrpClientProviderRoute
+                    {
+                        Security = new NnrpTransportClientSecurity("runtime.example", new byte[] { 1 }),
+                    }
+                    : null,
+                out var endpoint,
+                out var rejection,
+                out var diagnostic));
+            Assert.Equal(expected, endpoint!.ToString());
+            Assert.Null(rejection);
+            Assert.Null(diagnostic);
+        }
+
+        [Fact]
+        public void MissingExplicitRoutesAreRouteUnresolvedBeforeSecurityChecks()
+        {
+            Assert.False(NnrpTransportRouteResolver.TryResolveClient(
+                NnrpEndpoint.Parse("nnrps://runtime.example/runtime/default"),
+                TransportId.WebSocket,
+                null,
+                out var endpoint,
+                out var rejection,
+                out _));
+
+            Assert.Null(endpoint);
+            Assert.Equal(NnrpTransportRejectionReason.RouteUnresolved, rejection);
+        }
+
+        [Fact]
+        public void ServerMissingExplicitRouteIsUnresolved()
+        {
+            Assert.False(NnrpTransportRouteResolver.TryResolveServer(
+                NnrpEndpoint.Parse("nnrp://runtime.example/runtime/default"),
+                TransportId.WebSocket,
+                null,
+                out var endpoint,
+                out var rejection,
+                out _));
+
+            Assert.Null(endpoint);
+            Assert.Equal(NnrpTransportRejectionReason.RouteUnresolved, rejection);
+        }
+
+        [Fact]
+        public void RouteResolutionRejectsInvalidInputsAndMismatchedLocators()
+        {
+            Assert.Throws<ArgumentNullException>(() => NnrpTransportRouteResolver.TryResolveClient(
+                null!,
+                TransportId.Tcp,
+                null,
+                out _,
+                out _,
+                out _));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpTransportRouteResolver.TryResolveClient(
+                NnrpEndpoint.Parse("nnrp://runtime.example/runtime/default"),
+                TransportId.Unspecified,
+                null,
+                out _,
+                out _,
+                out _));
+
+            Assert.False(NnrpTransportRouteResolver.TryResolveClient(
+                NnrpEndpoint.Parse("nnrp://runtime.example/runtime/default"),
+                TransportId.Tcp,
+                new NnrpClientProviderRoute
+                {
+                    ProviderEndpoint = NnrpProviderEndpoint.Parse("quic://runtime.example:7443"),
+                },
+                out _,
+                out var rejection,
+                out var diagnostic));
+            Assert.Equal(NnrpTransportRejectionReason.RouteUnresolved, rejection);
+            Assert.Contains("does not match", diagnostic);
+        }
+
+        [Fact]
+        public void RouteResolutionRejectsPlatformIncompatibleIpcLocator()
+        {
+            var incompatible = OperatingSystem.IsWindows()
+                ? NnrpProviderEndpoint.Parse("unix:///tmp/nnrp-test.sock")
+                : NnrpProviderEndpoint.Parse("npipe://nnrp-test");
+
+            Assert.False(NnrpTransportRouteResolver.TryResolveServer(
+                NnrpEndpoint.Parse("nnrp://runtime.example/runtime/default"),
+                TransportId.Ipc,
+                new NnrpServerProviderRoute { ProviderEndpoint = incompatible },
+                out _,
+                out var rejection,
+                out var diagnostic));
+            Assert.Equal(NnrpTransportRejectionReason.RouteUnresolved, rejection);
+            Assert.Contains("not supported", diagnostic);
+        }
+
+        [Fact]
+        public void SecurityMatrixRejectsUnknownTransportDefensively()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpTransportRouteResolver.IsSecurityValid(
+                NnrpEndpoint.Parse("nnrp://runtime.example/runtime/default"),
+                (TransportId)uint.MaxValue,
+                NnrpProviderEndpoint.Parse("tcp://runtime.example:7443"),
+                false));
+        }
+
+        [Fact]
+        public void SecureIntentUsesTheFrozenPerCarrierMatrix()
+        {
+            var secure = NnrpEndpoint.Parse("nnrps://runtime.example:7443/runtime/default");
+            var plain = NnrpEndpoint.Parse("nnrp://runtime.example:7443/runtime/default");
+            var clientSecurity = new NnrpTransportClientSecurity("runtime.example", new byte[] { 1 });
+            var serverSecurity = new NnrpTransportServerSecurity(new byte[] { 2 }, new byte[] { 3 });
+
+            Assert.False(NnrpTransportRouteResolver.TryResolveClient(
+                secure,
+                TransportId.Tcp,
+                null,
+                out _,
+                out var tcpRejection,
+                out _));
+            Assert.Equal(NnrpTransportRejectionReason.SecurityUnsatisfied, tcpRejection);
+            Assert.True(NnrpTransportRouteResolver.TryResolveClient(
+                secure,
+                TransportId.Tcp,
+                new NnrpClientProviderRoute { Security = clientSecurity },
+                out _,
+                out _,
+                out _));
+            Assert.False(NnrpTransportRouteResolver.TryResolveServer(
+                secure,
+                TransportId.Ipc,
+                new NnrpServerProviderRoute
+                {
+                    ProviderEndpoint = PlatformIpcEndpoint(),
+                },
+                out _,
+                out var ipcRejection,
+                out _));
+            Assert.Equal(NnrpTransportRejectionReason.SecurityUnsatisfied, ipcRejection);
+            Assert.True(NnrpTransportRouteResolver.TryResolveServer(
+                plain,
+                TransportId.WebSocket,
+                new NnrpServerProviderRoute
+                {
+                    ProviderEndpoint = NnrpProviderEndpoint.Parse("wss://runtime.example/nnrp"),
+                    Security = serverSecurity,
+                },
+                out _,
+                out _,
+                out _));
+            Assert.False(NnrpTransportRouteResolver.TryResolveServer(
+                plain,
+                TransportId.WebSocket,
+                new NnrpServerProviderRoute
+                {
+                    ProviderEndpoint = NnrpProviderEndpoint.Parse("ws://runtime.example/nnrp"),
+                    Security = serverSecurity,
+                },
+                out _,
+                out var wsRejection,
+                out _));
+            Assert.Equal(NnrpTransportRejectionReason.SecurityUnsatisfied, wsRejection);
+        }
+
+        private static NnrpProviderEndpoint PlatformIpcEndpoint()
+        {
+            return OperatingSystem.IsWindows()
+                ? NnrpProviderEndpoint.Parse("npipe://nnrp-test")
+                : NnrpProviderEndpoint.Parse("unix:///tmp/nnrp-test.sock");
         }
     }
 }

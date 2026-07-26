@@ -18,12 +18,12 @@
   - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
   - [x] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.
   - [x] Represent explicit carrier-local locators as `NnrpProviderEndpoint`.
-  - [ ] Derive TCP and QUIC host/port locators from the application authority when no override is present.
-  - [ ] Require a matching explicit `unix://` or `npipe://` provider endpoint before selecting IPC.
-  - [ ] Require a matching explicit `ws://` or `wss://` provider endpoint before selecting WebSocket.
-  - [ ] Add `NnrpClientProviderRoute` and `NnrpServerProviderRoute` with route-local locator and security.
+  - [x] Derive TCP and QUIC host/port locators from the application authority when no override is present.
+  - [x] Require a matching explicit `unix://` or `npipe://` provider endpoint before selecting IPC.
+  - [x] Require a matching explicit `ws://` or `wss://` provider endpoint before selecting WebSocket.
+  - [x] Add `NnrpClientProviderRoute` and `NnrpServerProviderRoute` with route-local locator and security.
   - [ ] Add immutable client and server route dictionaries keyed by `TransportId`.
-  - [ ] Keep the exact owned client/server security fields on each route.
+  - [x] Keep the exact owned client/server security fields on each route.
   - [ ] Exclude unresolved client candidates under `Auto` and `Prefer*`; fail forced policies without fallback.
   - [ ] Treat an unresolved otherwise-eligible server route as a hard listen error.
   - [ ] Reject provider-kind mismatches and platform-incompatible IPC locators before creating native handles.
@@ -32,9 +32,9 @@
   - [x] Add `NnrpTransportClientSecurity(ServerName, TrustedCertificateDer)`.
   - [x] Add `NnrpTransportServerSecurity(CertificateDer, PrivateKeyPkcs8Der)`.
   - [ ] Reject client credentials on listen paths and server credentials on connect paths.
-  - [ ] Add `RouteUnresolved` and `SecurityUnsatisfied` rejection reasons.
-  - [ ] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.
-  - [ ] Reject IPC, plain TCP, and WS for `nnrps://`.
+  - [x] Add `RouteUnresolved` and `SecurityUnsatisfied` rejection reasons.
+  - [x] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.
+  - [x] Reject IPC, plain TCP, and WS for `nnrps://`.
 - [ ] Replace the slot/priority-only provider contract.
   - [ ] Expose the validated provider descriptor from `INnrpNativeTransportProvider`.
   - [ ] Add `NnrpTransportConnectOptions`.
