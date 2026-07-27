@@ -8,11 +8,14 @@
   - [x] `NnrpTransportProviderLimitation` with every frozen limitation value.
   - [x] `NnrpTransportProviderMetadata(Id, Cost, PreferenceRank, Limits, Limitations)`.
   - [x] `NnrpTransportProviderDescriptor(Name, Version, TransportId, Kind, Available, LibraryPath, Metadata, Diagnostic)`.
+  - [x] `NnrpTransportCandidateReadiness(TransportId, ProviderId, RouteResolved, SecuritySatisfied, Diagnostic)`.
   - [x] `NnrpTransportProbeState`.
   - [x] `NnrpTransportProbeMetrics(SampleCount, SuccessCount, MedianThroughputBytesPerSecond, MedianRttMicroseconds)`.
+  - [x] `NnrpTransportProbeObservation(TransportId, ProviderId, State, Metrics, Diagnostic)`.
   - [x] `NnrpTransportRejectionReason`.
   - [x] `NnrpTransportCandidate`.
   - [x] `NnrpTransportSelection`.
+  - [x] `NnrpTransportSelectionErrorCode` and `NnrpTransportSelectionException`.
   - [x] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
 - [ ] Add endpoint and security contracts in `Nnrp.Core`.
   - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
@@ -49,21 +52,21 @@
 
 ## Provider Registration And Selection
 
-- [ ] Add `NnrpNativeTransportRegistry`.
-  - [ ] Register each installed transport package exactly once.
-  - [ ] Reject duplicate transport IDs and duplicate provider IDs.
-  - [ ] Return immutable snapshots of registered providers.
-  - [ ] Allow an explicit provider list to replace the default registry for tests and controlled deployments.
+- [x] Add `NnrpNativeTransportRegistry`.
+  - [x] Register each installed transport package exactly once.
+  - [x] Reject duplicate transport IDs and duplicate provider IDs.
+  - [x] Return immutable snapshots of registered providers.
+  - [x] Allow an explicit provider list to replace the default registry for tests and controlled deployments.
 - [ ] Implement the frozen provider comparator without a C#-specific weighted score.
-  - [ ] Reject policy-disallowed candidates.
-  - [ ] Reject locally unavailable candidates.
-  - [ ] Reject peer-unsupported candidates.
-  - [ ] Reject candidates whose frame limits are insufficient.
-  - [ ] Reject required probes that are missing or failed.
-  - [ ] Compare cost, preference rank, probe throughput, probe RTT, and stable provider identity in frozen order.
-  - [ ] Select the only valid installed provider without probing.
+  - [x] Reject policy-disallowed candidates.
+  - [x] Reject locally unavailable candidates.
+  - [x] Reject peer-unsupported candidates.
+  - [x] Reject candidates whose frame limits are insufficient.
+  - [x] Reject required probes that are missing or failed.
+  - [x] Compare cost, preference rank, probe throughput, probe RTT, and stable provider identity in frozen order.
+  - [x] Select the only valid installed provider without probing.
   - [ ] Probe and rank all valid providers when more than one remains.
-  - [ ] Return every rejected candidate and its typed reason.
+  - [x] Return every rejected candidate and its typed reason.
 - [ ] Add deterministic unit tests for every comparator key and rejection reason.
 
 ## Role Host Cardinality

@@ -302,6 +302,35 @@ namespace Nnrp.Core
         Missing = 3,
     }
 
+    public sealed class NnrpTransportCandidateReadiness
+    {
+        public NnrpTransportCandidateReadiness(
+            TransportId transportId,
+            string providerId,
+            bool routeResolved,
+            bool securitySatisfied,
+            string? diagnostic = null)
+        {
+            NnrpTransportProviderDescriptor.ValidateTransportId(transportId);
+            NnrpTransportProviderMetadata.ValidateProviderId(providerId);
+            TransportId = transportId;
+            ProviderId = providerId;
+            RouteResolved = routeResolved;
+            SecuritySatisfied = securitySatisfied;
+            Diagnostic = diagnostic;
+        }
+
+        public TransportId TransportId { get; }
+
+        public string ProviderId { get; }
+
+        public bool RouteResolved { get; }
+
+        public bool SecuritySatisfied { get; }
+
+        public string? Diagnostic { get; }
+    }
+
     public readonly record struct NnrpTransportProbeMetrics
     {
         public NnrpTransportProbeMetrics(
@@ -333,6 +362,47 @@ namespace Nnrp.Core
         public ulong MedianThroughputBytesPerSecond { get; }
 
         public ulong MedianRttMicroseconds { get; }
+    }
+
+    public sealed class NnrpTransportProbeObservation
+    {
+        public NnrpTransportProbeObservation(
+            TransportId transportId,
+            string providerId,
+            NnrpTransportProbeState state,
+            NnrpTransportProbeMetrics? metrics = null,
+            string? diagnostic = null)
+        {
+            NnrpTransportProviderDescriptor.ValidateTransportId(transportId);
+            NnrpTransportProviderMetadata.ValidateProviderId(providerId);
+            if (state != NnrpTransportProbeState.Succeeded && state != NnrpTransportProbeState.Failed)
+            {
+                throw new ArgumentOutOfRangeException(nameof(state));
+            }
+
+            if ((state == NnrpTransportProbeState.Succeeded) != metrics.HasValue)
+            {
+                throw new ArgumentException(
+                    "Succeeded probe observations require metrics and failed observations forbid them.",
+                    nameof(metrics));
+            }
+
+            TransportId = transportId;
+            ProviderId = providerId;
+            State = state;
+            Metrics = metrics;
+            Diagnostic = diagnostic;
+        }
+
+        public TransportId TransportId { get; }
+
+        public string ProviderId { get; }
+
+        public NnrpTransportProbeState State { get; }
+
+        public NnrpTransportProbeMetrics? Metrics { get; }
+
+        public string? Diagnostic { get; }
     }
 
     public enum NnrpTransportRejectionReason
@@ -463,13 +533,66 @@ namespace Nnrp.Core
         public string? Diagnostic { get; }
     }
 
+    public enum NnrpTransportSelectionErrorCode
+    {
+        InvalidEvidence = 0,
+        ForcedTransportUnavailable = 1,
+        NoViableTransport = 2,
+    }
+
+    public sealed class NnrpTransportSelectionException : InvalidOperationException
+    {
+        public NnrpTransportSelectionException(
+            NnrpTransportSelectionErrorCode code,
+            string diagnostic,
+            TransportPolicy? policy = null,
+            IEnumerable<NnrpTransportCandidate>? candidates = null)
+            : base(diagnostic)
+        {
+            if (!Enum.IsDefined(typeof(NnrpTransportSelectionErrorCode), code))
+            {
+                throw new ArgumentOutOfRangeException(nameof(code));
+            }
+
+            if (string.IsNullOrWhiteSpace(diagnostic))
+            {
+                throw new ArgumentException("Selection diagnostic must not be empty.", nameof(diagnostic));
+            }
+
+            if (policy.HasValue && !Enum.IsDefined(typeof(TransportPolicy), policy.Value))
+            {
+                throw new ArgumentOutOfRangeException(nameof(policy));
+            }
+
+            var ownedCandidates = candidates?.ToArray() ?? Array.Empty<NnrpTransportCandidate>();
+            if (ownedCandidates.Any(candidate => candidate == null))
+            {
+                throw new ArgumentException("Selection candidates must not contain null entries.", nameof(candidates));
+            }
+
+            Code = code;
+            Policy = policy;
+            Candidates = Array.AsReadOnly(ownedCandidates);
+            Diagnostic = diagnostic;
+        }
+
+        public NnrpTransportSelectionErrorCode Code { get; }
+
+        public TransportPolicy? Policy { get; }
+
+        public IReadOnlyList<NnrpTransportCandidate> Candidates { get; }
+
+        public string Diagnostic { get; }
+    }
+
     public sealed class NnrpTransportSelectionOptions
     {
         public NnrpTransportSelectionOptions(
             IEnumerable<TransportId> peerSupportedTransports,
+            IEnumerable<NnrpTransportCandidateReadiness> candidateReadiness,
             TransportPolicy policy = TransportPolicy.Auto,
             ulong? requestedMaxFrameBytes = null,
-            IReadOnlyDictionary<string, NnrpTransportProbeMetrics>? probeMetricsByProviderId = null)
+            IEnumerable<NnrpTransportProbeObservation>? probeObservations = null)
         {
             if (peerSupportedTransports == null)
             {
@@ -486,31 +609,34 @@ namespace Nnrp.Core
                 throw new ArgumentOutOfRangeException(nameof(requestedMaxFrameBytes));
             }
 
+            if (candidateReadiness == null)
+            {
+                throw new ArgumentNullException(nameof(candidateReadiness));
+            }
+
             var peers = peerSupportedTransports.Distinct().OrderBy(value => (uint)value).ToArray();
             foreach (var peer in peers)
             {
                 NnrpTransportProviderDescriptor.ValidateTransportId(peer);
             }
 
-            var metrics = new Dictionary<string, NnrpTransportProbeMetrics>(StringComparer.Ordinal);
-            if (probeMetricsByProviderId != null)
+            var readiness = candidateReadiness.ToArray();
+            if (readiness.Any(value => value == null))
             {
-                foreach (var pair in probeMetricsByProviderId)
-                {
-                    NnrpTransportProviderMetadata.ValidateProviderId(pair.Key);
-                    if (pair.Value.SampleCount == 0)
-                    {
-                        throw new ArgumentException("Probe metrics must be initialized.", nameof(probeMetricsByProviderId));
-                    }
+                throw new ArgumentException("Candidate readiness must not contain null entries.", nameof(candidateReadiness));
+            }
 
-                    metrics.Add(pair.Key, pair.Value);
-                }
+            var observations = probeObservations?.ToArray() ?? Array.Empty<NnrpTransportProbeObservation>();
+            if (observations.Any(value => value == null))
+            {
+                throw new ArgumentException("Probe observations must not contain null entries.", nameof(probeObservations));
             }
 
             PeerSupportedTransports = Array.AsReadOnly(peers);
             Policy = policy;
             RequestedMaxFrameBytes = requestedMaxFrameBytes;
-            ProbeMetricsByProviderId = new ReadOnlyDictionary<string, NnrpTransportProbeMetrics>(metrics);
+            CandidateReadiness = Array.AsReadOnly(readiness);
+            ProbeObservations = Array.AsReadOnly(observations);
         }
 
         public IReadOnlyCollection<TransportId> PeerSupportedTransports { get; }
@@ -519,6 +645,8 @@ namespace Nnrp.Core
 
         public ulong? RequestedMaxFrameBytes { get; }
 
-        public IReadOnlyDictionary<string, NnrpTransportProbeMetrics> ProbeMetricsByProviderId { get; }
+        public IReadOnlyCollection<NnrpTransportCandidateReadiness> CandidateReadiness { get; }
+
+        public IReadOnlyCollection<NnrpTransportProbeObservation> ProbeObservations { get; }
     }
 }

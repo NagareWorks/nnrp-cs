@@ -275,40 +275,142 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void SelectionOptionsOwnPeerAndProbeCollections()
+        public void SelectionEvidenceOwnsValidatedCollections()
         {
             var peers = new[] { TransportId.Tcp, TransportId.Quic, TransportId.Tcp };
-            var metrics = new Dictionary<string, NnrpTransportProbeMetrics>
+            var readiness = new[]
             {
-                ["nnrp.transport.tcp.native"] = new NnrpTransportProbeMetrics(1, 1, 10, 1),
+                new NnrpTransportCandidateReadiness(
+                    TransportId.Tcp,
+                    "nnrp.transport.tcp.native",
+                    routeResolved: true,
+                    securitySatisfied: true),
+            };
+            var observations = new[]
+            {
+                new NnrpTransportProbeObservation(
+                    TransportId.Tcp,
+                    "nnrp.transport.tcp.native",
+                    NnrpTransportProbeState.Succeeded,
+                    new NnrpTransportProbeMetrics(1, 1, 10, 1)),
             };
             var options = new NnrpTransportSelectionOptions(
                 peers,
+                readiness,
                 TransportPolicy.PreferTcp,
                 1024,
-                metrics);
+                observations);
 
             peers[0] = TransportId.Ipc;
-            metrics.Clear();
+            readiness[0] = new NnrpTransportCandidateReadiness(
+                TransportId.Quic,
+                "nnrp.transport.quic.native",
+                true,
+                true);
+            observations[0] = new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                "nnrp.transport.tcp.native",
+                NnrpTransportProbeState.Failed);
 
             Assert.Equal(new[] { TransportId.Quic, TransportId.Tcp }, options.PeerSupportedTransports);
-            Assert.Single(options.ProbeMetricsByProviderId);
+            var ownedReadiness = Assert.Single(options.CandidateReadiness);
+            Assert.Equal(TransportId.Tcp, ownedReadiness.TransportId);
+            Assert.Equal("nnrp.transport.tcp.native", ownedReadiness.ProviderId);
+            Assert.True(ownedReadiness.RouteResolved);
+            Assert.True(ownedReadiness.SecuritySatisfied);
+            Assert.Null(ownedReadiness.Diagnostic);
+            var ownedObservation = Assert.Single(options.ProbeObservations);
+            Assert.Equal(TransportId.Tcp, ownedObservation.TransportId);
+            Assert.Equal("nnrp.transport.tcp.native", ownedObservation.ProviderId);
+            Assert.Equal(NnrpTransportProbeState.Succeeded, ownedObservation.State);
+            Assert.NotNull(ownedObservation.Metrics);
+            Assert.Null(ownedObservation.Diagnostic);
             Assert.Equal((ulong)1024, options.RequestedMaxFrameBytes);
-            Assert.Throws<ArgumentNullException>(() => new NnrpTransportSelectionOptions(null!));
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportSelectionOptions(null!, Array.Empty<NnrpTransportCandidateReadiness>()));
+            Assert.Throws<ArgumentNullException>(() => new NnrpTransportSelectionOptions(Array.Empty<TransportId>(), null!));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionOptions(
                 Array.Empty<TransportId>(),
+                Array.Empty<NnrpTransportCandidateReadiness>(),
                 (TransportPolicy)255));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionOptions(
                 Array.Empty<TransportId>(),
+                Array.Empty<NnrpTransportCandidateReadiness>(),
                 requestedMaxFrameBytes: 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionOptions(
-                new[] { TransportId.Unspecified }));
+                new[] { TransportId.Unspecified },
+                Array.Empty<NnrpTransportCandidateReadiness>()));
             Assert.Throws<ArgumentException>(() => new NnrpTransportSelectionOptions(
                 Array.Empty<TransportId>(),
-                probeMetricsByProviderId: new Dictionary<string, NnrpTransportProbeMetrics>
-                {
-                    ["nnrp.transport.tcp.native"] = default,
-                }));
+                new NnrpTransportCandidateReadiness[] { null! }));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportSelectionOptions(
+                Array.Empty<TransportId>(),
+                Array.Empty<NnrpTransportCandidateReadiness>(),
+                probeObservations: new NnrpTransportProbeObservation[] { null! }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                "nnrp.transport.tcp.native",
+                NnrpTransportProbeState.Missing));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                "nnrp.transport.tcp.native",
+                NnrpTransportProbeState.Succeeded));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                "nnrp.transport.tcp.native",
+                NnrpTransportProbeState.Failed,
+                new NnrpTransportProbeMetrics(1, 1, 1, 1)));
+        }
+
+        [Fact]
+        public void SelectionExceptionOwnsTypedFailureContext()
+        {
+            var descriptor = Descriptor(TransportId.Tcp, NnrpTransportProviderKind.NativeDynamic);
+            var candidate = new NnrpTransportCandidate(
+                TransportId.Tcp,
+                descriptor.Metadata,
+                false,
+                true,
+                true,
+                NnrpTransportProbeState.NotRun,
+                rejectionReason: NnrpTransportRejectionReason.LocalUnavailable);
+            var candidates = new[] { candidate };
+            var error = new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.ForcedTransportUnavailable,
+                "forced provider unavailable",
+                TransportPolicy.ForceTcp,
+                candidates);
+
+            candidates[0] = new NnrpTransportCandidate(
+                TransportId.Tcp,
+                descriptor.Metadata,
+                true,
+                true,
+                true,
+                NnrpTransportProbeState.NotRun,
+                selectionRank: 0);
+
+            Assert.Equal(NnrpTransportSelectionErrorCode.ForcedTransportUnavailable, error.Code);
+            Assert.Equal(TransportPolicy.ForceTcp, error.Policy);
+            Assert.Same(candidate, Assert.Single(error.Candidates));
+            Assert.Equal("forced provider unavailable", error.Diagnostic);
+            Assert.Equal(error.Diagnostic, error.Message);
+            Assert.Empty(new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.InvalidEvidence,
+                "invalid evidence").Candidates);
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionException(
+                (NnrpTransportSelectionErrorCode)999,
+                "invalid code"));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.NoViableTransport,
+                " "));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.NoViableTransport,
+                "invalid policy",
+                (TransportPolicy)255));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.NoViableTransport,
+                "invalid candidates",
+                candidates: new NnrpTransportCandidate[] { null! }));
         }
 
         private static NnrpTransportProviderMetadata Metadata(
