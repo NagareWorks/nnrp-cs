@@ -28,7 +28,7 @@
   - [x] Add immutable client and server route dictionaries keyed by `TransportId`.
   - [x] Keep the exact owned client/server security fields on each route.
   - [ ] Exclude unresolved client candidates under `Auto` and `Prefer*`; fail forced policies without fallback.
-  - [ ] Treat an unresolved otherwise-eligible server route as a hard listen error.
+  - [x] Treat an unresolved otherwise-eligible server route as a hard listen error.
   - [ ] Reject provider-kind mismatches and platform-incompatible IPC locators before creating native handles.
   - [ ] Reject unknown route keys and report known-but-uninstalled routes as `LocalUnavailable`.
   - [ ] Apply the exact rejection precedence when multiple checks fail.
@@ -78,18 +78,18 @@
   - [ ] Transfer only the selected carrier into the native client runtime.
   - [x] Make Force fail without fallback.
 - [ ] Implement an atomic multi-listener server in `Nnrp.Server`.
-  - [ ] Resolve every policy-allowed registered provider route.
-  - [ ] Bind every eligible Auto/Prefer listener.
-  - [ ] Restrict Force to the named listener.
-  - [ ] Roll back all opened listeners after any required bind or adoption failure.
+  - [x] Resolve every policy-allowed registered provider route.
+  - [x] Bind every eligible Auto/Prefer listener.
+  - [x] Restrict Force to the named listener.
+  - [x] Roll back all opened listeners after any required bind or adoption failure.
   - [ ] Accept across the listener set and expose active transport per session.
   - [ ] Expose every actual bound provider endpoint, including assigned ports.
   - [ ] Expose the actual listener transport as `NnrpServerSession.ActiveTransportId`.
-  - [ ] Fail and close the complete logical server after a terminal provider-listener failure.
-  - [ ] Close listeners and accepted sessions exactly once.
+  - [x] Fail and close the complete logical server after a terminal provider-listener failure.
+  - [x] Close listeners and accepted sessions exactly once.
 - [ ] Add architecture tests preserving the coarse native boundary.
   - [ ] Keep one carrier per client and accepted-session handle.
-  - [ ] Keep one provider listener per low-level native listener handle.
+  - [x] Keep one provider listener per low-level native listener handle.
   - [x] Retain one native accept ticket per provider listener across bounded host polls.
   - [x] Release a pending accept ticket before closing its provider listener.
   - [ ] Reject per-frame managed dispatch across multiple transport libraries.

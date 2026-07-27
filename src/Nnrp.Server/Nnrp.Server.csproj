@@ -11,6 +11,8 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+    <InternalsVisibleTo Include="Nnrp.Server.Tests" />
   </ItemGroup>
 
 </Project>

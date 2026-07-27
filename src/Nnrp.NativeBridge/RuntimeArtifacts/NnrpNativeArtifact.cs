@@ -3590,6 +3590,25 @@ namespace Nnrp.NativeBridge
                 () => IsClosed);
         }
 
+        internal bool ReleasePendingAccept()
+        {
+            EnsureOpen();
+            if (!pendingAccept.IsValid)
+            {
+                return false;
+            }
+
+            try
+            {
+                Entrypoints.ServerAcceptRelease(pendingAccept).ThrowIfError();
+                return true;
+            }
+            finally
+            {
+                pendingAccept = NnrpHandle.Invalid;
+            }
+        }
+
         public void Close()
         {
             EnsureOpen();
@@ -3598,15 +3617,11 @@ namespace Nnrp.NativeBridge
             {
                 try
                 {
-                    Entrypoints.ServerAcceptRelease(pendingAccept).ThrowIfError();
+                    ReleasePendingAccept();
                 }
                 catch (Exception error)
                 {
                     firstError = error;
-                }
-                finally
-                {
-                    pendingAccept = NnrpHandle.Invalid;
                 }
             }
 

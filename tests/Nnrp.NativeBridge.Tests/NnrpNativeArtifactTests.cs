@@ -2959,6 +2959,31 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void NativeRuntimeServerCanReleasePendingAcceptWithoutClosing()
+        {
+            var releaseCount = 0;
+            using var server = CreateRuntimeServer(
+                CreateEntrypoints(
+                    serverAcceptWait: _ => new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock),
+                    serverAcceptRelease: accept =>
+                    {
+                        releaseCount++;
+                        Assert.Equal(NnrpHandleKind.ServerAccept, accept.Kind);
+                        return NnrpFfiStatus.Ok;
+                    }),
+                50,
+                2,
+                NnrpNativeArtifact.TransportSlotTcp);
+
+            Assert.False(server.ReleasePendingAccept());
+            Assert.Throws<NnrpNativeWouldBlockException>(() => server.AcceptSession(41, 3, 1));
+            Assert.True(server.ReleasePendingAccept());
+            Assert.False(server.ReleasePendingAccept());
+            Assert.False(server.IsClosed);
+            Assert.Equal(1, releaseCount);
+        }
+
+        [Fact]
         public void NativeRuntimeServerReleasesPendingAcceptBeforeConnectionClose()
         {
             var releaseCount = 0;

@@ -63,7 +63,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "src/Nnrp.Core/Nnrp.Core.csproj",
                 "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
             },
-            "src/Nnrp.Server/Nnrp.Server.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.Server/Nnrp.Server.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+            },
             "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": {
                 "src/Nnrp.Core/Nnrp.Core.csproj",
                 "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",

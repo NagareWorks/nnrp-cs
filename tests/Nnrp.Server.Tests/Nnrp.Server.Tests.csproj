@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Server\Nnrp.Server.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
   </ItemGroup>
 
 </Project>

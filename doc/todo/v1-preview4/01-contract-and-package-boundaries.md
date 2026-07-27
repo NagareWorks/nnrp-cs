@@ -43,10 +43,10 @@
   - [x] Add `NnrpTransportClientSecurity` and `NnrpTransportServerSecurity`.
   - [x] Add `NnrpClientProviderRoute` and an immutable `TransportId`-keyed client route dictionary.
   - [x] Add `NnrpServerProviderRoute` and an immutable `TransportId`-keyed server route dictionary.
-  - [ ] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
+  - [x] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
   - [ ] Add `NnrpClient.ConnectAsync(NnrpClientOptions, CancellationToken)`.
   - [ ] Add `NnrpClient.OpenSession(NnrpClientSessionOptions)`.
-  - [ ] Add `NnrpServerOptions` and `NnrpServerAcceptOptions` with the frozen endpoint, route set, policy, server, session, and timeout fields.
+  - [x] Add `NnrpServerOptions` and `NnrpServerAcceptOptions` with the frozen endpoint, route set, policy, server, session, and timeout fields.
   - [ ] Add `NnrpServer.ListenAsync(NnrpServerOptions, CancellationToken)`.
   - [ ] Add `NnrpServer.AcceptAsync(NnrpServerAcceptOptions, CancellationToken)`.
   - [ ] Add the frozen production client session, server session, and server operation surfaces.
