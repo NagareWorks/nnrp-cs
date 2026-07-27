@@ -57,7 +57,7 @@
   - [x] Reject duplicate transport IDs and duplicate provider IDs.
   - [x] Return immutable snapshots of registered providers.
   - [x] Allow an explicit provider list to replace the default registry for tests and controlled deployments.
-- [ ] Implement the frozen provider comparator without a C#-specific weighted score.
+- [x] Implement the frozen provider comparator without a C#-specific weighted score.
   - [x] Reject policy-disallowed candidates.
   - [x] Reject locally unavailable candidates.
   - [x] Reject peer-unsupported candidates.
@@ -65,18 +65,18 @@
   - [x] Reject required probes that are missing or failed.
   - [x] Compare cost, preference rank, probe throughput, probe RTT, and stable provider identity in frozen order.
   - [x] Select the only valid installed provider without probing.
-  - [ ] Probe and rank all valid providers when more than one remains.
+  - [x] Probe and rank all valid providers when more than one remains.
   - [x] Return every rejected candidate and its typed reason.
 - [ ] Add deterministic unit tests for every comparator key and rejection reason.
 
 ## Role Host Cardinality
 
 - [ ] Implement multi-route client orchestration in `Nnrp.Client`.
-  - [ ] Resolve each registered provider against its own route.
-  - [ ] Probe every eligible Auto/Prefer route.
-  - [ ] Preserve rejected candidates in ordered diagnostics.
+  - [x] Resolve each registered provider against its own route.
+  - [x] Probe every eligible Auto/Prefer route.
+  - [x] Preserve rejected candidates in ordered diagnostics.
   - [ ] Transfer only the selected carrier into the native client runtime.
-  - [ ] Make Force fail without fallback.
+  - [x] Make Force fail without fallback.
 - [ ] Implement an atomic multi-listener server in `Nnrp.Server`.
   - [ ] Resolve every policy-allowed registered provider route.
   - [ ] Bind every eligible Auto/Prefer listener.

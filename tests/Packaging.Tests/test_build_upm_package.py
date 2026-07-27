@@ -59,7 +59,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
 
     def test_preview4_project_references_stay_on_declared_boundaries(self) -> None:
         expected_references = {
-            "src/Nnrp.Client/Nnrp.Client.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
+            "src/Nnrp.Client/Nnrp.Client.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+            },
             "src/Nnrp.Server/Nnrp.Server.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": {
                 "src/Nnrp.Core/Nnrp.Core.csproj",
