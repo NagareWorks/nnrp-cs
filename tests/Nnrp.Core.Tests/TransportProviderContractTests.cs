@@ -30,7 +30,8 @@ namespace Nnrp.Core.Tests
         {
             Assert.Throws<ArgumentException>(() => new NnrpTransportProviderCost(0, 1));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportProviderLimits(0));
-            Assert.Throws<ArgumentException>(() => Metadata("bad id", Array.Empty<NnrpTransportProviderLimitation>()));
+            Assert.Throws<ArgumentException>(() => Metadata("", Array.Empty<NnrpTransportProviderLimitation>()));
+            Assert.Throws<ArgumentException>(() => Metadata("provider-输入", Array.Empty<NnrpTransportProviderLimitation>()));
             Assert.Throws<ArgumentNullException>(() => new NnrpTransportProviderMetadata(
                 "nnrp.transport.tcp.native",
                 default,
@@ -47,6 +48,43 @@ namespace Nnrp.Core.Tests
             Assert.Throws<ArgumentException>(() => Metadata(
                 "nnrp.transport.tcp.native",
                 new[] { (NnrpTransportProviderLimitation)999 }));
+        }
+
+        [Theory]
+        [InlineData("provider id")]
+        [InlineData("\u0001")]
+        public void ProviderIdentityAcceptsNonEmptyAscii(string providerId)
+        {
+            var metadata = Metadata(providerId, Array.Empty<NnrpTransportProviderLimitation>());
+            var readiness = new NnrpTransportCandidateReadiness(
+                TransportId.Tcp,
+                providerId,
+                routeResolved: true,
+                securitySatisfied: true);
+            var observation = new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                providerId,
+                NnrpTransportProbeState.Failed);
+
+            Assert.Equal(providerId, metadata.Id);
+            Assert.Equal(providerId, readiness.ProviderId);
+            Assert.Equal(providerId, observation.ProviderId);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("provider-输入")]
+        public void SelectionEvidenceRejectsInvalidProviderIdentity(string providerId)
+        {
+            Assert.Throws<ArgumentException>(() => new NnrpTransportCandidateReadiness(
+                TransportId.Tcp,
+                providerId,
+                routeResolved: true,
+                securitySatisfied: true));
+            Assert.Throws<ArgumentException>(() => new NnrpTransportProbeObservation(
+                TransportId.Tcp,
+                providerId,
+                NnrpTransportProbeState.Failed));
         }
 
         [Theory]

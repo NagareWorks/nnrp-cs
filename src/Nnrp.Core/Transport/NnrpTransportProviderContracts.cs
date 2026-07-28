@@ -224,9 +224,9 @@ namespace Nnrp.Core
 
         internal static void ValidateProviderId(string id)
         {
-            if (string.IsNullOrWhiteSpace(id) || id.Any(value => value < 0x21 || value > 0x7e))
+            if (string.IsNullOrEmpty(id) || id.Any(value => value > 0x7f))
             {
-                throw new ArgumentException("Provider id must be a non-empty printable ASCII string.", nameof(id));
+                throw new ArgumentException("Provider id must be a non-empty ASCII string.", nameof(id));
             }
         }
     }
