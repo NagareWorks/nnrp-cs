@@ -77,7 +77,12 @@ foreach ($line in $diffOutput) {
 
     if ($line -match "^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@") {
         $startLine = [int]$matches[1]
-        $lineCount = if ($matches[2] -ne "") { [int]$matches[2] } else { 1 }
+        $lineCount = if ($matches.ContainsKey(2) -and -not [string]::IsNullOrEmpty($matches[2])) {
+            [int]$matches[2]
+        }
+        else {
+            1
+        }
         if ($lineCount -le 0) {
             continue
         }
