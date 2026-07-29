@@ -15,12 +15,14 @@ MANAGED_ASSEMBLIES = [
     "Nnrp.Client",
     "Nnrp.Transport.Tcp",
     "Nnrp.Transport.Quic",
+    "Nnrp.Transport.Ipc",
     "Nnrp.NativeBridge",
 ]
 
 NATIVE_TRANSPORTS = {
     "tcp": "Tcp",
     "quic": "Quic",
+    "ipc": "Ipc",
 }
 
 NATIVE_LAYOUT = {

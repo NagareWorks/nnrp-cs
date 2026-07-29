@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <Nullable>enable</Nullable>
+    <PackageId>Nnrp.Transport.Ipc</PackageId>
+    <Description>IPC native transport provider and transport-scoped artifacts for NNRP Preview4 hosts.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NnrpIpcTransportArtifactRoot Condition="'$(NnrpIpcTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-ipc</NnrpIpcTransportArtifactRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NnrpIpcTransportArtifactRoot)\win-x86\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-x86/native/nnrp/transport/ipc/nnrp_ffi_ipc.dll" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\win-x86\nnrp_ffi.dll')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\win-x64\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-x64/native/nnrp/transport/ipc/nnrp_ffi_ipc.dll" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\win-x64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\win-arm64\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-arm64/native/nnrp/transport/ipc/nnrp_ffi_ipc.dll" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\win-arm64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib" Pack="true" PackagePath="runtimes/osx-x64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.dylib" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.dylib" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\linux-x86\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-x86/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\linux-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\linux-x64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-x64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\linux-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\linux-arm\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-arm/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\linux-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-arm64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\android-x86\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-x86/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\android-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\android-x64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-x64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\android-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\android-arm\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-arm/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\android-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\android-arm64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-arm64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.so" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/ios-arm64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.a" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/iossimulator-x64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.a" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpIpcTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/iossimulator-arm64/native/nnrp/transport/ipc/libnnrp_ffi_ipc.a" Visible="false" Condition="Exists('$(NnrpIpcTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
+  </ItemGroup>
+
+</Project>

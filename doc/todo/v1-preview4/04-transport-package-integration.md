@@ -115,17 +115,17 @@
 
 ## IPC Package
 
-- [ ] Add the `Nnrp.Transport.Ipc` project and NuGet package.
-- [ ] Add `NnrpNativeIpcTransportProvider` and `NnrpNativeIpcRuntime`.
-- [ ] Validate IPC provider metadata against the IPC artifact manifest.
-- [ ] Parse `unix://` provider endpoints on Unix hosts.
-- [ ] Parse `npipe://` provider endpoints on Windows hosts.
-- [ ] Reject `unix://` on Windows and `npipe://` on non-Windows hosts with typed diagnostics.
-- [ ] Keep IPC connect, listen, and probe calls inside the IPC package.
-- [ ] Package only IPC native artifacts for every supported RID.
-- [ ] Add Unix-domain-socket client/server loopback integration tests.
-- [ ] Add Windows named-pipe client/server loopback integration tests.
-- [ ] Add IPC NuGet content inspection tests.
+- [x] Add the `Nnrp.Transport.Ipc` project and NuGet package.
+- [x] Add `NnrpNativeIpcTransportProvider`; shared coarse FFI invocation and native-handle lifetime remain in `Nnrp.NativeBridge`.
+- [x] Validate IPC provider metadata against the IPC artifact manifest.
+- [x] Parse `unix://` provider endpoints on Unix hosts.
+- [x] Parse `npipe://` provider endpoints on Windows hosts.
+- [x] Reject `unix://` on Windows and `npipe://` on non-Windows hosts with typed diagnostics.
+- [x] Keep the concrete IPC provider descriptor and IPC artifact ownership in the IPC package; use the shared coarse FFI implementation in `Nnrp.NativeBridge`.
+- [x] Package only IPC native artifacts for every supported RID.
+- [x] Add Unix-domain-socket client/server loopback integration tests.
+- [x] Add Windows named-pipe client/server loopback integration tests.
+- [x] Add IPC NuGet content inspection tests.
 
 ## WebSocket Package
 

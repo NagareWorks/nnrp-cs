@@ -276,6 +276,7 @@ jobs:
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Server.Tests/Nnrp.Server.Tests.csproj" -ArtifactName "Nnrp.Server.Tests" -IncludeFilter "[Nnrp.Server]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj" -ArtifactName "Nnrp.Transport.Quic.Tests" -IncludeFilter "[Nnrp.Transport.Quic]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj" -ArtifactName "Nnrp.Transport.Ipc.Tests" -IncludeFilter "[Nnrp.Transport.Ipc]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj" -ArtifactName "Nnrp.NativeBridge.Tests" -IncludeFilter "[Nnrp.NativeBridge]*" -Threshold 90
 
       - name: Incremental line coverage gate
@@ -347,6 +348,7 @@ jobs:
           --output artifacts/native
           --transport tcp
           --transport quic
+          --transport ipc
           --rid win-x86
           --rid win-x64
           --rid linux-x64
@@ -414,9 +416,11 @@ jobs:
 
           $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/$rid/$library").Path
           $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/$rid/$library").Path
+          $ipcArtifact = (Resolve-Path "artifacts/native/transport-ipc/$rid/$library").Path
           "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_IPC_ARTIFACT_PATH=$ipcArtifact" >> $env:GITHUB_ENV
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -437,6 +441,11 @@ jobs:
       - name: Run QUIC provider E2E
         run: >-
           dotnet test tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run IPC provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj
           --configuration Release --no-build
 
   native-e2e-windows-x86:
@@ -472,9 +481,11 @@ jobs:
         run: |
           $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/win-x86/nnrp_ffi.dll").Path
           $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/win-x86/nnrp_ffi.dll").Path
+          $ipcArtifact = (Resolve-Path "artifacts/native/transport-ipc/win-x86/nnrp_ffi.dll").Path
           "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_IPC_ARTIFACT_PATH=$ipcArtifact" >> $env:GITHUB_ENV
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -495,6 +506,11 @@ jobs:
       - name: Run x86 QUIC provider E2E
         run: >-
           dotnet test tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run x86 IPC provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj
           --configuration Release --no-build
 
   conformance:

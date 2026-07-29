@@ -11,7 +11,7 @@
 - [ ] Complete the transport package graph.
   - [ ] Keep TCP behavior and artifacts in `Nnrp.Transport.Tcp`.
   - [ ] Keep QUIC behavior and artifacts in `Nnrp.Transport.Quic`.
-  - [ ] Add `Nnrp.Transport.Ipc` with IPC behavior and artifacts.
+  - [x] Add `Nnrp.Transport.Ipc` with IPC behavior and artifacts.
   - [ ] Add `Nnrp.Transport.WebSocket` with WebSocket behavior and artifacts.
   - [x] Make every transport package depend on `Nnrp.Core` and `Nnrp.NativeBridge`, not on client or server roles.
   - [x] Scope every native artifact to the package that owns that transport.

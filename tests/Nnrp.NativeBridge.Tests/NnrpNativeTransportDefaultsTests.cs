@@ -12,7 +12,7 @@ namespace Nnrp.NativeBridge.Tests
             var providers = NnrpNativeTransportDefaults.Discover();
 
             Assert.Equal(
-                new[] { TransportId.Quic, TransportId.Tcp },
+                new[] { TransportId.Quic, TransportId.Tcp, TransportId.Ipc },
                 providers.Select(value => value.Descriptor.TransportId).OrderBy(value => (uint)value));
             Assert.All(providers, provider => Assert.True(provider.Descriptor.Available));
         }
