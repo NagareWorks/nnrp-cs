@@ -302,6 +302,14 @@ jobs:
             -Name 'nnrp-cs-server-nuget' `
             -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.Transport.WebSocket', 'Nnrp.NativeBridge')
 
+      - name: Verify final UPM archives
+        run: >-
+          python scripts/verify_upm_archives.py
+          --package-root artifacts/upm/com.nnrp.client
+          --zip artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.zip
+          --tgz artifacts/com.nnrp.client-${{ steps.version.outputs.package_version }}.tgz
+          --version ${{ steps.version.outputs.package_version }}
+
       - name: Create or validate git tag
         if: github.event_name == 'workflow_dispatch' && inputs.create_tag
         shell: pwsh

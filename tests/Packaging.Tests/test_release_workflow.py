@@ -58,6 +58,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(tag_index, publish_index)
         self.assertIn("points to $remoteTagCommit, not validated commit $headCommit", self.workflow)
 
+    def test_final_upm_archives_are_verified_before_tagging_or_publishing(self):
+        bundle_index = self.workflow.index("Bundle release artifacts")
+        verify_index = self.workflow.index("Verify final UPM archives")
+        tag_index = self.workflow.index("Create or validate git tag")
+        self.assertLess(bundle_index, verify_index)
+        self.assertLess(verify_index, tag_index)
+        self.assertIn("python scripts/verify_upm_archives.py", self.workflow)
+        self.assertIn("--package-root artifacts/upm/com.nnrp.client", self.workflow)
+
     def test_release_bundles_include_websocket_provider(self):
         self.assertEqual(self.workflow.count("'Nnrp.Transport.WebSocket'"), 2)
 

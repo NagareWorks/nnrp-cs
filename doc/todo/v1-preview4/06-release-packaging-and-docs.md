@@ -25,12 +25,12 @@
 
 ## Unity Package
 
-- [ ] Update `com.nnrp.client` to the Preview4 package version.
+- [x] Update `com.nnrp.client` to the Preview4 package version.
 - [x] Include managed client, core, NativeBridge, and all four provider assemblies.
 - [x] Include every supported transport-scoped native plugin.
 - [x] Exclude server assemblies and NuGet runtime paths.
 - [x] Generate deterministic `.meta` files in CI.
-- [ ] Inspect the generated UPM tarball and zip before publication.
+- [x] Inspect the generated UPM tarball and zip before publication.
 - [ ] Import the generated package in a Unity validation project.
 
 ## Release Workflow
