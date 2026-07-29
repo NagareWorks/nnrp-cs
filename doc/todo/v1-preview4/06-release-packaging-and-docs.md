@@ -19,7 +19,7 @@
 - [x] Pack `Nnrp.Transport.Ipc` with only IPC provider code and artifacts.
 - [x] Pack `Nnrp.Transport.WebSocket` with only WebSocket provider code and artifacts.
 - [x] Validate role-first dependency direction in every generated nuspec.
-- [ ] Inspect every nupkg for README, symbols, license, repository metadata, tags, and deterministic file order.
+- [x] Inspect every nupkg for README, symbols, license, repository metadata, tags, and deterministic file order.
 - [x] Inspect every transport nupkg against the complete Windows, macOS, Linux, Android, iOS, and iOS Simulator RID matrix.
 - [x] Install every package set into clean client and server smoke projects.
 

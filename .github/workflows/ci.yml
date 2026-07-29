@@ -561,6 +561,9 @@ jobs:
           -p:PackageVersion=1.0.0-preview.4
           -p:VersionSuffix=
 
+      - name: Canonicalize NuGet package archives
+        run: python scripts/canonicalize_nuget_packages.py --packages artifacts/package-validation
+
       - name: Verify package boundaries and clean installs
         run: >-
           python scripts/verify_nuget_packages.py

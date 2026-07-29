@@ -224,6 +224,9 @@ jobs:
           -p:PackageVersion=${{ steps.version.outputs.package_version }}
           -p:VersionSuffix=
 
+      - name: Canonicalize NuGet package archives
+        run: python scripts/canonicalize_nuget_packages.py --packages artifacts/packages
+
       - name: Verify NuGet package boundaries
         run: >-
           python scripts/verify_nuget_packages.py

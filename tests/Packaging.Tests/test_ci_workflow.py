@@ -20,6 +20,15 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("Run suite-owned conformance action", workflow)
         self.assertIn("- conformance", workflow)
 
+    def test_package_validation_canonicalizes_archives_before_inspection(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        pack_index = workflow.index("Pack release package graph")
+        canonical_index = workflow.index("Canonicalize NuGet package archives")
+        verify_index = workflow.index("Verify package boundaries and clean installs")
+        self.assertLess(pack_index, canonical_index)
+        self.assertLess(canonical_index, verify_index)
+        self.assertIn("python scripts/canonicalize_nuget_packages.py", workflow)
+
     def test_native_foreign_abi_jobs_are_required(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 

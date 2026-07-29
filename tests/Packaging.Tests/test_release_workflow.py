@@ -19,14 +19,17 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("--require-abi-version 4.1.1", self.workflow)
 
     def test_verifies_packed_nuget_boundaries_before_bundling_or_publishing(self):
+        canonical_index = self.workflow.index("Canonicalize NuGet package archives")
         verify_index = self.workflow.index("Verify NuGet package boundaries")
         bundle_index = self.workflow.index("Bundle release artifacts")
         publish_index = self.workflow.index("- name: Publish NuGet packages to GitHub Packages")
+        self.assertLess(canonical_index, verify_index)
         self.assertLess(verify_index, bundle_index)
         self.assertLess(verify_index, publish_index)
         self.assertIn("python scripts/verify_nuget_packages.py", self.workflow)
         self.assertIn("--packages artifacts/packages", self.workflow)
         self.assertIn("--smoke-install", self.workflow)
+        self.assertIn("python scripts/canonicalize_nuget_packages.py", self.workflow)
 
     def test_managed_tree_is_validated_before_release_artifacts_are_consumed(self):
         self.assertIn("managed-validation:", self.workflow)
