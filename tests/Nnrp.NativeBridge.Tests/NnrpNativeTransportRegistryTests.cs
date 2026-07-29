@@ -23,6 +23,43 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void UnavailableProviderOwnsTypedEvidenceAndCannotOpenNativePaths()
+        {
+            const ulong maxFrameBytes = 16 * 1024 * 1024;
+            var provider = new NnrpUnavailableTransportProvider(TransportId.WebSocket, maxFrameBytes);
+            var endpoint = NnrpEndpoint.Parse("nnrp://runtime.example:7443");
+            var providerEndpoint = NnrpProviderEndpoint.Parse("ws://runtime.example:7443/nnrp");
+            var connect = new NnrpTransportConnectOptions(
+                endpoint,
+                providerEndpoint,
+                security: null,
+                maxPacketBytes: maxFrameBytes);
+            var listen = new NnrpTransportListenOptions(
+                endpoint,
+                providerEndpoint,
+                security: null,
+                maxPacketBytes: maxFrameBytes);
+            var probe = new NnrpTransportProbeOptions(
+                endpoint,
+                providerEndpoint,
+                sampleCount: 1,
+                payloadBytes: 1,
+                security: null,
+                maxPacketBytes: maxFrameBytes,
+                includeWarmup: false);
+
+            Assert.Equal(TransportId.WebSocket, provider.Descriptor.TransportId);
+            Assert.False(provider.Descriptor.Available);
+            Assert.Equal(maxFrameBytes, provider.Descriptor.Metadata.Limits.MaxFrameBytes);
+            Assert.Equal(
+                "A route is configured but its transport provider package is not installed.",
+                provider.Descriptor.Diagnostic);
+            Assert.Throws<InvalidOperationException>(() => provider.ConnectAsync(connect));
+            Assert.Throws<InvalidOperationException>(() => provider.ListenAsync(listen));
+            Assert.Throws<InvalidOperationException>(() => provider.ProbeAsync(probe));
+        }
+
+        [Fact]
         public void SnapshotIsImmutableAndUsesStableTransportOrder()
         {
             var registry = new NnrpNativeTransportRegistry(new[]
@@ -210,6 +247,153 @@ namespace Nnrp.NativeBridge.Tests
                 observations));
 
             Assert.Equal(TransportId.Tcp, selection.SelectedProvider.TransportId);
+        }
+
+        [Theory]
+        [InlineData(4u, 3u, 1_000ul, 2_000ul, 50ul, 25ul, TransportId.Quic)]
+        [InlineData(3u, 3u, 2_000ul, 1_000ul, 50ul, 25ul, TransportId.Quic)]
+        [InlineData(3u, 3u, 1_000ul, 1_000ul, 25ul, 50ul, TransportId.Quic)]
+        public void ResolveOrdersProbeMetricsBeforeProviderMetadata(
+            uint quicSuccessCount,
+            uint tcpSuccessCount,
+            ulong quicThroughput,
+            ulong tcpThroughput,
+            ulong quicRtt,
+            ulong tcpRtt,
+            TransportId expected)
+        {
+            var quic = Provider(
+                TransportId.Quic,
+                "provider.quic",
+                preferenceRank: ushort.MaxValue,
+                costModelId: 7,
+                costUnits: ulong.MaxValue);
+            var tcp = Provider(
+                TransportId.Tcp,
+                "provider.tcp",
+                preferenceRank: 0,
+                costModelId: 7,
+                costUnits: 0);
+            var providers = new[] { quic, tcp };
+            var registry = new NnrpNativeTransportRegistry(providers);
+
+            var selection = registry.Resolve(Options(
+                providers,
+                observations: new[]
+                {
+                    Succeeded(quic, quicSuccessCount, quicThroughput, quicRtt),
+                    Succeeded(tcp, tcpSuccessCount, tcpThroughput, tcpRtt),
+                }));
+
+            Assert.Equal(expected, selection.SelectedProvider.TransportId);
+        }
+
+        [Fact]
+        public void ResolveComparesCostOnlyForTheSameNonZeroModel()
+        {
+            var quic = Provider(
+                TransportId.Quic,
+                "provider.quic",
+                preferenceRank: 20,
+                costModelId: 7,
+                costUnits: 10);
+            var tcp = Provider(
+                TransportId.Tcp,
+                "provider.tcp",
+                preferenceRank: 0,
+                costModelId: 7,
+                costUnits: 20);
+
+            Assert.Equal(
+                TransportId.Quic,
+                ResolveTiedProviders(quic, tcp).SelectedProvider.TransportId);
+
+            quic = Provider(
+                TransportId.Quic,
+                "provider.quic",
+                preferenceRank: 20,
+                costModelId: 7,
+                costUnits: 10);
+            tcp = Provider(
+                TransportId.Tcp,
+                "provider.tcp",
+                preferenceRank: 0,
+                costModelId: 8,
+                costUnits: 20);
+
+            Assert.Equal(
+                TransportId.Tcp,
+                ResolveTiedProviders(quic, tcp).SelectedProvider.TransportId);
+        }
+
+        [Fact]
+        public void ResolveUsesPreferenceRankThenStableTransportIdentity()
+        {
+            var quic = Provider(TransportId.Quic, "provider.z", preferenceRank: 10);
+            var tcp = Provider(TransportId.Tcp, "provider.a", preferenceRank: 20);
+
+            Assert.Equal(
+                TransportId.Quic,
+                ResolveTiedProviders(quic, tcp).SelectedProvider.TransportId);
+
+            tcp = Provider(TransportId.Tcp, "provider.a", preferenceRank: 10);
+
+            Assert.Equal(
+                TransportId.Quic,
+                ResolveTiedProviders(quic, tcp).SelectedProvider.TransportId);
+        }
+
+        [Theory]
+        [InlineData(TransportPolicy.ForceQuic, false, true, true, true, true, NnrpTransportRejectionReason.PolicyDisallowed)]
+        [InlineData(TransportPolicy.Auto, false, true, true, true, true, NnrpTransportRejectionReason.LocalUnavailable)]
+        [InlineData(TransportPolicy.Auto, true, false, true, true, true, NnrpTransportRejectionReason.PeerUnsupported)]
+        [InlineData(TransportPolicy.Auto, true, true, false, true, true, NnrpTransportRejectionReason.LimitExceeded)]
+        [InlineData(TransportPolicy.Auto, true, true, true, false, false, NnrpTransportRejectionReason.RouteUnresolved)]
+        [InlineData(TransportPolicy.Auto, true, true, true, true, false, NnrpTransportRejectionReason.SecurityUnsatisfied)]
+        public void ResolveUsesFrozenPreProbeRejectionOrder(
+            TransportPolicy policy,
+            bool available,
+            bool peerSupported,
+            bool withinLimits,
+            bool routeResolved,
+            bool securitySatisfied,
+            NnrpTransportRejectionReason expected)
+        {
+            const ulong requestedFrameBytes = 1024;
+            var tcp = Provider(
+                TransportId.Tcp,
+                "provider.tcp",
+                available: available,
+                maxFrameBytes: withinLimits ? requestedFrameBytes : requestedFrameBytes - 1);
+            var registry = new NnrpNativeTransportRegistry(new[] { tcp });
+            var options = new NnrpTransportSelectionOptions(
+                peerSupported ? new[] { TransportId.Tcp } : Array.Empty<TransportId>(),
+                new[]
+                {
+                    new NnrpTransportCandidateReadiness(
+                        TransportId.Tcp,
+                        tcp.Descriptor.Metadata.Id,
+                        routeResolved,
+                        securitySatisfied),
+                },
+                policy,
+                requestedFrameBytes);
+
+            var error = Assert.Throws<NnrpTransportSelectionException>(() => registry.Resolve(options));
+
+            Assert.Equal(expected, Assert.Single(error.Candidates).RejectionReason);
+        }
+
+        private static NnrpTransportSelection ResolveTiedProviders(
+            FakeProvider first,
+            FakeProvider second,
+            TransportPolicy policy = TransportPolicy.Auto)
+        {
+            var providers = new[] { first, second };
+            return new NnrpNativeTransportRegistry(providers).Resolve(Options(
+                providers,
+                policy,
+                providers.Select(value => Succeeded(value, 3, 1_000, 50)).ToArray()));
         }
 
         private static NnrpTransportSelectionOptions Options(

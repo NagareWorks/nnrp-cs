@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nnrp.Core;
 
 namespace Nnrp.NativeBridge
@@ -405,5 +407,43 @@ namespace Nnrp.NativeBridge
 
             internal NnrpTransportCandidate Candidate { get; set; }
         }
+    }
+
+    internal sealed class NnrpUnavailableTransportProvider : INnrpNativeTransportProvider
+    {
+        internal NnrpUnavailableTransportProvider(TransportId transportId, ulong maxFrameBytes)
+        {
+            Descriptor = new NnrpTransportProviderDescriptor(
+                transportId.ToString(),
+                "uninstalled",
+                transportId,
+                NnrpTransportProviderKind.NativeDynamic,
+                available: false,
+                libraryPath: null,
+                new NnrpTransportProviderMetadata(
+                    "uninstalled-" + transportId.ToString().ToLowerInvariant(),
+                    new NnrpTransportProviderCost(0, 0),
+                    ushort.MaxValue,
+                    new NnrpTransportProviderLimits(maxFrameBytes),
+                    Array.Empty<NnrpTransportProviderLimitation>()),
+                "A route is configured but its transport provider package is not installed.");
+        }
+
+        public NnrpTransportProviderDescriptor Descriptor { get; }
+
+        public ValueTask<NnrpTransportConnection> ConnectAsync(
+            NnrpTransportConnectOptions options,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(Descriptor.Diagnostic);
+
+        public ValueTask<NnrpTransportListener> ListenAsync(
+            NnrpTransportListenOptions options,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(Descriptor.Diagnostic);
+
+        public ValueTask<NnrpTransportProbeMetrics> ProbeAsync(
+            NnrpTransportProbeOptions options,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(Descriptor.Diagnostic);
     }
 }

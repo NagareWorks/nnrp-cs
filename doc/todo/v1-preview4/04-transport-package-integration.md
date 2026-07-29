@@ -17,7 +17,7 @@
   - [x] `NnrpTransportSelection`.
   - [x] `NnrpTransportSelectionErrorCode` and `NnrpTransportSelectionException`.
   - [x] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
-- [ ] Add endpoint and security contracts in `Nnrp.Core`.
+- [x] Add endpoint and security contracts in `Nnrp.Core`.
   - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
   - [x] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.
   - [x] Represent explicit carrier-local locators as `NnrpProviderEndpoint`.
@@ -27,14 +27,14 @@
   - [x] Add `NnrpClientProviderRoute` and `NnrpServerProviderRoute` with route-local locator and security.
   - [x] Add immutable client and server route dictionaries keyed by `TransportId`.
   - [x] Keep the exact owned client/server security fields on each route.
-  - [ ] Exclude unresolved client candidates under `Auto` and `Prefer*`; fail forced policies without fallback.
+  - [x] Exclude unresolved client candidates under `Auto` and `Prefer*`; fail forced policies without fallback.
   - [x] Treat an unresolved otherwise-eligible server route as a hard listen error.
-  - [ ] Reject provider-kind mismatches and platform-incompatible IPC locators before creating native handles.
-  - [ ] Reject unknown route keys and report known-but-uninstalled routes as `LocalUnavailable`.
-  - [ ] Apply the exact rejection precedence when multiple checks fail.
+  - [x] Reject provider-kind mismatches and platform-incompatible IPC locators before creating native handles.
+  - [x] Reject unknown route keys and report known-but-uninstalled routes as `LocalUnavailable`.
+  - [x] Apply the exact rejection precedence when multiple checks fail.
   - [x] Add `NnrpTransportClientSecurity(ServerName, TrustedCertificateDer)`.
   - [x] Add `NnrpTransportServerSecurity(CertificateDer, PrivateKeyPkcs8Der)`.
-  - [ ] Reject client credentials on listen paths and server credentials on connect paths.
+  - [x] Reject client credentials on listen paths and server credentials on connect paths.
   - [x] Add `RouteUnresolved` and `SecurityUnsatisfied` rejection reasons.
   - [x] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.
   - [x] Reject IPC, plain TCP, and WS for `nnrps://`.
@@ -67,7 +67,7 @@
   - [x] Select the only valid installed provider without probing.
   - [x] Probe and rank all valid providers when more than one remains.
   - [x] Return every rejected candidate and its typed reason.
-- [ ] Add deterministic unit tests for every comparator key and rejection reason.
+- [x] Add deterministic unit tests for every comparator key and rejection reason.
 
 ## Role Host Cardinality
 

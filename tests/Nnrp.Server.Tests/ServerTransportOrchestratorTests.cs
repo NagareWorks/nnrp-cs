@@ -131,6 +131,38 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
+        public async Task ConfiguredButUninstalledProviderIsARequiredUnavailableRoute()
+        {
+            var tcp = Provider(TransportId.Tcp, "tcp");
+            var bindCount = 0;
+            var options = new NnrpServerOptions(
+                NnrpEndpoint.Parse("nnrp://localhost:7000"),
+                new Dictionary<TransportId, NnrpServerProviderRoute>
+                {
+                    [TransportId.WebSocket] = new NnrpServerProviderRoute
+                    {
+                        ProviderEndpoint = NnrpProviderEndpoint.Parse("ws://localhost:7200/nnrp"),
+                    },
+                },
+                transports: new[] { tcp });
+
+            var error = await Assert.ThrowsAsync<NnrpTransportSelectionException>(async () =>
+                await NnrpServerTransportOrchestrator.ListenAsync(
+                    options,
+                    binder: (provider, listen, server, cancellation) =>
+                    {
+                        bindCount++;
+                        return new ValueTask<INnrpServerTransportListener>(Listener(provider.Descriptor.TransportId));
+                    }));
+
+            Assert.Equal(NnrpTransportSelectionErrorCode.InvalidEvidence, error.Code);
+            Assert.Contains(error.Candidates, candidate =>
+                candidate.TransportId == TransportId.WebSocket
+                && candidate.RejectionReason == NnrpTransportRejectionReason.LocalUnavailable);
+            Assert.Equal(0, bindCount);
+        }
+
+        [Fact]
         public async Task UnavailableAndInsufficientProvidersExposeTypedEvidence()
         {
             var unavailable = Provider(TransportId.Tcp, "tcp", available: false);
@@ -431,24 +463,36 @@ namespace Nnrp.Server.Tests
             IReadOnlyList<INnrpNativeTransportProvider> providers,
             TransportPolicy policy = TransportPolicy.Auto)
         {
+            var installed = providers.Select(value => value.Descriptor.TransportId).ToHashSet();
+            var routes = new Dictionary<TransportId, NnrpServerProviderRoute>();
+            if (installed.Contains(TransportId.Quic))
+            {
+                routes[TransportId.Quic] = new NnrpServerProviderRoute
+                {
+                    Security = new NnrpTransportServerSecurity(new byte[] { 1 }, new byte[] { 2 }),
+                };
+            }
+
+            if (installed.Contains(TransportId.Ipc))
+            {
+                routes[TransportId.Ipc] = new NnrpServerProviderRoute
+                {
+                    ProviderEndpoint = NnrpProviderEndpoint.Parse(
+                        OperatingSystem.IsWindows() ? "npipe://nnrp-test" : "unix:///tmp/nnrp-test.sock"),
+                };
+            }
+
+            if (installed.Contains(TransportId.WebSocket))
+            {
+                routes[TransportId.WebSocket] = new NnrpServerProviderRoute
+                {
+                    ProviderEndpoint = NnrpProviderEndpoint.Parse("ws://localhost:7200/nnrp"),
+                };
+            }
+
             return new NnrpServerOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
-                new Dictionary<TransportId, NnrpServerProviderRoute>
-                {
-                    [TransportId.Quic] = new NnrpServerProviderRoute
-                    {
-                        Security = new NnrpTransportServerSecurity(new byte[] { 1 }, new byte[] { 2 }),
-                    },
-                    [TransportId.Ipc] = new NnrpServerProviderRoute
-                    {
-                        ProviderEndpoint = NnrpProviderEndpoint.Parse(
-                            OperatingSystem.IsWindows() ? "npipe://nnrp-test" : "unix:///tmp/nnrp-test.sock"),
-                    },
-                    [TransportId.WebSocket] = new NnrpServerProviderRoute
-                    {
-                        ProviderEndpoint = NnrpProviderEndpoint.Parse("ws://localhost:7200/nnrp"),
-                    },
-                },
+                routes,
                 policy,
                 providers);
         }

@@ -172,6 +172,11 @@ namespace Nnrp.Core.Tests
                 {
                     [TransportId.Unspecified] = new NnrpClientProviderRoute(),
                 }));
+            Assert.Throws<ArgumentException>(() => NnrpTransportRouteSet.CopyClient(
+                new Dictionary<TransportId, NnrpClientProviderRoute>
+                {
+                    [(TransportId)uint.MaxValue] = new NnrpClientProviderRoute(),
+                }));
             Assert.Throws<ArgumentException>(() => NnrpTransportRouteSet.CopyServer(
                 new Dictionary<TransportId, NnrpServerProviderRoute>
                 {

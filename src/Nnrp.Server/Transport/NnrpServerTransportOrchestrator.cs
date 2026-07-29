@@ -367,7 +367,13 @@ namespace Nnrp.Server
 
         private static IReadOnlyList<ListenerPlan> ResolvePlans(NnrpServerOptions options)
         {
-            var providers = options.Transports ?? NnrpNativeTransportDefaults.Discover();
+            var providers = (options.Transports ?? NnrpNativeTransportDefaults.Discover()).ToList();
+            var installed = providers.Select(value => value.Descriptor.TransportId).ToHashSet();
+            foreach (var route in options.ProviderRoutes.Keys.Where(value => !installed.Contains(value)))
+            {
+                providers.Add(new NnrpUnavailableTransportProvider(route, MaxPacketBytes));
+            }
+
             var registry = new NnrpNativeTransportRegistry(providers);
             var snapshot = registry.Snapshot();
             var forced = ForcedTransport(options.TransportPolicy);

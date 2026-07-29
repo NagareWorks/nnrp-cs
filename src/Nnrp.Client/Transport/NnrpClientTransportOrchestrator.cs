@@ -187,7 +187,7 @@ namespace Nnrp.Client
             var installed = providers.Select(value => value.Descriptor.TransportId).ToHashSet();
             foreach (var route in options.ProviderRoutes.Keys.Where(value => !installed.Contains(value)))
             {
-                providers.Add(new UnavailableProvider(route));
+                providers.Add(new NnrpUnavailableTransportProvider(route, MaxPacketBytes));
             }
 
             return providers;
@@ -236,42 +236,5 @@ namespace Nnrp.Client
             internal bool IsResolved { get; }
         }
 
-        private sealed class UnavailableProvider : INnrpNativeTransportProvider
-        {
-            internal UnavailableProvider(TransportId transportId)
-            {
-                Descriptor = new NnrpTransportProviderDescriptor(
-                    transportId.ToString(),
-                    "uninstalled",
-                    transportId,
-                    NnrpTransportProviderKind.NativeDynamic,
-                    available: false,
-                    libraryPath: null,
-                    new NnrpTransportProviderMetadata(
-                        "uninstalled-" + transportId.ToString().ToLowerInvariant(),
-                        new NnrpTransportProviderCost(0, 0),
-                        ushort.MaxValue,
-                        new NnrpTransportProviderLimits(MaxPacketBytes),
-                        Array.Empty<NnrpTransportProviderLimitation>()),
-                    "A route is configured but its transport provider package is not installed.");
-            }
-
-            public NnrpTransportProviderDescriptor Descriptor { get; }
-
-            public ValueTask<NnrpTransportConnection> ConnectAsync(
-                NnrpTransportConnectOptions options,
-                CancellationToken cancellationToken = default) =>
-                throw new InvalidOperationException(Descriptor.Diagnostic);
-
-            public ValueTask<NnrpTransportListener> ListenAsync(
-                NnrpTransportListenOptions options,
-                CancellationToken cancellationToken = default) =>
-                throw new InvalidOperationException(Descriptor.Diagnostic);
-
-            public ValueTask<NnrpTransportProbeMetrics> ProbeAsync(
-                Nnrp.Core.NnrpTransportProbeOptions options,
-                CancellationToken cancellationToken = default) =>
-                throw new InvalidOperationException(Descriptor.Diagnostic);
-        }
     }
 }
