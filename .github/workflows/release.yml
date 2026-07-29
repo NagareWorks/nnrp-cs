@@ -40,8 +40,45 @@ permissions:
 
 jobs:
 
+  managed-validation:
+    name: Validate managed source tree
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Nnrp.sln --configuration Release --no-build
+
+      - name: Verify formatting
+        run: dotnet format Nnrp.sln --verify-no-changes --no-restore --verbosity minimal
+
+      - name: Test packaging policy
+        run: python -m unittest discover -s tests/Packaging.Tests -p "test_*.py"
+
   native-artifacts:
     name: Resolve nnrp-rs native artifacts
+    needs: managed-validation
     runs-on: ubuntu-latest
 
     steps:
@@ -203,6 +240,7 @@ jobs:
           python scripts/verify_nuget_packages.py
           --packages artifacts/packages
           --version ${{ steps.version.outputs.package_version }}
+          --smoke-install
 
       - name: Build UPM package
         run: >-

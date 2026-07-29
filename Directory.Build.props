@@ -10,8 +10,12 @@
     <VersionSuffix Condition="'$(VersionSuffix)' == ''">$(VersionTrain).$(VersionDate).$(VersionRevision)</VersionSuffix>
     <Authors>NNRP Contributors</Authors>
     <Company>NNRP</Company>
+    <RepositoryUrl>https://github.com/NagareWorks/nnrp-cs</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageTags>nnrp;protocol;runtime;transport;inference</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -20,4 +24,8 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>

@@ -347,15 +347,6 @@ jobs:
           --version 1.0.0-preview.4.19
           --require-abi-version 4.1.1
           --output artifacts/native
-          --transport tcp
-          --transport quic
-          --transport ipc
-          --transport websocket
-          --rid win-x86
-          --rid win-x64
-          --rid linux-x64
-          --rid osx-x64
-          --rid osx-arm64
 
       - name: Upload coordinated native artifacts
         uses: actions/upload-artifact@v6
@@ -529,6 +520,54 @@ jobs:
           dotnet test tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj
           --configuration Release --no-build
 
+  package-validation:
+    needs:
+      - changes
+      - native-artifacts
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Download complete coordinated native artifact tree
+        uses: actions/download-artifact@v7
+        with:
+          name: coordinated-native-artifacts
+          path: artifacts/native
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Pack release package graph
+        run: >-
+          dotnet pack Nnrp.sln --configuration Release --no-build
+          --output artifacts/package-validation
+          -p:Version=1.0.0-preview.4
+          -p:PackageVersion=1.0.0-preview.4
+          -p:VersionSuffix=
+
+      - name: Verify package boundaries and clean installs
+        run: >-
+          python scripts/verify_nuget_packages.py
+          --packages artifacts/package-validation
+          --version 1.0.0-preview.4
+          --smoke-install
+
   conformance:
     needs:
       - changes
@@ -606,6 +645,7 @@ jobs:
       - build-test
       - native-e2e
       - native-e2e-windows-x86
+      - package-validation
       - conformance
       - docs-only
     if: always()
@@ -645,6 +685,11 @@ jobs:
 
           if [ "${{ needs.native-e2e-windows-x86.result }}" != "success" ]; then
             echo "Windows x86 native artifact E2E validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.package-validation.result }}" != "success" ]; then
+            echo "NuGet package boundary or clean-install validation failed."
             exit 1
           fi
 

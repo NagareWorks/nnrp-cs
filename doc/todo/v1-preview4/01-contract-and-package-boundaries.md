@@ -8,11 +8,11 @@
   - [ ] Put the production server host, accepted session, and operation APIs in `Nnrp.Server`.
   - [x] Put native loading, ABI probing, SafeHandle types, and coarse FFI calls in `Nnrp.NativeBridge`.
   - [ ] Put Unity client APIs and plugin metadata in `com.nnrp.client`.
-- [ ] Complete the transport package graph.
-  - [ ] Keep TCP behavior and artifacts in `Nnrp.Transport.Tcp`.
-  - [ ] Keep QUIC behavior and artifacts in `Nnrp.Transport.Quic`.
+- [x] Complete the transport package graph.
+  - [x] Keep TCP behavior and artifacts in `Nnrp.Transport.Tcp`.
+  - [x] Keep QUIC behavior and artifacts in `Nnrp.Transport.Quic`.
   - [x] Add `Nnrp.Transport.Ipc` with IPC behavior and artifacts.
-  - [ ] Add `Nnrp.Transport.WebSocket` with WebSocket behavior and artifacts.
+  - [x] Add `Nnrp.Transport.WebSocket` with WebSocket behavior and artifacts.
   - [x] Make every transport package depend on `Nnrp.Core` and `Nnrp.NativeBridge`, not on client or server roles.
   - [x] Scope every native artifact to the package that owns that transport.
   - [x] Keep client and server packages free of transport artifacts.
@@ -92,7 +92,7 @@
 ## Ownership Split
 
 - [x] Make NativeBridge own loading, ABI probing, native handles, and coarse FFI calls.
-- [ ] Make transport packages own registration, provider metadata, connect/listen behavior, and native artifacts.
+- [x] Make transport packages own registration, provider metadata, connect/listen behavior, and native artifacts.
 - [ ] Make client/server packages own role-specific orchestration without implementing protocol hot paths in C#.
 - [ ] Make the Unity package own Unity plugin metadata and platform import layout.
-- [ ] Add architecture tests that reject role-to-role dependencies and transport artifacts outside transport packages.
+- [x] Add architecture tests that reject role-to-role dependencies and transport artifacts outside transport packages.

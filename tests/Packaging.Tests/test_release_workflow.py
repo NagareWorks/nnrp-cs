@@ -26,6 +26,18 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(verify_index, publish_index)
         self.assertIn("python scripts/verify_nuget_packages.py", self.workflow)
         self.assertIn("--packages artifacts/packages", self.workflow)
+        self.assertIn("--smoke-install", self.workflow)
+
+    def test_managed_tree_is_validated_before_release_artifacts_are_consumed(self):
+        self.assertIn("managed-validation:", self.workflow)
+        native_artifacts = self.workflow.index("  native-artifacts:")
+        package = self.workflow.index("  package:")
+        self.assertIn("needs: managed-validation", self.workflow[native_artifacts:package])
+        self.assertIn("needs: native-artifacts", self.workflow[package:])
+        self.assertLess(
+            self.workflow.index("managed-validation:"),
+            native_artifacts,
+        )
 
     def test_release_bundles_include_websocket_provider(self):
         self.assertEqual(self.workflow.count("'Nnrp.Transport.WebSocket'"), 2)

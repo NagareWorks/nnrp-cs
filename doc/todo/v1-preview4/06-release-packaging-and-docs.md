@@ -18,10 +18,10 @@
 - [x] Pack `Nnrp.Transport.Quic` with only QUIC provider code and artifacts.
 - [x] Pack `Nnrp.Transport.Ipc` with only IPC provider code and artifacts.
 - [x] Pack `Nnrp.Transport.WebSocket` with only WebSocket provider code and artifacts.
-- [ ] Validate role-first dependency direction in every generated nuspec.
+- [x] Validate role-first dependency direction in every generated nuspec.
 - [ ] Inspect every nupkg for README, symbols, license, repository metadata, tags, and deterministic file order.
 - [x] Inspect every transport nupkg against the complete Windows, macOS, Linux, Android, iOS, and iOS Simulator RID matrix.
-- [ ] Install every package set into clean client and server smoke projects.
+- [x] Install every package set into clean client and server smoke projects.
 
 ## Unity Package
 
@@ -35,9 +35,9 @@
 
 ## Release Workflow
 
-- [ ] Build and test managed assemblies before downloading release artifacts.
+- [x] Build and test managed assemblies before downloading release artifacts.
 - [x] Download and verify every transport/platform artifact.
-- [ ] Pack NuGet and Unity distributions once from the verified artifact tree.
+- [x] Pack NuGet and Unity distributions once from the verified artifact tree.
 - [ ] Publish NuGet packages with trusted publishing.
 - [ ] Publish the Unity package and GitHub release assets from the same commit.
 - [ ] Create the repository tag only after package validation passes.
