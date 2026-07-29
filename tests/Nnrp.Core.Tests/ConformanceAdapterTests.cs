@@ -18,6 +18,7 @@ namespace Nnrp.Core.Tests
                   "protocol_version": "nnrp-1-preview3",
                   "cases": [
                     { "id": "l0.header.roundtrip.basic" },
+                    { "id": "l0.header.fixed_shape.golden" },
                     { "id": "l0.header.invalid_length.reject" },
                     { "id": "l0.header.length_mismatch.reject" },
                     { "id": "l1.handshake.basic" },
@@ -79,16 +80,16 @@ namespace Nnrp.Core.Tests
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(52, results.Length);
+            Assert.Equal(53, results.Length);
             Assert.Equal("l0.header.roundtrip.basic", results[0].GetProperty("id").GetString());
             Assert.Equal("pass", results[0].GetProperty("outcome").GetString());
-            for (var index = 1; index < 51; index += 1)
+            for (var index = 1; index < 52; index += 1)
             {
                 Assert.Equal("pass", results[index].GetProperty("outcome").GetString());
             }
 
-            Assert.Equal("error", results[51].GetProperty("outcome").GetString());
-            Assert.Equal("not_implemented", results[51].GetProperty("failure_kind").GetString());
+            Assert.Equal("error", results[52].GetProperty("outcome").GetString());
+            Assert.Equal("not_implemented", results[52].GetProperty("failure_kind").GetString());
         }
 
         [Fact]

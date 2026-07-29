@@ -56,7 +56,7 @@
 - [ ] Remove Preview1, Preview2, and Preview3 public entrypoints rather than forwarding or aliasing them.
 - [ ] Remove managed hot-path implementations from default runtime routes.
 - [ ] Keep low-level message builders available to provider/tooling code but out of production role signatures and default runtime routes.
-- [ ] Add `RuntimeFrameHeader` as the shared immutable runtime-frame header projection.
+- [x] Add `RuntimeFrameHeader` as the shared immutable runtime-frame header projection.
 - [ ] Document the native artifact and installed-provider requirements for every production entrypoint.
 - [ ] Reject singular production-role provider endpoint and role-wide security options.
 - [ ] Keep singular endpoint/security values only on low-level one-provider connect/listen options.

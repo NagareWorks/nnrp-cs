@@ -212,6 +212,9 @@ public static class Program
                 case "l0.header.roundtrip.basic":
                     RunHeaderRoundtrip();
                     return Pass(caseId, "Common header strict parse and re-emit roundtrip passed.");
+                case "l0.header.fixed_shape.golden":
+                    RunHeaderFixedShapeGolden();
+                    return Pass(caseId, "Common header fixed-shape golden vector matched.");
                 case "l0.header.invalid_length.reject":
                 case "l0.header.length_mismatch.reject":
                     RunHeaderLengthReject();
@@ -439,6 +442,29 @@ public static class Program
 
         var reEmitted = parsed.ToArray();
         AssertTrue(bytes.AsSpan().SequenceEqual(reEmitted), "Common header re-emitted bytes changed.");
+    }
+
+    private static void RunHeaderFixedShapeGolden()
+    {
+        var expected = Convert.FromHexString(
+            "4e4e5250010010282100000003020100060504004433221188776655aa99ccbb0807060504030201");
+        AssertTrue(
+            NnrpHeader.TryParse(expected, NnrpHeaderParseOptions.Strict, out var header, out var parseError),
+            $"Common header fixed-shape golden vector failed strict parsing: {parseError}.");
+        AssertTrue(header.VersionMajor == 1, "Common header lost version_major.");
+        AssertTrue(header.WireFormat == 0, "Common header lost wire_format.");
+        AssertTrue(header.MessageType == MessageType.FrameSubmit, "Common header lost message_type.");
+        AssertTrue(
+            header.Flags == (HeaderFlags.AckRequired | HeaderFlags.Keyframe),
+            "Common header lost flags.");
+        AssertTrue(header.MetaLength == 0x00010203, "Common header lost meta_len.");
+        AssertTrue(header.BodyLength == 0x00040506, "Common header lost body_len.");
+        AssertTrue(header.SessionId == 0x11223344, "Common header lost session_id.");
+        AssertTrue(header.FrameId == 0x55667788, "Common header lost frame_id.");
+        AssertTrue(header.ViewId == 0x99AA, "Common header lost view_id.");
+        AssertTrue(header.RouteId == 0xBBCC, "Common header lost route_id.");
+        AssertTrue(header.TraceId == 0x0102030405060708, "Common header lost trace_id.");
+        AssertTrue(header.ToArray().AsSpan().SequenceEqual(expected), "Common header re-emitted golden bytes changed.");
     }
 
     private static void RunHeaderLengthReject()
