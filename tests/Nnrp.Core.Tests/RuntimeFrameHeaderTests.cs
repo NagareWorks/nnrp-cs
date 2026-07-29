@@ -78,5 +78,22 @@ namespace Nnrp.Core.Tests
                 "4e4e5250010010282100000003020100060504004433221188776655aa99ccbb0807060504030201",
                 Convert.ToHexString(header.ToArray()).ToLowerInvariant());
         }
+
+        [Fact]
+        public void DecodedRuntimeFrameSnapshotsItsPayloadRegions()
+        {
+            var metadata = new byte[] { 1, 2 };
+            var body = new byte[] { 3, 4 };
+            var decoded = new DecodedRuntimeFrame(
+                new RuntimeFrameHeader(MessageType.Ping),
+                metadata,
+                body);
+
+            metadata[0] = 0;
+            body[0] = 0;
+
+            Assert.Equal(new byte[] { 1, 2 }, decoded.Metadata.ToArray());
+            Assert.Equal(new byte[] { 3, 4 }, decoded.Body.ToArray());
+        }
     }
 }

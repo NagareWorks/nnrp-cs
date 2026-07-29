@@ -135,9 +135,9 @@
 - [ ] Parse `ws://` and `wss://` provider endpoints.
 - [ ] Require client/server security for `wss://`.
 - [ ] Keep WebSocket connect, listen, and probe calls inside the WebSocket package.
-- [ ] Add `NnrpWebSocketFrameCodec.Encode`.
-- [ ] Add `NnrpWebSocketFrameCodec.Decode`.
-- [ ] Add `NnrpWebSocketFrameCodec.DecodeBatch`.
+- [x] Add `NnrpWebSocketFrameCodec.Encode`.
+- [x] Add `NnrpWebSocketFrameCodec.Decode`.
+- [x] Add `NnrpWebSocketFrameCodec.DecodeBatch`.
 - [ ] Reject text messages, truncated frames, length mismatches, and trailing bytes.
 - [ ] Package only WebSocket native artifacts for every supported RID.
 - [ ] Add `ws://` and `wss://` client/server loopback integration tests.

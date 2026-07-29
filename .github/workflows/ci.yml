@@ -277,6 +277,7 @@ jobs:
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj" -ArtifactName "Nnrp.Transport.Tcp.Tests" -IncludeFilter "[Nnrp.Transport.Tcp]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj" -ArtifactName "Nnrp.Transport.Quic.Tests" -IncludeFilter "[Nnrp.Transport.Quic]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj" -ArtifactName "Nnrp.Transport.Ipc.Tests" -IncludeFilter "[Nnrp.Transport.Ipc]*" -Threshold 90
+          Invoke-CoveredTest -ProjectPath "tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj" -ArtifactName "Nnrp.Transport.WebSocket.Tests" -IncludeFilter "[Nnrp.Transport.WebSocket]*" -Threshold 90
           Invoke-CoveredTest -ProjectPath "tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj" -ArtifactName "Nnrp.NativeBridge.Tests" -IncludeFilter "[Nnrp.NativeBridge]*" -Threshold 90
 
       - name: Incremental line coverage gate

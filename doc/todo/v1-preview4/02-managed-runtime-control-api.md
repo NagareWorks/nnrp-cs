@@ -75,9 +75,9 @@
   - [ ] Preserve `RuntimeFrameHeader` and typed metadata.
   - [ ] Expose diagnostic, body, capability-entry, hint, trace, object-metadata, delta, and cache-metadata tails by semantic name.
   - [ ] Return owned memory or lifetime-guarded borrowed memory without exposing native buffers.
-- [ ] Add the owned `DecodedRuntimeFrame` projection used by WebSocket and conformance decoders.
-  - [ ] Expose `RuntimeFrameHeader`, owned metadata, and owned body regions.
-  - [ ] Reject truncated headers, length mismatches, trailing bytes, and batch limits before returning a frame.
+- [x] Add the owned `DecodedRuntimeFrame` projection used by WebSocket and conformance decoders.
+  - [x] Expose `RuntimeFrameHeader`, owned metadata, and owned body regions.
+  - [x] Reject truncated headers, length mismatches, trailing bytes, and batch limits before returning a frame.
 - [ ] Replace raw drop-reason integers with `NnrpResultDropReasonCode`.
   - [ ] Use the enum in `SupersedeMetadata`.
   - [ ] Use the enum in `ResultDropReasonMetadata`.
