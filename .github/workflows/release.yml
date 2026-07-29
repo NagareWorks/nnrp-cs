@@ -76,6 +76,9 @@ jobs:
       - name: Test packaging policy
         run: python -m unittest discover -s tests/Packaging.Tests -p "test_*.py"
 
+      - name: Verify Preview4 release TODO closure
+        run: python scripts/verify_release_todos.py --todo-root doc/todo/v1-preview4
+
   native-artifacts:
     name: Resolve nnrp-rs native artifacts
     needs: managed-validation
@@ -195,20 +198,6 @@ jobs:
             echo "Manual nuget.org publishing requires create_tag=true so package publication cannot start from an untagged ref."
             exit 1
           fi
-      - name: Create git tag
-        if: github.event_name == 'workflow_dispatch' && inputs.create_tag
-        shell: pwsh
-        run: |
-          git fetch --tags
-          $tag = '${{ steps.version.outputs.tag_name }}'
-          $existing = git tag --list $tag
-          if (-not $existing) {
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git tag $tag
-            git push origin $tag
-          }
-
       - name: Download native artifacts
         uses: actions/download-artifact@v7
         with:
@@ -312,6 +301,30 @@ jobs:
           Compress-PackageBundle `
             -Name 'nnrp-cs-server-nuget' `
             -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.Transport.WebSocket', 'Nnrp.NativeBridge')
+
+      - name: Create or validate git tag
+        if: github.event_name == 'workflow_dispatch' && inputs.create_tag
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          $tag = '${{ steps.version.outputs.tag_name }}'
+          $headCommit = (git rev-parse HEAD).Trim()
+          $remoteTagCommit = (git rev-list -n 1 $tag 2>$null)
+
+          if ($LASTEXITCODE -eq 0 -and $remoteTagCommit) {
+            $remoteTagCommit = $remoteTagCommit.Trim()
+            if ($remoteTagCommit -ne $headCommit) {
+              throw "Release tag $tag points to $remoteTagCommit, not validated commit $headCommit."
+            }
+
+            Write-Host "Release tag $tag already points to validated commit $headCommit."
+          }
+          else {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag $tag $headCommit
+            git push origin "refs/tags/$tag"
+          }
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6

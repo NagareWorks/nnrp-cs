@@ -39,6 +39,25 @@ class ReleaseWorkflowTests(unittest.TestCase):
             native_artifacts,
         )
 
+    def test_release_rejects_open_preview4_todos_before_artifact_resolution(self):
+        todo_gate = self.workflow.index("Verify Preview4 release TODO closure")
+        native_artifacts = self.workflow.index("  native-artifacts:")
+        self.assertLess(todo_gate, native_artifacts)
+        self.assertIn(
+            "python scripts/verify_release_todos.py --todo-root doc/todo/v1-preview4",
+            self.workflow,
+        )
+
+    def test_manual_tag_is_created_after_package_validation_and_bundling(self):
+        verify_index = self.workflow.index("Verify NuGet package boundaries")
+        bundle_index = self.workflow.index("Bundle release artifacts")
+        tag_index = self.workflow.index("Create or validate git tag")
+        publish_index = self.workflow.index("Publish GitHub release")
+        self.assertLess(verify_index, tag_index)
+        self.assertLess(bundle_index, tag_index)
+        self.assertLess(tag_index, publish_index)
+        self.assertIn("points to $remoteTagCommit, not validated commit $headCommit", self.workflow)
+
     def test_release_bundles_include_websocket_provider(self):
         self.assertEqual(self.workflow.count("'Nnrp.Transport.WebSocket'"), 2)
 

@@ -6,7 +6,7 @@
 - [x] Default release workflow source to `main`.
 - [x] Default Rust artifact input to the coordinated `1.0.0-preview.4.19` release with exact FFI ABI `4.1.1`.
 - [x] Validate that the requested Rust release tag and all required assets exist before packing.
-- [ ] Reject release when any Preview4 TODO checkbox is open.
+- [x] Reject release when any Preview4 TODO checkbox is open.
 
 ## NuGet Package Graph
 
@@ -40,8 +40,8 @@
 - [x] Pack NuGet and Unity distributions once from the verified artifact tree.
 - [ ] Publish NuGet packages with trusted publishing.
 - [ ] Publish the Unity package and GitHub release assets from the same commit.
-- [ ] Create the repository tag only after package validation passes.
-- [ ] Make reruns idempotent for already-published packages and existing tags.
+- [x] Create the repository tag only after package validation passes.
+- [x] Make reruns idempotent for already-published packages and existing tags.
 
 ## Benchmarks
 
