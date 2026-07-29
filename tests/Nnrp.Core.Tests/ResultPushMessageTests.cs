@@ -880,8 +880,14 @@ namespace Nnrp.Core.Tests
                 body);
 
             var cacheStore = new NnrpCacheStore();
-            Assert.True(cacheStore.TryPut(new NnrpCacheKey(2, 110, 210), tileIndexPayload, ttlSeconds: 60).IsSuccess);
-            Assert.True(cacheStore.TryPut(new NnrpCacheKey(2, 111, 211), sectionTable, ttlSeconds: 60).IsSuccess);
+            Assert.True(cacheStore.TryPut(
+                new NnrpCacheObjectId(2, 110, 210, CacheObjectKind.TileIndexBlock),
+                tileIndexPayload,
+                ttlMilliseconds: 60_000).IsSuccess);
+            Assert.True(cacheStore.TryPut(
+                new NnrpCacheObjectId(2, 111, 211, CacheObjectKind.TensorSectionTable),
+                sectionTable,
+                ttlMilliseconds: 60_000).IsSuccess);
 
             Assert.True(ResultPushMessage.TryParse(framed, cacheStore, out var parsed, out var error), $"Parse error: {error}");
             Assert.Equal(NnrpParseError.None, error);
@@ -1079,8 +1085,14 @@ namespace Nnrp.Core.Tests
                 body);
 
             cacheStore = new NnrpCacheStore();
-            Assert.True(cacheStore.TryPut(new NnrpCacheKey(1, 100, 200), tileIndexPayload, ttlSeconds: 60).IsSuccess);
-            Assert.True(cacheStore.TryPut(new NnrpCacheKey(1, 101, 201), sectionTable, ttlSeconds: 60).IsSuccess);
+            Assert.True(cacheStore.TryPut(
+                new NnrpCacheObjectId(1, 100, 200, CacheObjectKind.TileIndexBlock),
+                tileIndexPayload,
+                ttlMilliseconds: 60_000).IsSuccess);
+            Assert.True(cacheStore.TryPut(
+                new NnrpCacheObjectId(1, 101, 201, CacheObjectKind.TensorSectionTable),
+                sectionTable,
+                ttlMilliseconds: 60_000).IsSuccess);
             return framed.ToArray();
         }
     }

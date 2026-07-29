@@ -890,8 +890,12 @@ namespace Nnrp.Core
             payload = default;
             error = NnrpParseError.None;
 
-            var key = new NnrpCacheKey(block.CacheNamespace, block.CacheKeyHigh, block.CacheKeyLow);
-            var cacheResult = cacheStore.TryGet(key);
+            var objectId = new NnrpCacheObjectId(
+                block.CacheNamespace,
+                block.CacheKeyHigh,
+                block.CacheKeyLow,
+                block.ObjectKind);
+            var cacheResult = cacheStore.TryGet(objectId);
             if (!cacheResult.IsSuccess || cacheResult.Entry == null)
             {
                 error = NnrpParseError.InvalidMessageLayout;

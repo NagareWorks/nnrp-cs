@@ -469,7 +469,7 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
-        public async Task HandleCachePutNormalizesTtlAndInvalidateChecksSessionState()
+        public async Task HandleCachePutPreservesTtlAndInvalidateChecksSessionState()
         {
             var cacheStore = new NnrpCacheStore(maxEntries: 10, maxObjectBytes: 1024);
             var transport = new QueueTransport(CreateClientHello(requestedSessionId: 41).ToFramedMessage());
@@ -491,7 +491,24 @@ namespace Nnrp.Server.Tests
                 zeroTtlPut.ObjectBytes.ToArray());
             await server.HandleCachePutAsync(zeroTtlPut, CancellationToken.None);
             Assert.True(CacheAckMessage.TryParse(transport.Sent[1].ToArray(), out var ack, out _));
-            Assert.Equal(1000u, ack.Metadata.AcceptedTtlMilliseconds);
+            Assert.Equal(0u, ack.Metadata.AcceptedTtlMilliseconds);
+            Assert.Equal(
+                NnrpCacheResultCode.CacheMiss,
+                cacheStore.TryGet(new NnrpCacheObjectId(
+                    1,
+                    100,
+                    200,
+                    CacheObjectKind.CodecAuxBlock)).Code);
+
+            var fractionalSecondPut = CreateCachePut(
+                sessionId: 41,
+                namespaceId: 1,
+                keyHigh: 101,
+                keyLow: 201,
+                ttlMilliseconds: 1500);
+            await server.HandleCachePutAsync(fractionalSecondPut, CancellationToken.None);
+            Assert.True(CacheAckMessage.TryParse(transport.Sent[2].ToArray(), out ack, out _));
+            Assert.Equal(1500u, ack.Metadata.AcceptedTtlMilliseconds);
 
             var inactiveServer = new NnrpServerSession(new ServerProfile(), new QueueTransport(), cacheStore: new NnrpCacheStore());
             var invalidate = CreateCacheInvalidate(sessionId: 41, namespaceId: 1, keyHigh: 100, keyLow: 200);
@@ -501,6 +518,44 @@ namespace Nnrp.Server.Tests
             var mismatchInvalidate = CreateCacheInvalidate(sessionId: 99, namespaceId: 1, keyHigh: 100, keyLow: 200);
             Assert.Contains("does not match server session_id 41", (await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 server.HandleCacheInvalidateAsync(mismatchInvalidate, CancellationToken.None).AsTask())).Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task HandleCacheInvalidateAppliesCanonicalIdentityScopes()
+        {
+            var cacheStore = new NnrpCacheStore(maxEntries: 10, maxObjectBytes: 1024);
+            var transport = new QueueTransport(CreateClientHello(requestedSessionId: 41).ToFramedMessage());
+            var server = new NnrpServerSession(new ServerProfile(), transport, cacheStore: cacheStore);
+            Assert.Equal(NnrpProtocolFailure.None, await server.AcceptAsync(CancellationToken.None));
+
+            await server.HandleCachePutAsync(
+                CreateCachePut(41, 1, 100, 200, objectKind: CacheObjectKind.CameraBlock),
+                CancellationToken.None);
+            await server.HandleCachePutAsync(
+                CreateCachePut(41, 1, 100, 200, objectKind: CacheObjectKind.CodecAuxBlock),
+                CancellationToken.None);
+            await server.HandleCachePutAsync(
+                CreateCachePut(41, 2, 100, 200, objectKind: CacheObjectKind.CameraBlock),
+                CancellationToken.None);
+            Assert.Equal(3, cacheStore.Count);
+
+            var kindInvalidate = new CacheInvalidateMessage(
+                CreateCacheInvalidate(41, 1, 0, 0).Header,
+                new CacheInvalidateMetadata(
+                    CacheInvalidateScope.ObjectKind,
+                    cacheNamespace: 1,
+                    cacheKeyHigh: (uint)CacheObjectKind.CameraBlock,
+                    cacheKeyLow: 0,
+                    reasonCode: 1));
+            await server.HandleCacheInvalidateAsync(kindInvalidate, CancellationToken.None);
+
+            Assert.Equal(2, cacheStore.Count);
+            Assert.False(cacheStore.TryGet(new NnrpCacheObjectId(
+                1, 100, 200, CacheObjectKind.CameraBlock)).IsSuccess);
+            Assert.True(cacheStore.TryGet(new NnrpCacheObjectId(
+                1, 100, 200, CacheObjectKind.CodecAuxBlock)).IsSuccess);
+            Assert.True(cacheStore.TryGet(new NnrpCacheObjectId(
+                2, 100, 200, CacheObjectKind.CameraBlock)).IsSuccess);
         }
 
         [Fact]
@@ -554,15 +609,17 @@ namespace Nnrp.Server.Tests
             ushort namespaceId,
             uint keyHigh,
             uint keyLow,
-            byte[]? objectBytes = null)
+            byte[]? objectBytes = null,
+            CacheObjectKind objectKind = CacheObjectKind.CodecAuxBlock,
+            uint ttlMilliseconds = 5000)
         {
             objectBytes ??= new byte[] { 0xAA };
             var metadata = new CachePutMetadata(
                 cacheNamespace: namespaceId,
                 cacheKeyHigh: keyHigh,
                 cacheKeyLow: keyLow,
-                objectKind: CacheObjectKind.CodecAuxBlock,
-                ttlMilliseconds: 5000,
+                objectKind: objectKind,
+                ttlMilliseconds: ttlMilliseconds,
                 objectBytes: (uint)objectBytes.Length,
                 codecBitmap: 0);
             var header = new NnrpHeader(

@@ -7,30 +7,25 @@ namespace Nnrp.Core
     /// </summary>
     public sealed class NnrpCacheEntry
     {
-        public NnrpCacheEntry(NnrpCacheKey key, ReadOnlyMemory<byte> objectBytes, int ttlSeconds)
+        public NnrpCacheEntry(NnrpCacheObjectId objectId, ReadOnlyMemory<byte> objectBytes, uint ttlMilliseconds)
         {
-            if (ttlSeconds <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(ttlSeconds), "TTL must be positive.");
-            }
-
-            Key = key;
+            ObjectId = objectId;
             ObjectBytes = objectBytes;
-            TtlSeconds = ttlSeconds;
+            TtlMilliseconds = ttlMilliseconds;
             CreatedAt = DateTimeOffset.UtcNow;
         }
 
-        public NnrpCacheKey Key { get; }
+        public NnrpCacheObjectId ObjectId { get; }
 
         public ReadOnlyMemory<byte> ObjectBytes { get; }
 
-        public int TtlSeconds { get; }
+        public uint TtlMilliseconds { get; }
 
         public DateTimeOffset CreatedAt { get; }
 
         public bool IsExpired()
         {
-            return DateTimeOffset.UtcNow > CreatedAt.AddSeconds(TtlSeconds);
+            return DateTimeOffset.UtcNow >= CreatedAt.AddMilliseconds(TtlMilliseconds);
         }
     }
 
@@ -39,15 +34,23 @@ namespace Nnrp.Core
     /// </summary>
     public readonly struct NnrpCacheResult
     {
-        private NnrpCacheResult(bool isSuccess, NnrpCacheEntry? entry, NnrpCacheResultCode code, string message)
+        private NnrpCacheResult(
+            bool isSuccess,
+            NnrpCacheObjectId objectId,
+            NnrpCacheEntry? entry,
+            NnrpCacheResultCode code,
+            string message)
         {
             IsSuccess = isSuccess;
+            ObjectId = objectId;
             Entry = entry;
             Code = code;
             Message = message ?? string.Empty;
         }
 
         public bool IsSuccess { get; }
+
+        public NnrpCacheObjectId ObjectId { get; }
 
         public NnrpCacheEntry? Entry { get; }
 
@@ -57,22 +60,29 @@ namespace Nnrp.Core
 
         public static NnrpCacheResult Hit(NnrpCacheEntry entry)
         {
-            return new NnrpCacheResult(true, entry ?? throw new ArgumentNullException(nameof(entry)), NnrpCacheResultCode.Hit, string.Empty);
+            entry = entry ?? throw new ArgumentNullException(nameof(entry));
+            return new NnrpCacheResult(true, entry.ObjectId, entry, NnrpCacheResultCode.Hit, string.Empty);
         }
 
-        public static NnrpCacheResult Miss(NnrpCacheKey key)
+        public static NnrpCacheResult Miss(NnrpCacheObjectId objectId)
         {
-            return new NnrpCacheResult(false, null, NnrpCacheResultCode.CacheMiss, $"Cache miss for namespace {key.NamespaceId}.");
+            return new NnrpCacheResult(
+                false,
+                objectId,
+                null,
+                NnrpCacheResultCode.CacheMiss,
+                $"Cache miss for namespace {objectId.CacheNamespace}, key {objectId.CacheKeyHigh:x16}{objectId.CacheKeyLow:x16}, object kind {objectId.ObjectKind}.");
         }
 
-        public static NnrpCacheResult LimitExceeded(string message)
+        public static NnrpCacheResult LimitExceeded(NnrpCacheObjectId objectId, string message)
         {
-            return new NnrpCacheResult(false, null, NnrpCacheResultCode.LimitExceeded, message);
+            return new NnrpCacheResult(false, objectId, null, NnrpCacheResultCode.LimitExceeded, message);
         }
 
         public static NnrpCacheResult Stored(NnrpCacheEntry entry)
         {
-            return new NnrpCacheResult(true, entry ?? throw new ArgumentNullException(nameof(entry)), NnrpCacheResultCode.Stored, string.Empty);
+            entry = entry ?? throw new ArgumentNullException(nameof(entry));
+            return new NnrpCacheResult(true, entry.ObjectId, entry, NnrpCacheResultCode.Stored, string.Empty);
         }
     }
 

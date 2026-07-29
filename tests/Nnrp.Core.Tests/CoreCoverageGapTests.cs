@@ -46,13 +46,13 @@ namespace Nnrp.Core.Tests
         public void CacheStoreRejectsFullStoreForNewKey()
         {
             var store = new NnrpCacheStore(maxEntries: 1, maxObjectBytes: 1024);
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[1], 60).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 1, 1), new byte[1], 60_000).IsSuccess);
 
             // Same key should be updatable (not "full")
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[2], 60).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 1, 1), new byte[2], 60_000).IsSuccess);
 
             // Different key should be rejected
-            Assert.False(store.TryPut(new NnrpCacheKey(1, 2, 2), new byte[1], 60).IsSuccess);
+            Assert.False(store.TryPut(CacheId(1, 2, 2), new byte[1], 60_000).IsSuccess);
         }
 
         [Fact]
@@ -126,9 +126,8 @@ namespace Nnrp.Core.Tests
         public void CacheStoreGetExpiredEntryReturnsMiss()
         {
             var store = new NnrpCacheStore(maxEntries: 10);
-            var key = new NnrpCacheKey(1, 1, 1);
-            // Put with 1-second TTL and immediately expire by manipulating time isn't
-            // possible without reflection, but Get on missing key returns miss.
+            var key = CacheId(1, 1, 1);
+            // Get on a missing canonical identity returns a typed miss.
             var result = store.TryGet(key);
             Assert.Equal(NnrpCacheResultCode.CacheMiss, result.Code);
         }
@@ -194,7 +193,7 @@ namespace Nnrp.Core.Tests
         public void CacheStoreMaxEntriesZeroRejectsAllPuts()
         {
             var store = new NnrpCacheStore(maxEntries: 0, maxObjectBytes: 1024);
-            var result = store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[1], 60);
+            var result = store.TryPut(CacheId(1, 1, 1), new byte[1], 60_000);
             Assert.False(result.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.LimitExceeded, result.Code);
         }
@@ -203,18 +202,17 @@ namespace Nnrp.Core.Tests
         public void CacheStoreSameKeyUpdateDoesNotCountAsNewEntry()
         {
             var store = new NnrpCacheStore(maxEntries: 2, maxObjectBytes: 1024);
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[1], 60).IsSuccess);
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 2, 2), new byte[1], 60).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 1, 1), new byte[1], 60_000).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 2, 2), new byte[1], 60_000).IsSuccess);
             // Update existing key should work even when "full"
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[3], 60).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 1, 1), new byte[3], 60_000).IsSuccess);
             Assert.Equal(2, store.Count);
         }
 
         [Fact]
-        public void CacheKeyEqualsNullReturnsFalse()
+        public void CacheObjectIdEqualsOtherTypeReturnsFalse()
         {
-            var key = new NnrpCacheKey(1, 2, 3);
-            Assert.False(key.Equals(null));
+            var key = CacheId(1, 2, 3);
             Assert.False(key.Equals("not a key"));
         }
 
@@ -447,6 +445,15 @@ namespace Nnrp.Core.Tests
                 Array.Empty<byte>(),
                 new byte[] { 1, 0, 0, 0 },
                 new byte[] { 0xAA, 0xBB });
+        }
+
+        private static NnrpCacheObjectId CacheId(uint cacheNamespace, ulong cacheKeyHigh, ulong cacheKeyLow)
+        {
+            return new NnrpCacheObjectId(
+                cacheNamespace,
+                cacheKeyHigh,
+                cacheKeyLow,
+                CacheObjectKind.CameraBlock);
         }
     }
 }

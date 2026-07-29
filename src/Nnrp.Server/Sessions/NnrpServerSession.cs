@@ -397,16 +397,8 @@ namespace Nnrp.Server
                     $"CACHE_PUT session_id {putMessage.Header.SessionId} does not match server session_id {SessionId}.");
             }
 
-            var key = NnrpCacheKey.FromCachePutMetadata(putMessage.Metadata);
-            var ttlSeconds = putMessage.Metadata.TtlMilliseconds > int.MaxValue
-                ? int.MaxValue
-                : (int)(putMessage.Metadata.TtlMilliseconds / 1000);
-            if (ttlSeconds <= 0)
-            {
-                ttlSeconds = 1;
-            }
-
-            var result = cacheStore.TryPut(key, putMessage.ObjectBytes, ttlSeconds);
+            var objectId = NnrpCacheObjectId.FromCachePutMetadata(putMessage.Metadata);
+            var result = cacheStore.TryPut(objectId, putMessage.ObjectBytes, putMessage.Metadata.TtlMilliseconds);
 
             var ack = new CacheAckMessage(
                 new NnrpHeader(
@@ -425,7 +417,7 @@ namespace Nnrp.Server
                     cacheKeyHigh: putMessage.Metadata.CacheKeyHigh,
                     cacheKeyLow: putMessage.Metadata.CacheKeyLow,
                     status: result.Code == NnrpCacheResultCode.Stored ? CacheAckStatus.Accepted : CacheAckStatus.Rejected,
-                    acceptedTtlMilliseconds: result.IsSuccess ? (uint)(ttlSeconds * 1000) : 0,
+                    acceptedTtlMilliseconds: result.IsSuccess ? putMessage.Metadata.TtlMilliseconds : 0,
                     maxObjectBytes: (uint)cacheStore.MaxObjectBytes,
                     detailCode: 0));
             await transport.SendAsync(ack.ToFramedMessage(), cancellationToken).ConfigureAwait(false);
@@ -451,8 +443,7 @@ namespace Nnrp.Server
                     $"CACHE_INVALIDATE session_id {invalidateMessage.Header.SessionId} does not match server session_id {SessionId}.");
             }
 
-            var key = NnrpCacheKey.FromCacheInvalidateMetadata(invalidateMessage.Metadata);
-            cacheStore.TryInvalidate(key);
+            cacheStore.InvalidateMatching(invalidateMessage.Metadata);
 
             var ack = new CacheAckMessage(
                 new NnrpHeader(

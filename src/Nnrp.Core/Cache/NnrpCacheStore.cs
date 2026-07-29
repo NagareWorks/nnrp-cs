@@ -10,7 +10,7 @@ namespace Nnrp.Core
     /// </summary>
     public sealed class NnrpCacheStore
     {
-        private readonly ConcurrentDictionary<NnrpCacheKey, NnrpCacheEntry> entries = new ConcurrentDictionary<NnrpCacheKey, NnrpCacheEntry>();
+        private readonly ConcurrentDictionary<NnrpCacheObjectId, NnrpCacheEntry> entries = new ConcurrentDictionary<NnrpCacheObjectId, NnrpCacheEntry>();
         private int maxEntries;
         private long maxObjectBytes;
 
@@ -50,44 +50,60 @@ namespace Nnrp.Core
 
         public int Count => entries.Count;
 
-        public NnrpCacheResult TryPut(NnrpCacheKey key, ReadOnlyMemory<byte> objectBytes, int ttlSeconds)
+        public NnrpCacheResult TryPut(NnrpCacheObjectId objectId, ReadOnlyMemory<byte> objectBytes, uint ttlMilliseconds)
         {
             if (objectBytes.Length > MaxObjectBytes)
             {
                 return NnrpCacheResult.LimitExceeded(
+                    objectId,
                     $"Cache object size {objectBytes.Length} exceeds maximum {MaxObjectBytes}.");
             }
 
-            if (entries.Count >= MaxEntries && !entries.ContainsKey(key))
+            if (entries.Count >= MaxEntries && !entries.ContainsKey(objectId))
             {
                 return NnrpCacheResult.LimitExceeded(
+                    objectId,
                     $"Cache is full ({entries.Count} entries, max {MaxEntries}).");
             }
 
-            var entry = new NnrpCacheEntry(key, objectBytes, ttlSeconds);
-            entries[key] = entry;
+            var entry = new NnrpCacheEntry(objectId, objectBytes, ttlMilliseconds);
+            entries[objectId] = entry;
             return NnrpCacheResult.Stored(entry);
         }
 
-        public NnrpCacheResult TryGet(NnrpCacheKey key)
+        public NnrpCacheResult TryGet(NnrpCacheObjectId objectId)
         {
-            if (!entries.TryGetValue(key, out var entry))
+            if (!entries.TryGetValue(objectId, out var entry))
             {
-                return NnrpCacheResult.Miss(key);
+                return NnrpCacheResult.Miss(objectId);
             }
 
             if (entry.IsExpired())
             {
-                entries.TryRemove(key, out _);
-                return NnrpCacheResult.Miss(key);
+                entries.TryRemove(objectId, out _);
+                return NnrpCacheResult.Miss(objectId);
             }
 
             return NnrpCacheResult.Hit(entry);
         }
 
-        public bool TryInvalidate(NnrpCacheKey key)
+        public bool TryInvalidate(NnrpCacheObjectId objectId)
         {
-            return entries.TryRemove(key, out _);
+            return entries.TryRemove(objectId, out _);
+        }
+
+        internal int InvalidateMatching(CacheInvalidateMetadata metadata)
+        {
+            var removed = 0;
+            foreach (var pair in entries)
+            {
+                if (pair.Key.MatchesInvalidate(metadata) && entries.TryRemove(pair.Key, out _))
+                {
+                    removed++;
+                }
+            }
+
+            return removed;
         }
 
         public void Clear()

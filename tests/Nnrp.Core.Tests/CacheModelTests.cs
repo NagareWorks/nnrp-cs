@@ -8,16 +8,18 @@ namespace Nnrp.Core.Tests
     public sealed class CacheModelTests
     {
         [Fact]
-        public void CacheKeyEqualityAndFromMetadata()
+        public void CacheObjectIdEqualityAndMetadataMatching()
         {
-            var key1 = new NnrpCacheKey(1, 0xCAFE, 0xBEEF);
-            var key2 = new NnrpCacheKey(1, 0xCAFE, 0xBEEF);
-            var key3 = new NnrpCacheKey(2, 0xCAFE, 0xBEEF);
+            var objectId1 = CacheId(1, 0xCAFE, 0xBEEF, CacheObjectKind.CameraBlock);
+            var objectId2 = CacheId(1, 0xCAFE, 0xBEEF, CacheObjectKind.CameraBlock);
+            var objectId3 = CacheId(2, 0xCAFE, 0xBEEF, CacheObjectKind.CameraBlock);
+            var objectId4 = CacheId(1, 0xCAFE, 0xBEEF, CacheObjectKind.CodecAuxBlock);
 
-            Assert.Equal(key1, key2);
-            Assert.True(key1 == key2);
-            Assert.NotEqual(key1, key3);
-            Assert.Equal(key1.GetHashCode(), key2.GetHashCode());
+            Assert.Equal(objectId1, objectId2);
+            Assert.True(objectId1 == objectId2);
+            Assert.NotEqual(objectId1, objectId3);
+            Assert.NotEqual(objectId1, objectId4);
+            Assert.Equal(objectId1.GetHashCode(), objectId2.GetHashCode());
 
             var putMetadata = new CachePutMetadata(
                 cacheNamespace: 1,
@@ -27,7 +29,7 @@ namespace Nnrp.Core.Tests
                 ttlMilliseconds: 5000,
                 objectBytes: 16,
                 codecBitmap: 0);
-            Assert.Equal(key1, NnrpCacheKey.FromCachePutMetadata(putMetadata));
+            Assert.Equal(objectId1, NnrpCacheObjectId.FromCachePutMetadata(putMetadata));
 
             var invalidateMetadata = new CacheInvalidateMetadata(
                 invalidateScope: CacheInvalidateScope.ObjectKey,
@@ -35,55 +37,53 @@ namespace Nnrp.Core.Tests
                 cacheKeyHigh: 0xCAFE,
                 cacheKeyLow: 0xBEEF,
                 reasonCode: 0);
-            Assert.Equal(key1, NnrpCacheKey.FromCacheInvalidateMetadata(invalidateMetadata));
+            Assert.True(objectId1.MatchesInvalidate(invalidateMetadata));
+            Assert.True(objectId4.MatchesInvalidate(invalidateMetadata));
         }
 
         [Fact]
         public void CacheEntryStoresPayloadAndDetectsExpiration()
         {
-            var key = new NnrpCacheKey(1, 10, 20);
+            var objectId = CacheId(1, 10, 20);
             var payload = new byte[] { 1, 2, 3 };
-            var entry = new NnrpCacheEntry(key, payload, ttlSeconds: 3600);
+            var entry = new NnrpCacheEntry(objectId, payload, ttlMilliseconds: 3_600_000);
 
-            Assert.Equal(key, entry.Key);
+            Assert.Equal(objectId, entry.ObjectId);
             Assert.Equal(payload, entry.ObjectBytes.ToArray());
-            Assert.Equal(3600, entry.TtlSeconds);
+            Assert.Equal(3_600_000u, entry.TtlMilliseconds);
             Assert.False(entry.IsExpired());
 
-            Assert.Throws<ArgumentOutOfRangeException>(() =>
-                new NnrpCacheEntry(key, payload, ttlSeconds: 0));
-            Assert.Throws<ArgumentOutOfRangeException>(() =>
-                new NnrpCacheEntry(key, payload, ttlSeconds: -1));
+            Assert.True(new NnrpCacheEntry(objectId, payload, ttlMilliseconds: 0).IsExpired());
         }
 
         [Fact]
         public void CacheStorePutGetAndInvalidate()
         {
             var store = new NnrpCacheStore(maxEntries: 10, maxObjectBytes: 1024);
-            var key = new NnrpCacheKey(1, 100, 200);
+            var objectId = CacheId(1, 100, 200);
             var payload = new byte[] { 0xAA, 0xBB };
 
-            var putResult = store.TryPut(key, payload, ttlSeconds: 60);
+            var putResult = store.TryPut(objectId, payload, ttlMilliseconds: 60_000);
             Assert.True(putResult.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.Stored, putResult.Code);
 
-            var getResult = store.TryGet(key);
+            var getResult = store.TryGet(objectId);
             Assert.True(getResult.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.Hit, getResult.Code);
             Assert.Equal(payload, getResult.Entry!.ObjectBytes.ToArray());
 
-            Assert.True(store.TryInvalidate(key));
-            Assert.Equal(NnrpCacheResultCode.CacheMiss, store.TryGet(key).Code);
-            Assert.False(store.TryInvalidate(key));
+            Assert.True(store.TryInvalidate(objectId));
+            Assert.Equal(NnrpCacheResultCode.CacheMiss, store.TryGet(objectId).Code);
+            Assert.False(store.TryInvalidate(objectId));
         }
 
         [Fact]
         public void CacheStoreEnforcesMaxObjectSize()
         {
             var store = new NnrpCacheStore(maxObjectBytes: 10);
-            var key = new NnrpCacheKey(1, 1, 1);
+            var objectId = CacheId(1, 1, 1);
 
-            var result = store.TryPut(key, new byte[11], ttlSeconds: 60);
+            var result = store.TryPut(objectId, new byte[11], ttlMilliseconds: 60_000);
             Assert.False(result.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.LimitExceeded, result.Code);
             Assert.Contains("exceeds maximum", result.Message);
@@ -94,9 +94,9 @@ namespace Nnrp.Core.Tests
         {
             var store = new NnrpCacheStore(maxEntries: 2, maxObjectBytes: 1024);
 
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[1], 60).IsSuccess);
-            Assert.True(store.TryPut(new NnrpCacheKey(1, 2, 2), new byte[1], 60).IsSuccess);
-            Assert.False(store.TryPut(new NnrpCacheKey(1, 3, 3), new byte[1], 60).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 1, 1), new byte[1], 60_000).IsSuccess);
+            Assert.True(store.TryPut(CacheId(1, 2, 2), new byte[1], 60_000).IsSuccess);
+            Assert.False(store.TryPut(CacheId(1, 3, 3), new byte[1], 60_000).IsSuccess);
         }
 
         [Fact]
@@ -104,11 +104,11 @@ namespace Nnrp.Core.Tests
         {
             var store = new NnrpCacheStore(maxEntries: 10);
 
-            var key = new NnrpCacheKey(1, 1, 1);
-            Assert.True(store.TryPut(key, new byte[1], ttlSeconds: 3600).IsSuccess);
+            var objectId = CacheId(1, 1, 1);
+            Assert.True(store.TryPut(objectId, new byte[1], ttlMilliseconds: 3_600_000).IsSuccess);
 
             // Entry with a long TTL should be found.
-            var result = store.TryGet(key);
+            var result = store.TryGet(objectId);
             Assert.Equal(NnrpCacheResultCode.Hit, result.Code);
             Assert.Equal(1, store.Count);
 
@@ -117,26 +117,28 @@ namespace Nnrp.Core.Tests
             Assert.Equal(1, store.Count);
 
             // Invalidate and verify removal.
-            Assert.True(store.TryInvalidate(key));
+            Assert.True(store.TryInvalidate(objectId));
             Assert.Equal(0, store.Count);
-            Assert.Equal(NnrpCacheResultCode.CacheMiss, store.TryGet(key).Code);
+            Assert.Equal(NnrpCacheResultCode.CacheMiss, store.TryGet(objectId).Code);
         }
 
         [Fact]
         public void CacheResultFactoriesValidateAndProduceCorrectCodes()
         {
-            var key = new NnrpCacheKey(1, 2, 3);
-            var entry = new NnrpCacheEntry(key, new byte[4], 60);
+            var objectId = CacheId(1, 2, 3);
+            var entry = new NnrpCacheEntry(objectId, new byte[4], 60_000);
 
             var hit = NnrpCacheResult.Hit(entry);
             Assert.True(hit.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.Hit, hit.Code);
 
-            var miss = NnrpCacheResult.Miss(key);
+            var miss = NnrpCacheResult.Miss(objectId);
             Assert.False(miss.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.CacheMiss, miss.Code);
+            Assert.Equal(objectId, miss.ObjectId);
+            Assert.Contains("CameraBlock", miss.Message);
 
-            var limit = NnrpCacheResult.LimitExceeded("too big");
+            var limit = NnrpCacheResult.LimitExceeded(objectId, "too big");
             Assert.False(limit.IsSuccess);
             Assert.Equal(NnrpCacheResultCode.LimitExceeded, limit.Code);
 
@@ -511,8 +513,8 @@ namespace Nnrp.Core.Tests
         public void CacheStoreClearAndEvictExpired()
         {
             var store = new NnrpCacheStore(maxEntries: 10);
-            store.TryPut(new NnrpCacheKey(1, 1, 1), new byte[1], 3600);
-            store.TryPut(new NnrpCacheKey(1, 2, 2), new byte[1], 3600);
+            store.TryPut(CacheId(1, 1, 1), new byte[1], 3_600_000);
+            store.TryPut(CacheId(1, 2, 2), new byte[1], 3_600_000);
             Assert.Equal(2, store.Count);
 
             store.EvictExpired();
@@ -540,21 +542,60 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void CacheKeyInequalityAndHashCode()
+        public void CacheObjectIdInequalityAndHashCode()
         {
-            var key1 = new NnrpCacheKey(1, 0xAA, 0xBB);
-            var key2 = new NnrpCacheKey(2, 0xAA, 0xBB);
-            Assert.True(key1 != key2);
-            Assert.False(key1.Equals(null));
-            Assert.NotEqual(key1.GetHashCode(), key2.GetHashCode());
+            var objectId1 = CacheId(1, 0xAA, 0xBB);
+            var objectId2 = CacheId(2, 0xAA, 0xBB);
+            Assert.True(objectId1 != objectId2);
+            Assert.False(objectId1.Equals("not a cache object ID"));
+            Assert.NotEqual(objectId1.GetHashCode(), objectId2.GetHashCode());
         }
 
         [Fact]
         public void CacheEntryExpirationForFutureTtl()
         {
-            var key = new NnrpCacheKey(1, 1, 1);
-            var entry = new NnrpCacheEntry(key, new byte[1], ttlSeconds: 86400);
+            var objectId = CacheId(1, 1, 1);
+            var entry = new NnrpCacheEntry(objectId, new byte[1], ttlMilliseconds: 86_400_000);
             Assert.False(entry.IsExpired());
+        }
+
+        [Fact]
+        public void CacheStoreKeepsObjectKindsDistinctAndInvalidatesByScope()
+        {
+            var store = new NnrpCacheStore();
+            var camera = CacheId(7, 10, 20, CacheObjectKind.CameraBlock);
+            var codec = CacheId(7, 10, 20, CacheObjectKind.CodecAuxBlock);
+            var otherNamespace = CacheId(8, 10, 20, CacheObjectKind.CameraBlock);
+
+            Assert.True(store.TryPut(camera, new byte[] { 1 }, 60_000).IsSuccess);
+            Assert.True(store.TryPut(codec, new byte[] { 2 }, 60_000).IsSuccess);
+            Assert.True(store.TryPut(otherNamespace, new byte[] { 3 }, 60_000).IsSuccess);
+            Assert.Equal(3, store.Count);
+
+            var removed = store.InvalidateMatching(new CacheInvalidateMetadata(
+                CacheInvalidateScope.ObjectKind,
+                cacheNamespace: 7,
+                cacheKeyHigh: (uint)CacheObjectKind.CameraBlock,
+                cacheKeyLow: 0,
+                reasonCode: 1));
+
+            Assert.Equal(1, removed);
+            Assert.False(store.TryGet(camera).IsSuccess);
+            Assert.Equal(new byte[] { 2 }, store.TryGet(codec).Entry!.ObjectBytes.ToArray());
+            Assert.Equal(new byte[] { 3 }, store.TryGet(otherNamespace).Entry!.ObjectBytes.ToArray());
+
+            Assert.Equal(1, store.InvalidateMatching(new CacheInvalidateMetadata(
+                CacheInvalidateScope.Namespace, 7, 0, 0, 2)));
+            Assert.Equal(1, store.Count);
+            Assert.Equal(1, store.InvalidateMatching(new CacheInvalidateMetadata(
+                CacheInvalidateScope.WholeSession, 0, 0, 0, 3)));
+            Assert.Equal(0, store.Count);
+        }
+
+        [Fact]
+        public void Preview4PublicApiDoesNotExposeLegacyCacheKey()
+        {
+            Assert.Null(typeof(NnrpCacheStore).Assembly.GetType("Nnrp.Core.NnrpCacheKey"));
         }
 
         [Fact]
@@ -604,6 +645,15 @@ namespace Nnrp.Core.Tests
             Assert.True(CacheInvalidateMessage.TryParse(invalidateBytes, out var parsedInvalidate, out error));
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(invalidateMetadata.CacheNamespace, parsedInvalidate.Metadata.CacheNamespace);
+        }
+
+        private static NnrpCacheObjectId CacheId(
+            uint cacheNamespace,
+            ulong cacheKeyHigh,
+            ulong cacheKeyLow,
+            CacheObjectKind objectKind = CacheObjectKind.CameraBlock)
+        {
+            return new NnrpCacheObjectId(cacheNamespace, cacheKeyHigh, cacheKeyLow, objectKind);
         }
 
         [Fact]
