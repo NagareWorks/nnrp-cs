@@ -94,7 +94,7 @@
 - [ ] Add public API compile tests for every frozen client and server method.
 - [ ] Add unit tests for drop-reason reserved and private ranges.
 - [ ] Add unit tests for operation-to-terminal mapping and duplicate terminal sends.
-- [ ] Add native-backed integration tests against `1.0.0-preview.4.17` artifacts.
+- [ ] Add native-backed integration tests against `1.0.0-preview.4.19` artifacts with exact FFI ABI `4.1.1`.
   - [ ] Client control send and server event receive.
   - [ ] Server progress, partial, drop, and trace send and client event receive.
   - [ ] Object/cache send and receive in both directions.

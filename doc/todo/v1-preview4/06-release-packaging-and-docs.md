@@ -4,8 +4,8 @@
 
 - [ ] Set the C# package train to `1.0.0-preview.4`.
 - [ ] Default release workflow source to `main`.
-- [ ] Default Rust artifact input to the coordinated `1.0.0-preview.4.17` route/security release.
-- [ ] Validate that the requested Rust release tag and all required assets exist before packing.
+- [x] Default Rust artifact input to the coordinated `1.0.0-preview.4.19` release with exact FFI ABI `4.1.1`.
+- [x] Validate that the requested Rust release tag and all required assets exist before packing.
 - [ ] Reject release when any Preview4 TODO checkbox is open.
 
 ## NuGet Package Graph
@@ -36,7 +36,7 @@
 ## Release Workflow
 
 - [ ] Build and test managed assemblies before downloading release artifacts.
-- [ ] Download and verify every transport/platform artifact.
+- [x] Download and verify every transport/platform artifact.
 - [ ] Pack NuGet and Unity distributions once from the verified artifact tree.
 - [ ] Publish NuGet packages with trusted publishing.
 - [ ] Publish the Unity package and GitHub release assets from the same commit.

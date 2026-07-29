@@ -1,6 +1,8 @@
+using System.Threading.Tasks;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
 using Nnrp.Runtime;
+using Nnrp.Transport.Tcp;
 using Xunit;
 
 namespace Nnrp.NativeBridge.Tests
@@ -56,6 +58,30 @@ namespace Nnrp.NativeBridge.Tests
                 Assert.Equal(cacheDescriptor, snapshot.Descriptor);
                 Assert.Equal(cacheMetadata, snapshot.Metadata.ToArray());
             }
+        }
+
+        [LiveNativeArtifactFact]
+        public async Task TransportRuntimeShutdownInvalidatesLiveHandlesAndRestarts()
+        {
+            Assert.True(
+                LiveNativeArtifactFactAttribute.TryResolveArtifact(out var artifactPath, out var reason),
+                reason);
+
+            var provider = new NnrpNativeTcpTransportProvider(artifactPath);
+            var endpoint = NnrpEndpoint.Parse("nnrp://127.0.0.1:0");
+            var listener = await provider.ListenAsync(
+                new NnrpTransportListenOptions(
+                    endpoint,
+                    NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
+
+            NnrpNativeRuntimeEntrypoints.ShutdownPinnedTransportRuntimesForTesting();
+            Assert.Throws<NnrpNativeInvalidHandleException>(listener.Dispose);
+
+            await using var restarted = await provider.ListenAsync(
+                new NnrpTransportListenOptions(
+                    endpoint,
+                    NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
+            Assert.NotEqual(0, new System.Uri(restarted.BoundEndpoint.ToString()).Port);
         }
     }
 }

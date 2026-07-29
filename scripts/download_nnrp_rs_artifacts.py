@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import tempfile
@@ -48,9 +49,21 @@ def native_artifacts() -> list[NativeArtifact]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download nnrp-rs native FFI artifacts into C# package layout.")
-    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.4.15")
+    parser.add_argument("--version", required=True, help="nnrp-rs version without the leading v, for example 1.0.0-preview.4.19")
     parser.add_argument("--repo", default="NagareWorks/nnrp-rs")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--require-abi-version", required=True)
+    parser.add_argument(
+        "--transport",
+        action="append",
+        choices=("tcp", "quic", "ipc", "websocket"),
+        help="Download only the selected transport. Repeat for multiple transports.",
+    )
+    parser.add_argument(
+        "--rid",
+        action="append",
+        help="Download only the selected .NET runtime identifier. Repeat for multiple RIDs.",
+    )
     parser.add_argument("--include-headers", action="store_true")
     return parser.parse_args()
 
@@ -76,7 +89,13 @@ def download_artifact(repo: str, version: str, artifact: NativeArtifact, downloa
     return archive_path
 
 
-def extract_library(archive_path: Path, artifact: NativeArtifact, output_root: Path, include_headers: bool) -> Path:
+def extract_library(
+    archive_path: Path,
+    artifact: NativeArtifact,
+    output_root: Path,
+    include_headers: bool,
+    required_abi_version: str,
+) -> Path:
     rid_root = output_root / f"transport-{artifact.transport}" / artifact.rid
     rid_root.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
@@ -89,9 +108,23 @@ def extract_library(archive_path: Path, artifact: NativeArtifact, output_root: P
             shutil.copyfileobj(source, destination)
 
         manifest_name = "manifest.json"
-        if manifest_name in names:
-            with archive.open(manifest_name) as source, (rid_root / manifest_name).open("wb") as destination:
-                shutil.copyfileobj(source, destination)
+        if manifest_name not in names:
+            raise FileNotFoundError(f"{archive_path.name} does not contain {manifest_name}")
+
+        manifest = json.loads(archive.read(manifest_name))
+        if manifest.get("transport_scope") != artifact.transport:
+            raise ValueError(
+                f"{archive_path.name}: expected transport scope {artifact.transport}, "
+                f"found {manifest.get('transport_scope')!r}"
+            )
+        if manifest.get("abi_version") != required_abi_version:
+            raise ValueError(
+                f"{archive_path.name}: expected ABI {required_abi_version}, "
+                f"found {manifest.get('abi_version')!r}"
+            )
+        with (rid_root / manifest_name).open("w", encoding="utf-8", newline="\n") as destination:
+            json.dump(manifest, destination, indent=2, sort_keys=True)
+            destination.write("\n")
 
         if include_headers:
             for name in names:
@@ -113,9 +146,24 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="nnrp-rs-artifacts-") as temp_dir:
         download_dir = Path(temp_dir)
-        for artifact in native_artifacts():
+        selected = [
+            artifact
+            for artifact in native_artifacts()
+            if (not args.transport or artifact.transport in args.transport)
+            and (not args.rid or artifact.rid in args.rid)
+        ]
+        if not selected:
+            raise ValueError("transport/RID filters selected no nnrp-rs artifacts")
+
+        for artifact in selected:
             archive_path = download_artifact(args.repo, args.version, artifact, download_dir)
-            target_path = extract_library(archive_path, artifact, output_root, args.include_headers)
+            target_path = extract_library(
+                archive_path,
+                artifact,
+                output_root,
+                args.include_headers,
+                args.require_abi_version,
+            )
             print(f"{artifact.transport}/{artifact.rid}: {target_path}")
 
     return 0

@@ -24,11 +24,11 @@
 
 ## Rust Artifact Baseline
 
-- [ ] Pin the coordinated Rust artifact `1.0.0-preview.4.17` in build and release metadata.
-- [ ] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.17`.
+- [x] Pin the coordinated Rust artifact `1.0.0-preview.4.19` and exact FFI ABI `4.1.1` in build and release metadata.
+- [x] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.19`.
 - [x] Probe protocol version.
 - [x] Probe ABI version.
-  - [x] Require ABI `4.1.0` and bind the persistent server accept ticket entrypoints.
+  - [x] Require ABI `4.1.1` and bind the persistent server accept ticket and runtime shutdown entrypoints.
   - [x] Remove the legacy one-shot `nnrp_server_accept` binding.
 - [x] Probe enabled transport slots.
 - [x] Probe runtime-control support.

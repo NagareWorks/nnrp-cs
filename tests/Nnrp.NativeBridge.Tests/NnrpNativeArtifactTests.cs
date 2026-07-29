@@ -250,7 +250,8 @@ namespace Nnrp.NativeBridge.Tests
         [Fact]
         public void Preview4RoleEventInteropLayoutsMatchAbi4()
         {
-            Assert.Equal(8, IntPtr.Size);
+            Assert.True(IntPtr.Size == 4 || IntPtr.Size == 8);
+            var is64Bit = IntPtr.Size == 8;
 
             Assert.Equal(16, Marshal.SizeOf<NnrpFfiStatus>());
             Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpFfiStatus>(nameof(NnrpFfiStatus.StatusCode)));
@@ -264,9 +265,11 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Generation)));
             Assert.Equal(new IntPtr(20), Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Flags)));
 
-            Assert.Equal(16, Marshal.SizeOf<NnrpBufferView>());
+            Assert.Equal(is64Bit ? 16 : 8, Marshal.SizeOf<NnrpBufferView>());
             Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpBufferView>(nameof(NnrpBufferView.Pointer)));
-            Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpBufferView>(nameof(NnrpBufferView.Length)));
+            Assert.Equal(
+                new IntPtr(is64Bit ? 8 : 4),
+                Marshal.OffsetOf<NnrpBufferView>(nameof(NnrpBufferView.Length)));
 
             Assert.Equal(48, Marshal.SizeOf<NnrpFfiDiagnostic>());
             Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.Status)));
@@ -275,7 +278,7 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedOperationId)));
             Assert.Equal(new IntPtr(40), Marshal.OffsetOf<NnrpFfiDiagnostic>(nameof(NnrpFfiDiagnostic.RelatedFrameId)));
 
-            Assert.Equal(176, Marshal.SizeOf<NnrpEvent>());
+            Assert.Equal(is64Bit ? 176 : 168, Marshal.SizeOf<NnrpEvent>());
             Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Kind)));
             Assert.Equal(new IntPtr(4), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.MessageType)));
             Assert.Equal(new IntPtr(8), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Connection)));
@@ -284,7 +287,14 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(new IntPtr(80), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.FrameId)));
             Assert.Equal(new IntPtr(88), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.PayloadOwner)));
             Assert.Equal(new IntPtr(112), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Payload)));
-            Assert.Equal(new IntPtr(128), Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Diagnostic)));
+            Assert.Equal(
+                new IntPtr(is64Bit ? 128 : 120),
+                Marshal.OffsetOf<NnrpEvent>(nameof(NnrpEvent.Diagnostic)));
+
+            Assert.Equal(is64Bit ? 200 : 192, Marshal.SizeOf<NnrpPollResult>());
+            Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpPollResult>(nameof(NnrpPollResult.Status)));
+            Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpPollResult>(nameof(NnrpPollResult.HasEvent)));
+            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpPollResult>(nameof(NnrpPollResult.Event)));
 
             Assert.Equal(40, Marshal.SizeOf<NnrpRoleEventPollRequest>());
             Assert.Equal(new IntPtr(0), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Scope)));
@@ -292,6 +302,13 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(new IntPtr(28), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.TimeoutMilliseconds)));
             Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Flags)));
             Assert.Equal(new IntPtr(36), Marshal.OffsetOf<NnrpRoleEventPollRequest>(nameof(NnrpRoleEventPollRequest.Reserved0)));
+        }
+
+        [Fact]
+        public void NativeRuntimeShutdownHookIsIdempotentWithoutLoadedLibraries()
+        {
+            NnrpNativeRuntimeEntrypoints.ShutdownPinnedTransportRuntimesForTesting();
+            NnrpNativeRuntimeEntrypoints.ShutdownPinnedTransportRuntimesForTesting();
         }
 
         [Fact]
@@ -345,7 +362,7 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal("fake-path", result.ArtifactPath);
             Assert.Equal(NnrpNativeArtifact.ExpectedAbiMajor, result.AbiMajor);
             Assert.Equal(NnrpNativeArtifact.ExpectedAbiMinor, result.AbiMinor);
-            Assert.Equal(0, result.AbiPatch);
+            Assert.Equal(1, result.AbiPatch);
             Assert.Equal(1, result.ProtocolMajor);
             Assert.Equal(0, result.ProtocolWireFormat);
             Assert.Equal(1, result.SdkMajor);
@@ -395,7 +412,8 @@ namespace Nnrp.NativeBridge.Tests
         [Theory]
         [InlineData(3, 0, 0)]
         [InlineData(4, 0, 0)]
-        [InlineData(4, 1, 1)]
+        [InlineData(4, 1, 0)]
+        [InlineData(4, 1, 2)]
         public void ProbeRejectsAbiMismatch(ushort abiMajor, ushort abiMinor, ushort abiPatch)
         {
             var error = Assert.Throws<NnrpNativeArtifactException>(() =>
@@ -861,10 +879,34 @@ namespace Nnrp.NativeBridge.Tests
         [Fact]
         public void TransportAbiUsesOwnedHandleAdoptionLayout()
         {
+            var is64Bit = IntPtr.Size == 8;
+
+            Assert.Equal(40, Marshal.SizeOf<NnrpClientConnectRequest>());
             Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpClientConnectRequest>(nameof(NnrpClientConnectRequest.TransportConnection)));
+            Assert.Equal(40, Marshal.SizeOf<NnrpServerBindRequest>());
             Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpServerBindRequest>(nameof(NnrpServerBindRequest.TransportListener)));
-            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Config)));
-            Assert.Equal(new IntPtr(60), Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Reserved0)));
+            Assert.Equal(is64Bit ? 64 : 56, Marshal.SizeOf<NnrpTransportOpenRequest>());
+            Assert.Equal(
+                new IntPtr(is64Bit ? 24 : 16),
+                Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Config)));
+            Assert.Equal(
+                new IntPtr(is64Bit ? 48 : 40),
+                Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.MaxPacketBytes)));
+            Assert.Equal(
+                new IntPtr(is64Bit ? 60 : 52),
+                Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Reserved0)));
+            Assert.Equal(48, Marshal.SizeOf<NnrpSessionOpenRequest>());
+            Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.ProfileId)));
+            Assert.Equal(new IntPtr(36), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.SchemaId)));
+            Assert.Equal(is64Bit ? 56 : 48, Marshal.SizeOf<NnrpFfiSubmitRequest>());
+            Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpFfiSubmitRequest>(nameof(NnrpFfiSubmitRequest.OperationId)));
+            Assert.Equal(
+                new IntPtr(is64Bit ? 40 : 36),
+                Marshal.OffsetOf<NnrpFfiSubmitRequest>(nameof(NnrpFfiSubmitRequest.Payload)));
+            Assert.Equal(40, Marshal.SizeOf<NnrpServerAcceptBeginRequest>());
+            Assert.Equal(40, Marshal.SizeOf<NnrpServerAcceptClaimRequest>());
+            Assert.Equal(32, Marshal.SizeOf<NnrpServerAcceptWaitRequest>());
+            Assert.Equal(32, Marshal.SizeOf<NnrpServerAcceptResult>());
             Assert.Throws<ArgumentException>(() => new NnrpClientConnectRequest(
                 1,
                 1,
@@ -3303,7 +3345,7 @@ namespace Nnrp.NativeBridge.Tests
         private static NnrpRuntimeCapabilities MatchingCapabilities(
             ushort abiMajor = NnrpNativeArtifact.ExpectedAbiMajor,
             ushort abiMinor = NnrpNativeArtifact.ExpectedAbiMinor,
-            ushort abiPatch = 0,
+            ushort abiPatch = NnrpNativeArtifact.ExpectedAbiPatch,
             byte protocolMajor = 1,
             byte protocolWireFormat = 0,
             uint transportSlots = NnrpNativeArtifact.TransportSlotTcp,

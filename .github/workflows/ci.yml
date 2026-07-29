@@ -322,6 +322,181 @@ jobs:
       - name: Format check
         run: dotnet format Nnrp.sln --verify-no-changes --verbosity minimal
 
+  native-artifacts:
+    needs:
+      - changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Download coordinated nnrp-rs release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/download_nnrp_rs_artifacts.py
+          --version 1.0.0-preview.4.19
+          --require-abi-version 4.1.1
+          --output artifacts/native
+          --transport tcp
+          --transport quic
+          --rid win-x86
+          --rid win-x64
+          --rid linux-x64
+          --rid osx-x64
+          --rid osx-arm64
+
+      - name: Upload coordinated native artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: coordinated-native-artifacts
+          path: artifacts/native/
+          if-no-files-found: error
+          retention-days: 7
+
+  native-e2e:
+    needs:
+      - changes
+      - native-artifacts
+    if: needs.changes.outputs.docs_only != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      NNRP_RUN_LIVE_NATIVE_ARTIFACT_SMOKE: '1'
+      NNRP_RUN_LIVE_NATIVE_TRANSPORT_TESTS: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download coordinated native artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: coordinated-native-artifacts
+          path: artifacts/native
+
+      - name: Resolve live native artifact paths
+        shell: pwsh
+        run: |
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+          $arch = switch ($architecture) {
+            ([System.Runtime.InteropServices.Architecture]::X64) { "x64" }
+            ([System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" }
+            default { throw "Unsupported native E2E architecture: $architecture" }
+          }
+          if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
+            $rid = "win-$arch"
+            $library = "nnrp_ffi.dll"
+          } elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)) {
+            $rid = "osx-$arch"
+            $library = "libnnrp_ffi.dylib"
+          } else {
+            $rid = "linux-$arch"
+            $library = "libnnrp_ffi.so"
+          }
+
+          $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/$rid/$library").Path
+          $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/$rid/$library").Path
+          "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Run native bridge E2E
+        run: >-
+          dotnet test tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run TCP provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run QUIC provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj
+          --configuration Release --no-build
+
+  native-e2e-windows-x86:
+    needs:
+      - changes
+      - native-artifacts
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: windows-latest
+    env:
+      NNRP_RUN_LIVE_NATIVE_ARTIFACT_SMOKE: '1'
+      NNRP_RUN_LIVE_NATIVE_TRANSPORT_TESTS: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup x86 .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+          architecture: x86
+
+      - name: Download coordinated native artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: coordinated-native-artifacts
+          path: artifacts/native
+
+      - name: Resolve x86 live native artifact paths
+        shell: pwsh
+        run: |
+          $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/win-x86/nnrp_ffi.dll").Path
+          $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/win-x86/nnrp_ffi.dll").Path
+          "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore Nnrp.sln
+
+      - name: Build
+        run: dotnet build Nnrp.sln --configuration Release --no-restore
+
+      - name: Run x86 native bridge E2E
+        run: >-
+          dotnet test tests/Nnrp.NativeBridge.Tests/Nnrp.NativeBridge.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run x86 TCP provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Tcp.Tests/Nnrp.Transport.Tcp.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run x86 QUIC provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.Quic.Tests/Nnrp.Transport.Quic.Tests.csproj
+          --configuration Release --no-build
+
   conformance:
     needs:
       - changes
@@ -397,6 +572,8 @@ jobs:
       - changes
       - commit-policy
       - build-test
+      - native-e2e
+      - native-e2e-windows-x86
       - conformance
       - docs-only
     if: always()
@@ -426,6 +603,16 @@ jobs:
 
           if [ "${{ needs.build-test.result }}" != "success" ]; then
             echo "Build, test, format, or incremental coverage validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.native-e2e.result }}" != "success" ]; then
+            echo "Cross-platform native artifact E2E validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.native-e2e-windows-x86.result }}" != "success" ]; then
+            echo "Windows x86 native artifact E2E validation failed."
             exit 1
           fi
 

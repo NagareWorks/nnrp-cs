@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
+using Nnrp.Runtime;
 using Nnrp.Transport.Tcp;
 using Xunit;
 
@@ -99,6 +100,22 @@ namespace Nnrp.Transport.Tcp.Tests
                         new NnrpNativeRuntimeSessionOptions(70, 1, 2, 0x1001, 3));
                     var serverSession = await acceptTask;
                     Assert.Equal((ulong)71, serverSession.Handle.Handle.Id);
+
+                    clientSession.SendTraceContext(
+                        new TraceContextMetadata(101, 201, 301, 1, 0, 1),
+                        new byte[] { 11 });
+                    clientSession.SendTraceContext(
+                        new TraceContextMetadata(102, 202, 302, 2, 0, 2),
+                        new byte[] { 12, 13 });
+                    Thread.Sleep(50);
+
+                    var runtimeEvents = serverSession.AwaitEvents(
+                        maxEvents: 2,
+                        timeoutMilliseconds: 5_000);
+                    Assert.Collection(
+                        runtimeEvents,
+                        first => AssertTraceContextEvent(first, 1, 101, new byte[] { 11 }),
+                        second => AssertTraceContextEvent(second, 2, 102, new byte[] { 12, 13 }));
 
                     var clientClose = Task.Factory.StartNew(
                         clientSession.Close,
@@ -397,6 +414,21 @@ namespace Nnrp.Transport.Tcp.Tests
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
             return port;
+        }
+
+        private static void AssertTraceContextEvent(
+            NnrpNativeRuntimeEvent runtimeEvent,
+            uint expectedFrameId,
+            ulong expectedTraceId,
+            byte[] expectedBody)
+        {
+            Assert.Equal((uint)MessageType.TraceContext, runtimeEvent.MessageType);
+            Assert.Equal(expectedFrameId, runtimeEvent.FrameId);
+            var decoded = NnrpRuntimeControl.Decode(
+                MessageType.TraceContext,
+                runtimeEvent.PayloadSpan);
+            Assert.Equal(expectedTraceId, decoded.GetMetadata<TraceContextMetadata>().TraceId);
+            Assert.Equal(expectedBody, decoded.Tail.ToArray());
         }
 
         private static NnrpNativeRuntimeServerSession AcceptSession(

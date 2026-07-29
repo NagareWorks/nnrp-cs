@@ -2139,6 +2139,23 @@ namespace Nnrp.NativeBridge
             RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
                 ? StringComparer.OrdinalIgnoreCase
                 : StringComparer.Ordinal);
+        private static readonly Dictionary<string, RuntimeShutdownInvoker> PinnedRuntimeShutdowns =
+            new Dictionary<string, RuntimeShutdownInvoker>(
+                RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal);
+
+        [ExcludeFromCodeCoverage]
+        static NnrpNativeRuntimeEntrypoints()
+        {
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static void OnProcessExit(object sender, EventArgs eventArgs)
+        {
+            ShutdownPinnedTransportRuntimes();
+        }
 
         public NnrpNativeRuntimeEntrypoints(
             CurrentProtocolVersionInvoker currentProtocolVersion,
@@ -2457,8 +2474,12 @@ namespace Nnrp.NativeBridge
                     if (!PinnedLibraries.TryGetValue(resolvedPath, out handle))
                     {
                         handle = NativeDynamicLibrary.Load(resolvedPath);
-                        PinnedLibraries.Add(resolvedPath, handle);
                         loadedHere = true;
+                        var runtimeShutdown = Bind<RuntimeShutdownInvoker>(
+                            handle,
+                            "nnrp_transport_runtime_shutdown");
+                        PinnedLibraries.Add(resolvedPath, handle);
+                        PinnedRuntimeShutdowns.Add(resolvedPath, runtimeShutdown);
                     }
 
                     var runtimeCapabilities = Bind<NnrpNativeArtifact.RuntimeCapabilitiesInvoker>(handle, "nnrp_runtime_capabilities");
@@ -2573,7 +2594,36 @@ namespace Nnrp.NativeBridge
             }
 
             PinnedLibraries.Remove(path);
+            PinnedRuntimeShutdowns.Remove(path);
             NativeDynamicLibrary.Free(handle);
+        }
+
+        [ExcludeFromCodeCoverage]
+        private static void ShutdownPinnedTransportRuntimes()
+        {
+            RuntimeShutdownInvoker[] shutdowns;
+            lock (PinnedLibraryGate)
+            {
+                shutdowns = new RuntimeShutdownInvoker[PinnedRuntimeShutdowns.Count];
+                PinnedRuntimeShutdowns.Values.CopyTo(shutdowns, 0);
+            }
+
+            foreach (var shutdown in shutdowns)
+            {
+                try
+                {
+                    shutdown();
+                }
+                catch
+                {
+                    // Process teardown must continue even if one native module cannot stop cleanly.
+                }
+            }
+        }
+
+        internal static void ShutdownPinnedTransportRuntimesForTesting()
+        {
+            ShutdownPinnedTransportRuntimes();
         }
 
         [ExcludeFromCodeCoverage]
@@ -2586,6 +2636,9 @@ namespace Nnrp.NativeBridge
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpProtocolVersion CurrentProtocolVersionInvoker();
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate NnrpFfiStatus RuntimeShutdownInvoker();
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ConnectionBootstrapInvoker(NnrpConnectionBootstrap request, out NnrpHandle connection);
@@ -4903,7 +4956,7 @@ namespace Nnrp.NativeBridge
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
         public const ushort ExpectedAbiMajor = 4;
         public const ushort ExpectedAbiMinor = 1;
-        public const ushort ExpectedAbiPatch = 0;
+        public const ushort ExpectedAbiPatch = 1;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;
         public const uint TransportSlotQuic = 0x00000001;
