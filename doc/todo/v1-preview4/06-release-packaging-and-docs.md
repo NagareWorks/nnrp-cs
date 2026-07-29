@@ -2,34 +2,34 @@
 
 ## Version And Release Inputs
 
-- [ ] Set the C# package train to `1.0.0-preview.4`.
-- [ ] Default release workflow source to `main`.
+- [x] Set the C# package train to `1.0.0-preview.4`.
+- [x] Default release workflow source to `main`.
 - [x] Default Rust artifact input to the coordinated `1.0.0-preview.4.19` release with exact FFI ABI `4.1.1`.
 - [x] Validate that the requested Rust release tag and all required assets exist before packing.
 - [ ] Reject release when any Preview4 TODO checkbox is open.
 
 ## NuGet Package Graph
 
-- [ ] Pack `Nnrp.Core`.
-- [ ] Pack `Nnrp.NativeBridge`.
+- [x] Pack `Nnrp.Core`.
+- [x] Pack `Nnrp.NativeBridge`.
 - [ ] Pack `Nnrp.Client` with production client orchestration and no transport artifact.
 - [ ] Pack `Nnrp.Server` with production server orchestration and no transport artifact.
-- [ ] Pack `Nnrp.Transport.Tcp` with only TCP provider code and artifacts.
-- [ ] Pack `Nnrp.Transport.Quic` with only QUIC provider code and artifacts.
-- [ ] Pack `Nnrp.Transport.Ipc` with only IPC provider code and artifacts.
-- [ ] Pack `Nnrp.Transport.WebSocket` with only WebSocket provider code and artifacts.
+- [x] Pack `Nnrp.Transport.Tcp` with only TCP provider code and artifacts.
+- [x] Pack `Nnrp.Transport.Quic` with only QUIC provider code and artifacts.
+- [x] Pack `Nnrp.Transport.Ipc` with only IPC provider code and artifacts.
+- [x] Pack `Nnrp.Transport.WebSocket` with only WebSocket provider code and artifacts.
 - [ ] Validate role-first dependency direction in every generated nuspec.
 - [ ] Inspect every nupkg for README, symbols, license, repository metadata, tags, and deterministic file order.
-- [ ] Inspect every transport nupkg against the complete Windows, macOS, Linux, Android, iOS, and iOS Simulator RID matrix.
+- [x] Inspect every transport nupkg against the complete Windows, macOS, Linux, Android, iOS, and iOS Simulator RID matrix.
 - [ ] Install every package set into clean client and server smoke projects.
 
 ## Unity Package
 
 - [ ] Update `com.nnrp.client` to the Preview4 package version.
-- [ ] Include managed client, core, NativeBridge, and all four provider assemblies.
-- [ ] Include every supported transport-scoped native plugin.
-- [ ] Exclude server assemblies and NuGet runtime paths.
-- [ ] Generate deterministic `.meta` files in CI.
+- [x] Include managed client, core, NativeBridge, and all four provider assemblies.
+- [x] Include every supported transport-scoped native plugin.
+- [x] Exclude server assemblies and NuGet runtime paths.
+- [x] Generate deterministic `.meta` files in CI.
 - [ ] Inspect the generated UPM tarball and zip before publication.
 - [ ] Import the generated package in a Unity validation project.
 

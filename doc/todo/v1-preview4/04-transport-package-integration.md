@@ -38,7 +38,7 @@
   - [x] Add `RouteUnresolved` and `SecurityUnsatisfied` rejection reasons.
   - [x] Enforce TCP TLS, QUIC TLS, and WSS for `nnrps://`.
   - [x] Reject IPC, plain TCP, and WS for `nnrps://`.
-- [ ] Replace the slot/priority-only provider contract.
+- [x] Replace the slot/priority-only provider contract.
   - [x] Expose the validated provider descriptor from `INnrpNativeTransportProvider`.
   - [x] Add `NnrpTransportConnectOptions`.
   - [x] Add `NnrpTransportListenOptions`.
@@ -48,7 +48,7 @@
   - [x] Expose `ConnectAsync` from each provider.
   - [x] Expose `ListenAsync` from each provider.
   - [x] Expose `ProbeAsync` from each provider.
-  - [ ] Reject metadata that disagrees with the artifact manifest or transport slot.
+  - [x] Reject metadata that disagrees with the artifact manifest or transport slot.
 
 ## Provider Registration And Selection
 
@@ -97,21 +97,21 @@
 ## TCP Package
 
 - [x] Update `Nnrp.Transport.Tcp` to the frozen provider contract.
-- [ ] Validate TCP provider metadata against the TCP artifact manifest.
-- [ ] Keep TCP connect, listen, and probe calls inside the TCP package.
-- [ ] Package only TCP native artifacts for every supported RID.
+- [x] Validate TCP provider metadata against the TCP artifact manifest.
+- [x] Keep the concrete TCP provider descriptor and TCP artifact ownership in the TCP package; use the shared coarse FFI implementation in `Nnrp.NativeBridge`.
+- [x] Package only TCP native artifacts for every supported RID.
 - [x] Add TCP client/server loopback integration tests.
-- [ ] Add TCP NuGet content inspection tests.
+- [x] Add TCP NuGet content inspection tests.
 
 ## QUIC Package
 
 - [x] Update `Nnrp.Transport.Quic` to the frozen provider contract.
-- [ ] Validate QUIC provider metadata against the QUIC artifact manifest.
-- [ ] Keep QUIC connect, listen, and probe calls inside the QUIC package.
+- [x] Validate QUIC provider metadata against the QUIC artifact manifest.
+- [x] Keep the concrete QUIC provider descriptor and QUIC artifact ownership in the QUIC package; use the shared coarse FFI implementation in `Nnrp.NativeBridge`.
 - [x] Require client/server security for secure QUIC endpoints.
-- [ ] Package only QUIC native artifacts for every supported RID.
+- [x] Package only QUIC native artifacts for every supported RID.
 - [x] Add QUIC client/server loopback integration tests.
-- [ ] Add QUIC NuGet content inspection tests.
+- [x] Add QUIC NuGet content inspection tests.
 
 ## IPC Package
 
@@ -129,25 +129,25 @@
 
 ## WebSocket Package
 
-- [ ] Add the `Nnrp.Transport.WebSocket` project and NuGet package.
-- [ ] Add `NnrpNativeWebSocketTransportProvider` and `NnrpNativeWebSocketRuntime`.
-- [ ] Validate WebSocket provider metadata against the WebSocket artifact manifest.
-- [ ] Parse `ws://` and `wss://` provider endpoints.
-- [ ] Require client/server security for `wss://`.
-- [ ] Keep WebSocket connect, listen, and probe calls inside the WebSocket package.
+- [x] Add the `Nnrp.Transport.WebSocket` project and NuGet package.
+- [x] Add `NnrpNativeWebSocketTransportProvider` and `NnrpNativeWebSocketRuntime`.
+- [x] Validate WebSocket provider metadata against the WebSocket artifact manifest.
+- [x] Parse `ws://` and `wss://` provider endpoints.
+- [x] Require client/server security for `wss://`.
+- [x] Keep the concrete WebSocket provider descriptor and WebSocket artifact ownership in the WebSocket package; use the shared coarse FFI implementation in `Nnrp.NativeBridge`.
 - [x] Add `NnrpWebSocketFrameCodec.Encode`.
 - [x] Add `NnrpWebSocketFrameCodec.Decode`.
 - [x] Add `NnrpWebSocketFrameCodec.DecodeBatch`.
-- [ ] Reject text messages, truncated frames, length mismatches, and trailing bytes.
-- [ ] Package only WebSocket native artifacts for every supported RID.
-- [ ] Add `ws://` and `wss://` client/server loopback integration tests.
-- [ ] Add WebSocket NuGet content inspection tests.
+- [x] Reject text messages, truncated frames, length mismatches, and trailing bytes.
+- [x] Package only WebSocket native artifacts for every supported RID.
+- [x] Add `ws://` and `wss://` client/server loopback integration tests.
+- [x] Add WebSocket NuGet content inspection tests.
 
 ## Unity Packaging
 
-- [ ] Include TCP, QUIC, IPC, and WebSocket managed provider assemblies.
-- [ ] Map every downloaded transport artifact to its transport-scoped Unity plugin path.
-- [ ] Generate explicit plugin import settings for Windows, macOS, Linux, Android, iOS, and iOS Simulator RIDs present in the Rust release.
-- [ ] Reject duplicate plugin filenames and cross-transport artifact placement.
-- [ ] Generate deterministic `.meta` files from CI.
-- [ ] Add UPM inspection tests for all four transport directories and every declared platform mapping.
+- [x] Include TCP, QUIC, IPC, and WebSocket managed provider assemblies.
+- [x] Map every downloaded transport artifact to its transport-scoped Unity plugin path.
+- [x] Generate explicit plugin import settings for Windows, macOS, Linux, Android, iOS, and iOS Simulator RIDs present in the Rust release.
+- [x] Reject duplicate plugin filenames and cross-transport artifact placement.
+- [x] Generate deterministic `.meta` files from CI.
+- [x] Add UPM inspection tests for all four transport directories and every declared platform mapping.

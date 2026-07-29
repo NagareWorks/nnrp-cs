@@ -70,7 +70,7 @@
 
 ## CI Gates
 
-- [ ] Run adapter conformance as an independent job.
+- [x] Run adapter conformance as an independent job.
 - [ ] Run wire plan generation and dry-run as an independent job.
 - [ ] Run the complete three-mode, four-transport live matrix against Preview4 artifacts.
 - [ ] Validate every result report through `nnrp-conformance-runner`.

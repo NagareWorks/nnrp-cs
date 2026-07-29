@@ -48,6 +48,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "ipc",
                 "native transport",
             ],
+            "src/Nnrp.Transport.WebSocket/Nnrp.Transport.WebSocket.csproj": [
+                "websocket",
+                "native transport",
+            ],
             "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": [
                 "rust-backed",
                 "preview4",
@@ -83,6 +87,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "src/Nnrp.Core/Nnrp.Core.csproj",
                 "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
             },
+            "src/Nnrp.Transport.WebSocket/Nnrp.Transport.WebSocket.csproj": {
+                "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+            },
             "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj": {"src/Nnrp.Core/Nnrp.Core.csproj"},
             "tools/Nnrp.BenchmarkAdapter/Nnrp.BenchmarkAdapter.csproj": {
                 "src/Nnrp.Core/Nnrp.Core.csproj",
@@ -109,6 +117,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
         self.assertNotIn("..\\Nnrp.Transport.Tcp\\Nnrp.Transport.Tcp.csproj", project_text)
         self.assertNotIn("..\\Nnrp.Transport.Quic\\Nnrp.Transport.Quic.csproj", project_text)
         self.assertNotIn("..\\Nnrp.Transport.Ipc\\Nnrp.Transport.Ipc.csproj", project_text)
+        self.assertNotIn("..\\Nnrp.Transport.WebSocket\\Nnrp.Transport.WebSocket.csproj", project_text)
         self.assertNotIn("nnrp_quic_bridge", project_text)
 
         source_root = REPO_ROOT / "src" / "Nnrp.NativeBridge"
@@ -122,6 +131,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
         self.assertNotIn("using Nnrp.Transport.Tcp;", source_text)
         self.assertNotIn("using Nnrp.Transport.Quic;", source_text)
         self.assertNotIn("using Nnrp.Transport.Ipc;", source_text)
+        self.assertNotIn("using Nnrp.Transport.WebSocket;", source_text)
         self.assertNotIn("NnrpAutoTransport", source_text)
         self.assertNotIn("NnrpQuicClient", source_text)
         self.assertNotIn("NnrpNativeQuicClient", source_text)
@@ -181,12 +191,14 @@ class UpmPackageMetadataTests(unittest.TestCase):
             tcp_path = packaging.transport_scoped_plugin_path("Tcp", relative_output)
             quic_path = packaging.transport_scoped_plugin_path("Quic", relative_output)
             ipc_path = packaging.transport_scoped_plugin_path("Ipc", relative_output)
+            websocket_path = packaging.transport_scoped_plugin_path("WebSocket", relative_output)
 
             self.assertNotEqual(tcp_path.name, quic_path.name, rid)
-            self.assertEqual(3, len({tcp_path.name, quic_path.name, ipc_path.name}), rid)
+            self.assertEqual(4, len({tcp_path.name, quic_path.name, ipc_path.name, websocket_path.name}), rid)
             self.assertIn("_tcp", tcp_path.name)
             self.assertIn("_quic", quic_path.name)
             self.assertIn("_ipc", ipc_path.name)
+            self.assertIn("_websocket", websocket_path.name)
 
     def test_emit_meta_files_covers_folders_managed_and_native_plugins(self) -> None:
         temp_root = Path(tempfile.mkdtemp(prefix="nnrp-upm-meta-test-"))
@@ -250,6 +262,10 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 "Runtime/Plugins/Transports/Ipc/Windows.meta",
                 "Runtime/Plugins/Transports/Ipc/Windows/x86_64.meta",
                 "Runtime/Plugins/Transports/Ipc/Windows/x86_64/nnrp_ffi_ipc.dll.meta",
+                "Runtime/Plugins/Transports/WebSocket.meta",
+                "Runtime/Plugins/Transports/WebSocket/Windows.meta",
+                "Runtime/Plugins/Transports/WebSocket/Windows/x86_64.meta",
+                "Runtime/Plugins/Transports/WebSocket/Windows/x86_64/nnrp_ffi_websocket.dll.meta",
             }
             self.assertTrue(expected_meta_paths.issubset(metadata_snapshot))
 
@@ -269,6 +285,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
             ios_arm_meta = metadata_snapshot["Runtime/Plugins/Transports/Tcp/iOS/arm64/libnnrp_ffi_tcp.a.meta"]
             quic_windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Quic/Windows/x86_64/nnrp_ffi_quic.dll.meta"]
             ipc_windows_meta = metadata_snapshot["Runtime/Plugins/Transports/Ipc/Windows/x86_64/nnrp_ffi_ipc.dll.meta"]
+            websocket_windows_meta = metadata_snapshot["Runtime/Plugins/Transports/WebSocket/Windows/x86_64/nnrp_ffi_websocket.dll.meta"]
 
             self.assertIn("Windows: Windows", windows_meta)
             self.assertIn("CPU: x86_64", windows_meta)
@@ -277,6 +294,8 @@ class UpmPackageMetadataTests(unittest.TestCase):
             self.assertIn("Editor: Editor", quic_windows_meta)
             self.assertIn("Windows: Windows", ipc_windows_meta)
             self.assertIn("CPU: x86_64", ipc_windows_meta)
+            self.assertIn("Windows: Windows", websocket_windows_meta)
+            self.assertIn("CPU: x86_64", websocket_windows_meta)
             self.assertIn("Linux: Linux", linux_meta)
             self.assertIn("CPU: x86_64", linux_meta)
             self.assertIn("OSX: OSX", mac_arm_meta)

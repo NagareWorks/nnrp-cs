@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Nnrp.Runtime;
 using AdapterProgram = Nnrp.ConformanceAdapter.Program;
 using Xunit;
 
@@ -10,12 +11,80 @@ namespace Nnrp.Core.Tests
     public sealed class ConformanceAdapterTests
     {
         [Fact]
+        public void BuildResultsJsonExecutesEveryPreview4SuiteCase()
+        {
+            var reportJson = AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview4",
+                  "suite_version": "0.1.0",
+                  "implementation_name": "nnrp-cs",
+                  "artifacts": {
+                    "results_path": "artifacts/adapter-results.json",
+                    "evidence_dir": "artifacts/evidence"
+                  },
+                  "cases": [
+                    { "id": "l0.header.fixed_shape.golden", "layer": "L0", "status": "mandatory", "feature": "header", "required_capabilities": [], "description": "Header." },
+                    { "id": "l1.control.cancel-abort", "layer": "L1", "status": "mandatory", "feature": "control.cancel_abort", "required_capabilities": ["control.cancel_abort"], "description": "Cancel." },
+                    { "id": "l1.control.priority-deadline", "layer": "L1", "status": "mandatory", "feature": "control.priority_deadline", "required_capabilities": ["control.priority_update"], "description": "Scheduling." },
+                    { "id": "l1.control.progress-backpressure", "layer": "L1", "status": "mandatory", "feature": "control.progress_backpressure", "required_capabilities": ["control.progress_partial"], "description": "Progress." },
+                    { "id": "l1.control.capability-costs", "layer": "L1", "status": "mandatory", "feature": "control.capability_costs", "required_capabilities": ["control.capability_costs"], "description": "Costs." },
+                    { "id": "l1.object.lifecycle", "layer": "L1", "status": "mandatory", "feature": "object.lifecycle", "required_capabilities": ["object.lifecycle"], "description": "Objects." },
+                    { "id": "l1.object.delta", "layer": "L1", "status": "mandatory", "feature": "object.delta", "required_capabilities": ["object.delta"], "description": "Deltas." },
+                    { "id": "l1.control.route-execution-hint", "layer": "L1", "status": "optional", "feature": "control.route_execution_hint", "required_capabilities": ["control.route_execution_hint"], "description": "Routes." },
+                    { "id": "l1.control.cache-reference", "layer": "L1", "status": "optional", "feature": "cache.reference", "required_capabilities": ["cache.reference"], "description": "Cache." },
+                    { "id": "l1.control.degrade-budget", "layer": "L1", "status": "optional", "feature": "control.degrade_budget", "required_capabilities": ["control.degrade_profile"], "description": "Budget." },
+                    { "id": "l1.control.supersede", "layer": "L1", "status": "experimental", "feature": "control.supersede", "required_capabilities": ["control.supersede"], "description": "Supersede." },
+                    { "id": "l1.control.recoverable-error", "layer": "L1", "status": "experimental", "feature": "control.recoverable_error", "required_capabilities": ["control.recoverable_error"], "description": "Recoverable error." }
+                  ]
+                }
+                """);
+
+            using var document = JsonDocument.Parse(reportJson);
+            var root = document.RootElement;
+            Assert.Equal("nnrp-1-preview4", root.GetProperty("protocol_version").GetString());
+            var results = root.GetProperty("results").EnumerateArray().ToArray();
+            Assert.Equal(12, results.Length);
+            Assert.All(results, result => Assert.Equal("pass", result.GetProperty("outcome").GetString()));
+        }
+
+        [Fact]
+        public void Preview4CapabilityManifestMatchesPublicCapabilityCatalog()
+        {
+            var repositoryRoot = FindRepositoryRoot();
+            using var document = JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(repositoryRoot, "conformance", "nnrp-1-preview4.capabilities.json")));
+            var root = document.RootElement;
+
+            Assert.Equal("nnrp-1-preview4", root.GetProperty("protocol_version").GetString());
+            var supports = root.GetProperty("supports")
+                .EnumerateArray()
+                .Select(item => item.GetString() ?? string.Empty)
+                .ToArray();
+            Assert.Equal(NnrpPreview4CapabilityTokens.AllCapabilities, supports);
+        }
+
+        [Fact]
+        public void BuildResultsJsonRejectsOldPreviewPlans()
+        {
+            var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview3",
+                  "cases": []
+                }
+                """));
+
+            Assert.Contains("nnrp-1-preview4", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void BuildResultsJsonExecutesSupportedCases()
         {
             var reportJson = AdapterProgram.BuildResultsJson(
                 $$"""
                 {
-                  "protocol_version": "nnrp-1-preview3",
+                  "protocol_version": "nnrp-1-preview4",
                   "cases": [
                     { "id": "l0.header.roundtrip.basic" },
                     { "id": "l0.header.fixed_shape.golden" },
@@ -76,7 +145,7 @@ namespace Nnrp.Core.Tests
 
             using var document = JsonDocument.Parse(reportJson);
             var root = document.RootElement;
-            Assert.Equal("nnrp-1-preview3", root.GetProperty("protocol_version").GetString());
+            Assert.Equal("nnrp-1-preview4", root.GetProperty("protocol_version").GetString());
             Assert.Equal("nnrp-cs", root.GetProperty("implementation_name").GetString());
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
@@ -98,8 +167,8 @@ namespace Nnrp.Core.Tests
             var reportJson = AdapterProgram.BuildResultsJson(
                 """
                 {
-                  "protocol_version": "nnrp-1-preview3",
-                  "suite_version": "1.0.0-preview.3",
+                  "protocol_version": "nnrp-1-preview4",
+                  "suite_version": "0.1.0",
                   "implementation_name": "nnrp-cs",
                   "artifacts": {
                     "results_path": "artifacts/adapter-results.json",
@@ -244,7 +313,7 @@ namespace Nnrp.Core.Tests
                     planPath,
                     """
                     {
-                      "protocol_version": "nnrp-1-preview3",
+                      "protocol_version": "nnrp-1-preview4",
                       "cases": [
                         { "id": "l1.handshake.basic" }
                       ]
@@ -287,8 +356,8 @@ namespace Nnrp.Core.Tests
                     planPath,
                     """
                     {
-                      "protocol_version": "nnrp-1-preview3",
-                      "suite_version": "1.0.0-preview.3",
+                      "protocol_version": "nnrp-1-preview4",
+                      "suite_version": "0.1.0",
                       "implementation_name": "nnrp-cs",
                       "artifacts": {
                         "results_path": "artifacts/adapter-results.json",
@@ -411,7 +480,7 @@ namespace Nnrp.Core.Tests
                     planPath,
                     """
                     {
-                      "protocol_version": "nnrp-1-preview3",
+                      "protocol_version": "nnrp-1-preview4",
                       "cases": [
                         { "id": "l1.handshake.basic" }
                       ]
@@ -461,11 +530,11 @@ namespace Nnrp.Core.Tests
 
         [Theory]
         [InlineData("[]", "JSON object")]
-        [InlineData("{\"protocol_version\":\"nnrp-1\"}", "must be an array")]
-        [InlineData("{\"protocol_version\":\"nnrp-1\",\"cases\":[\"bad\"]}", "cases must be JSON objects")]
+        [InlineData("{\"protocol_version\":\"nnrp-1-preview4\"}", "must be an array")]
+        [InlineData("{\"protocol_version\":\"nnrp-1-preview4\",\"cases\":[\"bad\"]}", "cases must be JSON objects")]
         [InlineData("{\"protocol_version\":1,\"cases\":[]}", "protocol_version")]
         [InlineData("{\"protocol_version\":\"\",\"cases\":[]}", "protocol_version")]
-        [InlineData("{\"protocol_version\":\"nnrp-1\",\"cases\":[{}]}", "id")]
+        [InlineData("{\"protocol_version\":\"nnrp-1-preview4\",\"cases\":[{}]}", "id")]
         public void BuildResultsJsonRejectsInvalidPlanShapes(string rawPlan, string expectedMessageFragment)
         {
             var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(rawPlan));
@@ -485,8 +554,8 @@ namespace Nnrp.Core.Tests
             var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(
                 $$"""
                 {
-                  "protocol_version": "nnrp-1-preview3",
-                  "suite_version": "1.0.0-preview.3",
+                  "protocol_version": "nnrp-1-preview4",
+                  "suite_version": "0.1.0",
                   "implementation_name": "nnrp-cs",
                   "artifacts": {
                     "results_path": "artifacts/adapter-results.json",
@@ -508,10 +577,23 @@ namespace Nnrp.Core.Tests
             Assert.Contains(expectedMessageFragment, error.Message, StringComparison.Ordinal);
         }
 
-        private static string ProtocolVersion => string.Concat("nnrp-1-", "pre", "view3");
+        private static string ProtocolVersion => string.Concat("nnrp-1-", "pre", "view4");
 
-        private static string SuiteVersion => string.Concat("1.0.0-", "pre", "view.3");
+        private static string SuiteVersion => "0.1.0";
 
         private static string ProtocolSuffix => string.Concat("pre", "view3");
+
+        private static string FindRepositoryRoot()
+        {
+            for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "Nnrp.sln")))
+                {
+                    return directory.FullName;
+                }
+            }
+
+            throw new InvalidOperationException("Could not locate the nnrp-cs repository root.");
+        }
     }
 }

@@ -6,11 +6,32 @@
     <PackageId>Nnrp.Transport.WebSocket</PackageId>
     <Description>WebSocket native transport provider, binary framing, and transport-scoped artifacts for NNRP Preview4 hosts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NnrpWebSocketTransportArtifactRoot Condition="'$(NnrpWebSocketTransportArtifactRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\native\transport-websocket</NnrpWebSocketTransportArtifactRoot>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\win-x86\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-x86/native/nnrp/transport/websocket/nnrp_ffi_websocket.dll" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\win-x86\nnrp_ffi.dll')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\win-x64\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-x64/native/nnrp/transport/websocket/nnrp_ffi_websocket.dll" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\win-x64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\win-arm64\nnrp_ffi.dll" Pack="true" PackagePath="runtimes/win-arm64/native/nnrp/transport/websocket/nnrp_ffi_websocket.dll" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\win-arm64\nnrp_ffi.dll')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib" Pack="true" PackagePath="runtimes/osx-x64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.dylib" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\osx-x64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib" Pack="true" PackagePath="runtimes/osx-arm64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.dylib" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\osx-arm64\libnnrp_ffi.dylib')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\linux-x86\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-x86/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\linux-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\linux-x64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-x64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\linux-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\linux-arm\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-arm/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\linux-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/linux-arm64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\linux-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\android-x86\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-x86/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\android-x86\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\android-x64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-x64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\android-x64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\android-arm\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-arm/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\android-arm\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\android-arm64\libnnrp_ffi.so" Pack="true" PackagePath="runtimes/android-arm64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.so" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\android-arm64\libnnrp_ffi.so')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/ios-arm64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.a" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\ios-arm64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/iossimulator-x64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.a" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\iossimulator-x64\libnnrp_ffi.a')" />
+    <None Include="$(NnrpWebSocketTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a" Pack="true" PackagePath="runtimes/iossimulator-arm64/native/nnrp/transport/websocket/libnnrp_ffi_websocket.a" Visible="false" Condition="Exists('$(NnrpWebSocketTransportArtifactRoot)\iossimulator-arm64\libnnrp_ffi.a')" />
   </ItemGroup>
 
 </Project>

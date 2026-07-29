@@ -16,6 +16,7 @@ MANAGED_ASSEMBLIES = [
     "Nnrp.Transport.Tcp",
     "Nnrp.Transport.Quic",
     "Nnrp.Transport.Ipc",
+    "Nnrp.Transport.WebSocket",
     "Nnrp.NativeBridge",
 ]
 
@@ -23,6 +24,7 @@ NATIVE_TRANSPORTS = {
     "tcp": "Tcp",
     "quic": "Quic",
     "ipc": "Ipc",
+    "websocket": "WebSocket",
 }
 
 NATIVE_LAYOUT = {

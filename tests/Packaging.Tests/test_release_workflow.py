@@ -27,6 +27,19 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("python scripts/verify_nuget_packages.py", self.workflow)
         self.assertIn("--packages artifacts/packages", self.workflow)
 
+    def test_release_bundles_include_websocket_provider(self):
+        self.assertEqual(self.workflow.count("'Nnrp.Transport.WebSocket'"), 2)
+
+    def test_repository_tools_are_not_published_as_nuget_packages(self):
+        for project in (
+            "tools/Nnrp.BenchmarkAdapter/Nnrp.BenchmarkAdapter.csproj",
+            "tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj",
+            "tools/Nnrp.WireConformance/Nnrp.WireConformance.csproj",
+        ):
+            with self.subTest(project=project):
+                project_text = (ROOT / project).read_text(encoding="utf-8")
+                self.assertIn("<IsPackable>false</IsPackable>", project_text)
+
 
 if __name__ == "__main__":
     unittest.main()

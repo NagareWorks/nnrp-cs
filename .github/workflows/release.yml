@@ -270,10 +270,10 @@ jobs:
 
           Compress-PackageBundle `
             -Name 'nnrp-cs-client-nuget' `
-            -PackageIds @('Nnrp.Core', 'Nnrp.Client', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.NativeBridge')
+            -PackageIds @('Nnrp.Core', 'Nnrp.Client', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.Transport.WebSocket', 'Nnrp.NativeBridge')
           Compress-PackageBundle `
             -Name 'nnrp-cs-server-nuget' `
-            -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.NativeBridge')
+            -PackageIds @('Nnrp.Core', 'Nnrp.Server', 'Nnrp.Transport.Tcp', 'Nnrp.Transport.Quic', 'Nnrp.Transport.Ipc', 'Nnrp.Transport.WebSocket', 'Nnrp.NativeBridge')
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v6

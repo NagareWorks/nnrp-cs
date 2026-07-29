@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Core;
+using Nnrp.Runtime;
 
 namespace Nnrp.ConformanceAdapter;
 
@@ -9,6 +10,7 @@ public static class Program
 {
     private const string ResultsSchemaUrl = "https://raw.githubusercontent.com/NagareWorks/nnrp-conformance/main/schemas/adapter-case-results.schema.json";
     private const string DefaultImplementationName = "nnrp-cs";
+    private const string SupportedProtocolVersion = "nnrp-1-preview4";
     private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private static int Main(string[] args)
@@ -127,6 +129,11 @@ public static class Program
         }
 
         var protocolVersion = GetRequiredString(root, "protocol_version");
+        if (!string.Equals(protocolVersion, SupportedProtocolVersion, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Adapter execution plan protocol_version must be '{SupportedProtocolVersion}'.");
+        }
         var isFullSuitePlan = root.TryGetProperty("suite_version", out _)
             || root.TryGetProperty("implementation_name", out _)
             || root.TryGetProperty("artifacts", out _);
@@ -215,6 +222,39 @@ public static class Program
                 case "l0.header.fixed_shape.golden":
                     RunHeaderFixedShapeGolden();
                     return Pass(caseId, "Common header fixed-shape golden vector matched.");
+                case "l1.control.cancel-abort":
+                    RunPreview4CancelAbort();
+                    return Pass(caseId, "Cancel, abort, trace context, and typed drop reason metadata round-tripped.");
+                case "l1.control.priority-deadline":
+                    RunPreview4PriorityDeadline();
+                    return Pass(caseId, "Priority, deadline, and expiry metadata round-tripped.");
+                case "l1.control.progress-backpressure":
+                    RunPreview4ProgressBackpressure();
+                    return Pass(caseId, "Progress, partial result, backpressure, and credit metadata round-tripped.");
+                case "l1.control.capability-costs":
+                    RunPreview4CapabilityCosts();
+                    return Pass(caseId, "Capability cost, preference, and limit metadata round-tripped.");
+                case "l1.object.lifecycle":
+                    RunPreview4ObjectLifecycle();
+                    return Pass(caseId, "Runtime object declaration, reference, and release metadata round-tripped.");
+                case "l1.object.delta":
+                    RunPreview4ObjectDelta();
+                    return Pass(caseId, "Runtime object patch and delta metadata round-tripped.");
+                case "l1.control.route-execution-hint":
+                    RunPreview4RouteExecutionHint();
+                    return Pass(caseId, "Route and execution hint metadata round-tripped.");
+                case "l1.control.cache-reference":
+                    RunPreview4CacheReference();
+                    return Pass(caseId, "Cache reference and cache miss metadata round-tripped.");
+                case "l1.control.degrade-budget":
+                    RunPreview4DegradeBudget();
+                    return Pass(caseId, "Degrade profile and runtime budget metadata round-tripped.");
+                case "l1.control.supersede":
+                    RunPreview4Supersede();
+                    return Pass(caseId, "Supersede metadata round-tripped with its typed drop reason.");
+                case "l1.control.recoverable-error":
+                    RunPreview4RecoverableError();
+                    return Pass(caseId, "Recoverable error metadata round-tripped with retry guidance.");
                 case "l0.header.invalid_length.reject":
                 case "l0.header.length_mismatch.reject":
                     RunHeaderLengthReject();
@@ -418,6 +458,157 @@ public static class Program
             Outcome = "pass",
             Message = message,
         };
+    }
+
+    private static void RunPreview4CancelAbort()
+    {
+        var diagnostic = new byte[] { 0x43, 0x41, 0x4E };
+        var request = new ControlRequestMetadata(42, 7, 3, RuntimeRole.Client, 0, (uint)diagnostic.Length);
+        AssertControlRoundTrip(MessageType.Cancel, request, diagnostic);
+        AssertControlRoundTrip(MessageType.Abort, request, diagnostic);
+        AssertControlRoundTrip(
+            MessageType.TraceContext,
+            new TraceContextMetadata(101, 102, 100, 4, 0, 2),
+            new byte[] { 0x54, 0x52 });
+        AssertControlRoundTrip(
+            MessageType.ResultDropReason,
+            new ResultDropReasonMetadata(42, 8, 9, RuntimeRole.Runtime, 0, 2),
+            new byte[] { 0x44, 0x52 });
+    }
+
+    private static void RunPreview4PriorityDeadline()
+    {
+        var scheduling = new SchedulingMetadata(42, 8, 6, -2, 1_900_000_000_000, 0);
+        AssertControlRoundTrip(MessageType.PriorityUpdate, scheduling);
+        AssertControlRoundTrip(MessageType.Deadline, scheduling);
+        AssertControlRoundTrip(MessageType.ExpireAt, scheduling);
+    }
+
+    private static void RunPreview4ProgressBackpressure()
+    {
+        AssertControlRoundTrip(
+            MessageType.Progress,
+            new ProgressMetadata(42, 10, 2, 6_250, 900, 3),
+            new byte[] { 0x50, 0x52, 0x47 });
+        AssertControlRoundTrip(
+            MessageType.PartialResult,
+            new PartialResultMetadata(42, 11, 900, 3, 4, 0),
+            new byte[] { 0x50, 0x41, 0x52, 0x54 });
+        var pressure = new PressureMetadata(42, 16, 2, 1, 25, 0);
+        AssertControlRoundTrip(MessageType.Backpressure, pressure);
+        AssertControlRoundTrip(MessageType.CreditUpdate, pressure);
+    }
+
+    private static void RunPreview4CapabilityCosts()
+    {
+        AssertControlRoundTrip(
+            MessageType.CapabilityNegotiation,
+            new CapabilityMetadata(3, 4, 2, 1, 64 * 1024, 128, 4, 0),
+            new byte[] { 0x43, 0x4F, 0x53, 0x54 });
+    }
+
+    private static void RunPreview4RouteExecutionHint()
+    {
+        var hint = new RouteHintMetadata(42, 7, 2, 3, 1_900_000_000_000, 3, 0);
+        var tail = new byte[] { 0x47, 0x50, 0x55 };
+        AssertControlRoundTrip(MessageType.RouteHint, hint, tail);
+        AssertControlRoundTrip(MessageType.ExecutionHint, hint, tail);
+    }
+
+    private static void RunPreview4CacheReference()
+    {
+        AssertObjectRoundTrip(
+            MessageType.CacheReference,
+            new CacheReferenceMetadata(4, 0x1111, 0x2222, 3, CacheReuseScope.Session, 9, 101, 5_000, 3, 0),
+            new byte[] { 0x52, 0x45, 0x46 });
+        AssertObjectRoundTrip(
+            MessageType.CacheMiss,
+            new CacheMissMetadata(4, 0x1111, 0x2222, CacheMissReason.NotFound, 3, 4),
+            new byte[] { 0x4D, 0x49, 0x53, 0x53 });
+    }
+
+    private static void RunPreview4DegradeBudget()
+    {
+        AssertControlRoundTrip(
+            MessageType.DegradeProfile,
+            new CapabilityMetadata(2, 1, 2, 4, 16 * 1024, 32, 3, 0),
+            new byte[] { 0x4C, 0x4F, 0x57 });
+        AssertControlRoundTrip(
+            MessageType.BudgetUpdate,
+            new BudgetMetadata(42, 100, 8 * 1024 * 1024, 2 * 1024 * 1024, 512, 0));
+    }
+
+    private static void RunPreview4Supersede()
+    {
+        AssertControlRoundTrip(
+            MessageType.Supersede,
+            new SupersedeMetadata(42, 43, 12, 7, 0, 3),
+            new byte[] { 0x4F, 0x4C, 0x44 });
+        AssertControlRoundTrip(
+            MessageType.ResultDropReason,
+            new ResultDropReasonMetadata(42, 12, 7, RuntimeRole.Scheduler, 0, 3),
+            new byte[] { 0x4F, 0x4C, 0x44 });
+    }
+
+    private static void RunPreview4RecoverableError()
+    {
+        AssertControlRoundTrip(
+            MessageType.ErrorRecoverable,
+            new RecoverableErrorMetadata(17, 2, 3, RuntimeRole.Server, 0, 50, 4, 5, 6, 3),
+            new byte[] { 0x52, 0x45, 0x54 });
+    }
+
+    private static void RunPreview4ObjectLifecycle()
+    {
+        AssertObjectRoundTrip(
+            MessageType.ObjectDeclare,
+            new ObjectDescriptorMetadata(
+                900,
+                RuntimeObjectKind.Tensor,
+                RuntimeRole.Runtime,
+                RuntimeRole.Client,
+                4,
+                65_536,
+                32,
+                MemoryLocationHint.DeviceMemory,
+                OwnershipHint.TransferOnRef,
+                5_000,
+                3),
+            new byte[] { 0x4F, 0x42, 0x4A });
+        AssertObjectRoundTrip(
+            MessageType.ObjectRef,
+            new ObjectReferenceMetadata(900, 42, 3, 128, 4_096, 0, 3),
+            new byte[] { 0x52, 0x45, 0x46 });
+        AssertObjectRoundTrip(
+            MessageType.ObjectRelease,
+            new ObjectReleaseMetadata(900, 42, ObjectReleaseReason.Completed, RuntimeRole.Client, 0, 3),
+            new byte[] { 0x44, 0x4F, 0x4E });
+    }
+
+    private static void RunPreview4ObjectDelta()
+    {
+        var metadata = new ObjectDeltaMetadata(900, 4, 128, 4, 4, 0, 3);
+        var tail = new byte[] { 0x4D, 0x45, 0x54, 0x44, 0x41, 0x54, 0x41 };
+        AssertObjectRoundTrip(MessageType.ObjectPatch, metadata, tail);
+        AssertObjectRoundTrip(MessageType.ObjectDelta, metadata, tail);
+    }
+
+    private static void AssertControlRoundTrip<T>(MessageType messageType, T metadata, byte[]? tail = null)
+        where T : struct, IRuntimeControlMetadata
+    {
+        var expectedTail = tail ?? Array.Empty<byte>();
+        var decoded = NnrpRuntimeControl.Decode(messageType, NnrpRuntimeControl.Encode(messageType, metadata, expectedTail));
+        AssertTrue(decoded.GetMetadata<T>().Equals(metadata), $"{messageType} metadata did not round-trip.");
+        AssertTrue(decoded.Tail.Span.SequenceEqual(expectedTail), $"{messageType} tail did not round-trip.");
+    }
+
+    private static void AssertObjectRoundTrip<T>(MessageType messageType, T metadata, byte[]? tail = null)
+        where T : struct, IRuntimeObjectMetadata
+    {
+        var expectedTail = tail ?? Array.Empty<byte>();
+        var decoded = NnrpRuntimeObject.Decode(messageType, NnrpRuntimeObject.Encode(messageType, metadata, expectedTail));
+        AssertTrue(decoded.GetMetadata<T>().Equals(metadata), $"{messageType} metadata did not round-trip.");
+        AssertTrue(decoded.Tail.Span.SequenceEqual(expectedTail), $"{messageType} tail did not round-trip.");
     }
 
     private static void RunHeaderRoundtrip()

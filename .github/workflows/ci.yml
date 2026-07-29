@@ -350,6 +350,7 @@ jobs:
           --transport tcp
           --transport quic
           --transport ipc
+          --transport websocket
           --rid win-x86
           --rid win-x64
           --rid linux-x64
@@ -418,10 +419,12 @@ jobs:
           $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/$rid/$library").Path
           $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/$rid/$library").Path
           $ipcArtifact = (Resolve-Path "artifacts/native/transport-ipc/$rid/$library").Path
+          $websocketArtifact = (Resolve-Path "artifacts/native/transport-websocket/$rid/$library").Path
           "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_IPC_ARTIFACT_PATH=$ipcArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_WEBSOCKET_ARTIFACT_PATH=$websocketArtifact" >> $env:GITHUB_ENV
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -447,6 +450,11 @@ jobs:
       - name: Run IPC provider E2E
         run: >-
           dotnet test tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run WebSocket provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj
           --configuration Release --no-build
 
   native-e2e-windows-x86:
@@ -483,10 +491,12 @@ jobs:
           $tcpArtifact = (Resolve-Path "artifacts/native/transport-tcp/win-x86/nnrp_ffi.dll").Path
           $quicArtifact = (Resolve-Path "artifacts/native/transport-quic/win-x86/nnrp_ffi.dll").Path
           $ipcArtifact = (Resolve-Path "artifacts/native/transport-ipc/win-x86/nnrp_ffi.dll").Path
+          $websocketArtifact = (Resolve-Path "artifacts/native/transport-websocket/win-x86/nnrp_ffi.dll").Path
           "NNRP_NATIVE_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_TCP_ARTIFACT_PATH=$tcpArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_QUIC_ARTIFACT_PATH=$quicArtifact" >> $env:GITHUB_ENV
           "NNRP_NATIVE_IPC_ARTIFACT_PATH=$ipcArtifact" >> $env:GITHUB_ENV
+          "NNRP_NATIVE_WEBSOCKET_ARTIFACT_PATH=$websocketArtifact" >> $env:GITHUB_ENV
 
       - name: Restore
         run: dotnet restore Nnrp.sln
@@ -512,6 +522,11 @@ jobs:
       - name: Run x86 IPC provider E2E
         run: >-
           dotnet test tests/Nnrp.Transport.Ipc.Tests/Nnrp.Transport.Ipc.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run x86 WebSocket provider E2E
+        run: >-
+          dotnet test tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj
           --configuration Release --no-build
 
   conformance:

@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Nnrp.Transport.Ipc\Nnrp.Transport.Ipc.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Transport.Quic\Nnrp.Transport.Quic.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.WebSocket\Nnrp.Transport.WebSocket.csproj" />
   </ItemGroup>
 
 </Project>

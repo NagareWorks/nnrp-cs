@@ -1,12 +1,25 @@
+import json
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+CONFORMANCE_ROOT = ROOT / "conformance"
 
 
 class CiWorkflowTests(unittest.TestCase):
+    def test_conformance_job_is_pinned_to_the_only_preview4_capability_manifest(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        manifests = list(CONFORMANCE_ROOT.glob("*.capabilities.json"))
+
+        self.assertEqual(["nnrp-1-preview4.capabilities.json"], [path.name for path in manifests])
+        manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+        self.assertEqual("nnrp-1-preview4", manifest["protocol_version"])
+        self.assertIn("Expected exactly one capability manifest", workflow)
+        self.assertIn("Run suite-owned conformance action", workflow)
+        self.assertIn("- conformance", workflow)
+
     def test_native_foreign_abi_jobs_are_required(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
@@ -21,6 +34,10 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("architecture: x86", workflow)
         self.assertIn("--rid win-x86", workflow)
         self.assertIn("Run x86 TCP provider E2E", workflow)
+        self.assertIn("--transport websocket", workflow)
+        self.assertIn("NNRP_NATIVE_WEBSOCKET_ARTIFACT_PATH", workflow)
+        self.assertIn("Run WebSocket provider E2E", workflow)
+        self.assertIn("Run x86 WebSocket provider E2E", workflow)
         self.assertIn("- native-e2e", workflow)
         self.assertIn("- native-e2e-windows-x86", workflow)
         self.assertIn("Windows x86 native artifact E2E validation failed.", workflow)
