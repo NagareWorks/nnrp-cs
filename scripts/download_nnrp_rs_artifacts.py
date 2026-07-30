@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -65,6 +67,14 @@ def parse_args() -> argparse.Namespace:
         help="Download only the selected .NET runtime identifier. Repeat for multiple RIDs.",
     )
     parser.add_argument("--include-headers", action="store_true")
+    parser.add_argument(
+        "--workflow-run-id",
+        help="Consume a completed nnrp-rs release workflow artifact instead of a published release.",
+    )
+    parser.add_argument(
+        "--workflow-head-sha",
+        help="Exact 40-character nnrp-rs commit expected for --workflow-run-id.",
+    )
     return parser.parse_args()
 
 
@@ -87,6 +97,82 @@ def download_artifact(repo: str, version: str, artifact: NativeArtifact, downloa
     if not archive_path.exists():
         raise FileNotFoundError(f"nnrp-rs release asset was not downloaded: {asset_name}")
     return archive_path
+
+
+def download_workflow_artifact(
+    repo: str,
+    version: str,
+    run_id: str,
+    expected_head_sha: str,
+    download_dir: Path,
+) -> None:
+    if not run_id.isdigit():
+        raise ValueError("workflow run id must contain only decimal digits")
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_head_sha):
+        raise ValueError("workflow head SHA must be an exact lowercase 40-character commit hash")
+
+    result = subprocess.run(
+        ["gh", "run", "view", run_id, "--repo", repo, "--json", "headSha,status,conclusion"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    metadata = json.loads(result.stdout)
+    if metadata.get("headSha") != expected_head_sha:
+        raise ValueError(
+            f"nnrp-rs workflow run {run_id} belongs to {metadata.get('headSha')!r}, "
+            f"not {expected_head_sha}"
+        )
+    if metadata.get("status") != "completed" or metadata.get("conclusion") != "success":
+        raise ValueError(
+            f"nnrp-rs workflow run {run_id} is not a completed success: "
+            f"status={metadata.get('status')!r}, conclusion={metadata.get('conclusion')!r}"
+        )
+
+    subprocess.run(
+        [
+            "gh",
+            "run",
+            "download",
+            run_id,
+            "--repo",
+            repo,
+            "--name",
+            f"nnrp-rs-release-{version}",
+            "--dir",
+            str(download_dir),
+        ],
+        check=True,
+    )
+
+
+def find_downloaded_file(download_dir: Path, name: str) -> Path:
+    matches = list(download_dir.rglob(name))
+    if len(matches) != 1:
+        raise FileNotFoundError(f"expected exactly one downloaded {name}, found {len(matches)}")
+    return matches[0]
+
+
+def read_checksums(path: Path) -> dict[str, str]:
+    checksums: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
+        if match is None:
+            raise ValueError(f"malformed checksum entry: {line!r}")
+        digest, name = match.groups()
+        if name in checksums:
+            raise ValueError(f"duplicate checksum entry: {name}")
+        checksums[name] = digest
+    return checksums
+
+
+def verify_checksum(path: Path, checksums: dict[str, str]) -> None:
+    expected = checksums.get(path.name)
+    if expected is None:
+        raise ValueError(f"SHA256SUMS does not contain {path.name}")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected:
+        raise ValueError(f"checksum mismatch for {path.name}: expected {expected}, found {actual}")
 
 
 def extract_library(
@@ -139,6 +225,8 @@ def extract_library(
 
 def main() -> int:
     args = parse_args()
+    if bool(args.workflow_run_id) != bool(args.workflow_head_sha):
+        raise ValueError("--workflow-run-id and --workflow-head-sha must be provided together")
     output_root = Path(args.output).resolve()
     if output_root.exists():
         shutil.rmtree(output_root)
@@ -155,8 +243,40 @@ def main() -> int:
         if not selected:
             raise ValueError("transport/RID filters selected no nnrp-rs artifacts")
 
+        if args.workflow_run_id:
+            download_workflow_artifact(
+                args.repo,
+                args.version,
+                args.workflow_run_id,
+                args.workflow_head_sha,
+                download_dir,
+            )
+        else:
+            subprocess.run(
+                [
+                    "gh",
+                    "release",
+                    "download",
+                    f"v{args.version}",
+                    "--repo",
+                    args.repo,
+                    "--pattern",
+                    "SHA256SUMS",
+                    "--dir",
+                    str(download_dir),
+                ],
+                check=True,
+            )
+
+        checksums = read_checksums(find_downloaded_file(download_dir, "SHA256SUMS"))
+
         for artifact in selected:
-            archive_path = download_artifact(args.repo, args.version, artifact, download_dir)
+            archive_path = (
+                find_downloaded_file(download_dir, artifact.asset_name(args.version))
+                if args.workflow_run_id
+                else download_artifact(args.repo, args.version, artifact, download_dir)
+            )
+            verify_checksum(archive_path, checksums)
             target_path = extract_library(
                 archive_path,
                 artifact,

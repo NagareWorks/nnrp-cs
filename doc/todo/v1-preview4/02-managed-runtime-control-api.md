@@ -19,84 +19,84 @@
 
 ## Client Role Controls
 
-- [ ] Add typed runtime-control methods to the production `NnrpClientSession`.
-  - [ ] `CancelAsync(ControlRequestMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `AbortAsync(ControlRequestMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `UpdatePriorityAsync(SchedulingMetadata, CancellationToken)`.
-  - [ ] `UpdateDeadlineAsync(SchedulingMetadata, CancellationToken)`.
-  - [ ] `ExpireAtAsync(SchedulingMetadata, CancellationToken)`.
-  - [ ] `SupersedeAsync(SupersedeMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `UpdateBudgetAsync(BudgetMetadata, CancellationToken)`.
-  - [ ] `NegotiateCapabilitiesAsync(CapabilityMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `DegradeProfileAsync(CapabilityMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendRouteHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendExecutionHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
-- [ ] Add production result and event iteration.
-  - [ ] `NextResultAsync(CancellationToken)`.
-  - [ ] `NextEventAsync(CancellationToken)` returning `NnrpRuntimeEvent` in wire order.
-  - [ ] Suppress late `RESULT_PUSH` after cancel or abort reaches terminal state.
-  - [ ] Suppress late `PARTIAL_RESULT` after cancel or abort reaches terminal state.
-  - [ ] Keep `RESULT_DROP_REASON` observable after late-result suppression.
+- [x] Add typed runtime-control methods to the production `NnrpClientSession`.
+  - [x] `CancelAsync(ControlRequestMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `AbortAsync(ControlRequestMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `UpdatePriorityAsync(SchedulingMetadata, CancellationToken)`.
+  - [x] `UpdateDeadlineAsync(SchedulingMetadata, CancellationToken)`.
+  - [x] `ExpireAtAsync(SchedulingMetadata, CancellationToken)`.
+  - [x] `SupersedeAsync(SupersedeMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `UpdateBudgetAsync(BudgetMetadata, CancellationToken)`.
+  - [x] `NegotiateCapabilitiesAsync(CapabilityMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `DegradeProfileAsync(CapabilityMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendRouteHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendExecutionHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
+- [x] Add production result and event iteration.
+  - [x] `NextResultAsync(CancellationToken)`.
+  - [x] `NextEventAsync(CancellationToken)` returning `NnrpRuntimeEvent` in wire order.
+  - [x] Suppress late `RESULT_PUSH` after cancel or abort reaches terminal state.
+  - [x] Suppress late `PARTIAL_RESULT` after cancel or abort reaches terminal state.
+  - [x] Keep `RESULT_DROP_REASON` observable after late-result suppression.
 
 ## Server Role Controls
 
-- [ ] Add typed runtime-control sends to the production `NnrpServerSession` and `NnrpServerOperation`.
-  - [ ] `SendProgressAsync(ProgressMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendPartialResultAsync(PartialResultMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendBackpressureAsync(PressureMetadata, CancellationToken)`.
-  - [ ] `SendCreditUpdateAsync(PressureMetadata, CancellationToken)`.
-  - [ ] `SendResultDropReasonAsync(ResultDropReasonMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendRecoverableErrorAsync(RecoverableErrorMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendRetryAfterAsync(RetryAfterMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [ ] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
-- [ ] Add `NextEventAsync(CancellationToken)` for incoming client controls.
-- [ ] Enforce one terminal result or drop send per `NnrpServerOperation`.
+- [x] Add typed runtime-control sends to the production `NnrpServerSession` and `NnrpServerOperation`.
+  - [x] `SendProgressAsync(ProgressMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendPartialResultAsync(PartialResultMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendBackpressureAsync(PressureMetadata, CancellationToken)`.
+  - [x] `SendCreditUpdateAsync(PressureMetadata, CancellationToken)`.
+  - [x] `SendResultDropReasonAsync(ResultDropReasonMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendRecoverableErrorAsync(RecoverableErrorMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendRetryAfterAsync(RetryAfterMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
+- [x] Add `NextEventAsync(CancellationToken)` for incoming client controls.
+- [x] Enforce one terminal result or drop send per `NnrpServerOperation`.
 
 ## Client And Server Object/Cache Methods
 
-- [ ] Add the frozen typed object methods to both production role sessions.
-  - [ ] `DeclareObjectAsync`.
-  - [ ] `ReferenceObjectAsync`.
-  - [ ] `ReleaseObjectAsync`.
-  - [ ] `PatchObjectAsync`.
-  - [ ] `SendObjectDeltaAsync`.
-- [ ] Add the frozen typed cache methods to both production role sessions.
-  - [ ] `ReferenceCacheAsync`.
-  - [ ] `ReportCacheMissAsync`.
-  - [ ] `InvalidateCacheAsync`.
-- [ ] Keep object/cache calls as coarse native operations without JSON serialization or implicit lookup.
+- [x] Add the frozen typed object methods to both production role sessions.
+  - [x] `DeclareObjectAsync`.
+  - [x] `ReferenceObjectAsync`.
+  - [x] `ReleaseObjectAsync`.
+  - [x] `PatchObjectAsync`.
+  - [x] `SendObjectDeltaAsync`.
+- [x] Add the frozen typed cache methods to both production role sessions.
+  - [x] `ReferenceCacheAsync`.
+  - [x] `ReportCacheMissAsync`.
+  - [x] `InvalidateCacheAsync`.
+- [x] Keep object/cache calls as coarse native operations without JSON serialization or implicit lookup.
 
 ## Managed Event And Error Model
 
-- [ ] Add the role-neutral `NnrpRuntimeEvent` projection.
-  - [ ] Preserve `RuntimeFrameHeader` and typed metadata.
-  - [ ] Expose diagnostic, body, capability-entry, hint, trace, object-metadata, delta, and cache-metadata tails by semantic name.
-  - [ ] Return owned memory or lifetime-guarded borrowed memory without exposing native buffers.
+- [x] Add the role-neutral `NnrpRuntimeEvent` projection.
+  - [x] Preserve `RuntimeFrameHeader` and typed metadata.
+  - [x] Expose diagnostic, body, capability-entry, hint, trace, object-metadata, delta, and cache-metadata tails by semantic name.
+  - [x] Return owned memory or lifetime-guarded borrowed memory without exposing native buffers.
 - [x] Add the owned `DecodedRuntimeFrame` projection used by WebSocket and conformance decoders.
   - [x] Expose `RuntimeFrameHeader`, owned metadata, and owned body regions.
   - [x] Reject truncated headers, length mismatches, trailing bytes, and batch limits before returning a frame.
-- [ ] Replace raw drop-reason integers with `NnrpResultDropReasonCode`.
-  - [ ] Use the enum in `SupersedeMetadata`.
-  - [ ] Use the enum in `ResultDropReasonMetadata`.
-  - [ ] Reject reserved `0x000a..0x7fff` values while preserving private `0x8000..0xffff` values.
-- [ ] Add `NnrpResultTerminalState` and the frozen operation-to-terminal mapping.
-- [ ] Preserve Rust error identity in managed exceptions.
-  - [ ] Preserve `NnrpErrorFamily`.
-  - [ ] Preserve the numeric error code.
-  - [ ] Preserve the FFI status code.
-  - [ ] Preserve retry and recovery diagnostics without string parsing.
+- [x] Replace raw drop-reason integers with `NnrpResultDropReasonCode`.
+  - [x] Use the enum in `SupersedeMetadata`.
+  - [x] Use the enum in `ResultDropReasonMetadata`.
+  - [x] Reject reserved `0x000a..0x7fff` values while preserving private `0x8000..0xffff` values.
+- [x] Add `NnrpResultTerminalState` and the frozen operation-to-terminal mapping.
+- [x] Preserve Rust error identity in managed exceptions.
+  - [x] Preserve `NnrpErrorFamily`.
+  - [x] Preserve the numeric error code.
+  - [x] Preserve the FFI status code.
+  - [x] Preserve retry and recovery diagnostics without string parsing.
 
 ## Validation
 
-- [ ] Add public API compile tests for every frozen client and server method.
-- [ ] Add unit tests for drop-reason reserved and private ranges.
-- [ ] Add unit tests for operation-to-terminal mapping and duplicate terminal sends.
-- [ ] Add native-backed integration tests against `1.0.0-preview.4.19` artifacts with exact FFI ABI `4.1.1`.
-  - [ ] Client control send and server event receive.
-  - [ ] Server progress, partial, drop, and trace send and client event receive.
-  - [ ] Object/cache send and receive in both directions.
-  - [ ] Error family, code, and FFI status preservation.
-  - [ ] Late-result suppression after cancellation.
+- [x] Add public API compile tests for every frozen client and server method.
+- [x] Add unit tests for drop-reason reserved and private ranges.
+- [x] Add unit tests for operation-to-terminal mapping and duplicate terminal sends.
+- [x] Add native-backed integration tests against `1.0.0-preview.4.21` artifacts with exact FFI ABI `4.3.0`.
+  - [x] Client control send and server event receive.
+  - [x] Server progress, partial, drop, and trace send and client event receive.
+  - [x] Object/cache send and receive in both directions.
+  - [x] Error family, code, and FFI status preservation.
+  - [x] Late-result suppression after cancellation.

@@ -339,11 +339,14 @@ def build_release_readme(version: str) -> str:
         - Nnrp.Client
         - Nnrp.Transport.Tcp
         - Nnrp.Transport.Quic
+        - Nnrp.Transport.Ipc
+        - Nnrp.Transport.WebSocket
         - Nnrp.NativeBridge
 
         Included native plugins are placed under Runtime/Plugins/Transports/Tcp and
-        Runtime/Plugins/Transports/Quic for Windows, macOS, Linux, Android, iOS, and iOS simulator
-        targets resolved from the pinned nnrp-rs release.
+        Runtime/Plugins/Transports/Quic, Runtime/Plugins/Transports/Ipc, and
+        Runtime/Plugins/Transports/WebSocket for Windows, macOS, Linux, Android, iOS, and iOS
+        simulator targets resolved from the pinned nnrp-rs release.
 
         Full protocol and SDK documentation: {PACKAGE_DOCUMENTATION_URL}
         """

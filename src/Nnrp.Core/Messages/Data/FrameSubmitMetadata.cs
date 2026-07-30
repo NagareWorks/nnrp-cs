@@ -21,67 +21,21 @@ namespace Nnrp.Core
             uint retryOfFrame,
             uint tileBaseId,
             uint cameraBytes,
-            uint tileIndexBytes)
-            : this(
-                sourceWidth,
-                sourceHeight,
-                tileWidth,
-                tileHeight,
-                tileCount,
-                sectionCount,
-                frameClass,
-                inputProfile,
-                tileIndexMode,
-                reserved0: 0,
-                latencyBudgetMilliseconds,
-                targetFpsTimes100,
-                retryOfFrame,
-                tileBaseId,
-                cameraBytes,
-                tileIndexBytes,
-                reserved1: 0,
-                reserved2: 0,
-                submitMode: SubmitMode.Inline,
-                budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 0,
-                objectRefMask: 0,
-                dependencyFrameId: retryOfFrame,
-                payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0)
-        {
-        }
-
-        public FrameSubmitMetadata(
-            ushort sourceWidth,
-            ushort sourceHeight,
-            ushort tileWidth,
-            ushort tileHeight,
-            ushort tileCount,
-            ushort sectionCount,
-            FrameClass frameClass,
-            InputProfile inputProfile,
-            TileIndexMode tileIndexMode,
-            byte reserved0,
-            ushort latencyBudgetMilliseconds,
-            ushort targetFpsTimes100,
-            uint retryOfFrame,
-            uint tileBaseId,
-            uint cameraBytes,
             uint tileIndexBytes,
-            ulong reserved1,
-            ulong reserved2,
+            ulong operationId,
             SubmitMode submitMode,
             BudgetPolicy budgetPolicy,
-            byte lossTolerancePolicy,
-            byte reserved3,
+            LossTolerancePolicy lossTolerancePolicy,
             uint objectRefMask,
             uint dependencyFrameId,
             PayloadKind payloadKindBitmap,
-            ushort payloadFrameCount,
-            ushort reserved4)
+            ushort payloadFrameCount)
         {
+            if (operationId == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(operationId));
+            }
+
             SourceWidth = sourceWidth;
             SourceHeight = sourceHeight;
             TileWidth = tileWidth;
@@ -91,24 +45,20 @@ namespace Nnrp.Core
             FrameClass = frameClass;
             InputProfile = inputProfile;
             TileIndexMode = tileIndexMode;
-            Reserved0 = reserved0;
             LatencyBudgetMilliseconds = latencyBudgetMilliseconds;
             TargetFpsTimes100 = targetFpsTimes100;
             RetryOfFrame = retryOfFrame;
             TileBaseId = tileBaseId;
             CameraBytes = cameraBytes;
             TileIndexBytes = tileIndexBytes;
-            Reserved1 = reserved1;
-            Reserved2 = reserved2;
+            OperationId = operationId;
             SubmitMode = submitMode;
             BudgetPolicy = budgetPolicy;
             LossTolerancePolicy = lossTolerancePolicy;
-            Reserved3 = reserved3;
             ObjectRefMask = objectRefMask;
             DependencyFrameId = dependencyFrameId;
             PayloadKindBitmap = payloadKindBitmap;
             PayloadFrameCount = payloadFrameCount;
-            Reserved4 = reserved4;
         }
 
         public ushort SourceWidth { get; }
@@ -129,8 +79,6 @@ namespace Nnrp.Core
 
         public TileIndexMode TileIndexMode { get; }
 
-        public byte Reserved0 { get; }
-
         public ushort LatencyBudgetMilliseconds { get; }
 
         public ushort TargetFpsTimes100 { get; }
@@ -143,17 +91,13 @@ namespace Nnrp.Core
 
         public uint TileIndexBytes { get; }
 
-        public ulong Reserved1 { get; }
-
-        public ulong Reserved2 { get; }
+        public ulong OperationId { get; }
 
         public SubmitMode SubmitMode { get; }
 
         public BudgetPolicy BudgetPolicy { get; }
 
-        public byte LossTolerancePolicy { get; }
-
-        public byte Reserved3 { get; }
+        public LossTolerancePolicy LossTolerancePolicy { get; }
 
         public uint ObjectRefMask { get; }
 
@@ -162,8 +106,6 @@ namespace Nnrp.Core
         public PayloadKind PayloadKindBitmap { get; }
 
         public ushort PayloadFrameCount { get; }
-
-        public ushort Reserved4 { get; }
 
         public void Write(Span<byte> destination)
         {
@@ -191,24 +133,25 @@ namespace Nnrp.Core
                 || !writer.TryWriteByte((byte)FrameClass)
                 || !writer.TryWriteByte((byte)InputProfile)
                 || !writer.TryWriteByte((byte)TileIndexMode)
-                || !writer.TryWriteByte(Reserved0)
+                || !writer.TryWriteByte(0)
                 || !writer.TryWriteUInt16(LatencyBudgetMilliseconds)
                 || !writer.TryWriteUInt16(TargetFpsTimes100)
                 || !writer.TryWriteUInt32(RetryOfFrame)
                 || !writer.TryWriteUInt32(TileBaseId)
                 || !writer.TryWriteUInt32(CameraBytes)
                 || !writer.TryWriteUInt32(TileIndexBytes)
-                || !writer.TryWriteUInt64(Reserved1)
-                || !writer.TryWriteUInt64(Reserved2)
+                || !writer.TryWriteUInt32(0)
+                || !writer.TryWriteUInt64(OperationId)
+                || !writer.TryWriteUInt32(0)
                 || !writer.TryWriteByte((byte)SubmitMode)
                 || !writer.TryWriteByte((byte)BudgetPolicy)
-                || !writer.TryWriteByte(LossTolerancePolicy)
-                || !writer.TryWriteByte(Reserved3)
+                || !writer.TryWriteByte((byte)LossTolerancePolicy)
+                || !writer.TryWriteByte(0)
                 || !writer.TryWriteUInt32(ObjectRefMask)
                 || !writer.TryWriteUInt32(DependencyFrameId)
                 || !writer.TryWriteUInt32((uint)PayloadKindBitmap)
                 || !writer.TryWriteUInt16(PayloadFrameCount)
-                || !writer.TryWriteUInt16(Reserved4))
+                || !writer.TryWriteUInt16(0))
             {
                 return false;
             }
@@ -256,8 +199,9 @@ namespace Nnrp.Core
                 || !reader.TryReadUInt32(out var tileBaseId)
                 || !reader.TryReadUInt32(out var cameraBytes)
                 || !reader.TryReadUInt32(out var tileIndexBytes)
-                || !reader.TryReadUInt64(out var reserved1)
-                || !reader.TryReadUInt64(out var reserved2)
+                || !reader.TryReadUInt32(out var reserved1)
+                || !reader.TryReadUInt64(out var operationId)
+                || !reader.TryReadUInt32(out var reserved2)
                 || !reader.TryReadByte(out var submitMode)
                 || !reader.TryReadByte(out var budgetPolicy)
                 || !reader.TryReadByte(out var lossTolerancePolicy)
@@ -278,6 +222,13 @@ namespace Nnrp.Core
                 return false;
             }
 
+            if (operationId == 0
+                || !Enum.IsDefined(typeof(LossTolerancePolicy), (LossTolerancePolicy)lossTolerancePolicy))
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
             if (strict
                 && !SubmitObjectReferenceMask.TryValidateForSubmitMode((SubmitMode)submitMode, objectRefMask, out error))
             {
@@ -294,24 +245,20 @@ namespace Nnrp.Core
                 (FrameClass)frameClass,
                 (InputProfile)inputProfile,
                 (TileIndexMode)tileIndexMode,
-                reserved0,
                 latencyBudgetMilliseconds,
                 targetFpsTimes100,
                 retryOfFrame,
                 tileBaseId,
                 cameraBytes,
                 tileIndexBytes,
-                reserved1,
-                reserved2,
+                operationId,
                 (SubmitMode)submitMode,
                 (BudgetPolicy)budgetPolicy,
-                lossTolerancePolicy,
-                reserved3,
+                (LossTolerancePolicy)lossTolerancePolicy,
                 objectRefMask,
                 dependencyFrameId,
                 (PayloadKind)payloadKindBitmap,
-                payloadFrameCount,
-                reserved4);
+                payloadFrameCount);
             return true;
         }
 
@@ -326,24 +273,20 @@ namespace Nnrp.Core
                 && FrameClass == other.FrameClass
                 && InputProfile == other.InputProfile
                 && TileIndexMode == other.TileIndexMode
-                && Reserved0 == other.Reserved0
                 && LatencyBudgetMilliseconds == other.LatencyBudgetMilliseconds
                 && TargetFpsTimes100 == other.TargetFpsTimes100
                 && RetryOfFrame == other.RetryOfFrame
                 && TileBaseId == other.TileBaseId
                 && CameraBytes == other.CameraBytes
                 && TileIndexBytes == other.TileIndexBytes
-                && Reserved1 == other.Reserved1
-                && Reserved2 == other.Reserved2
+                && OperationId == other.OperationId
                 && SubmitMode == other.SubmitMode
                 && BudgetPolicy == other.BudgetPolicy
                 && LossTolerancePolicy == other.LossTolerancePolicy
-                && Reserved3 == other.Reserved3
                 && ObjectRefMask == other.ObjectRefMask
                 && DependencyFrameId == other.DependencyFrameId
                 && PayloadKindBitmap == other.PayloadKindBitmap
-                && PayloadFrameCount == other.PayloadFrameCount
-                && Reserved4 == other.Reserved4;
+                && PayloadFrameCount == other.PayloadFrameCount;
         }
 
         public override bool Equals(object obj)
@@ -364,24 +307,20 @@ namespace Nnrp.Core
                 hash = (hash * 397) ^ FrameClass.GetHashCode();
                 hash = (hash * 397) ^ InputProfile.GetHashCode();
                 hash = (hash * 397) ^ TileIndexMode.GetHashCode();
-                hash = (hash * 397) ^ Reserved0.GetHashCode();
                 hash = (hash * 397) ^ LatencyBudgetMilliseconds.GetHashCode();
                 hash = (hash * 397) ^ TargetFpsTimes100.GetHashCode();
                 hash = (hash * 397) ^ RetryOfFrame.GetHashCode();
                 hash = (hash * 397) ^ TileBaseId.GetHashCode();
                 hash = (hash * 397) ^ CameraBytes.GetHashCode();
                 hash = (hash * 397) ^ TileIndexBytes.GetHashCode();
-                hash = (hash * 397) ^ Reserved1.GetHashCode();
-                hash = (hash * 397) ^ Reserved2.GetHashCode();
+                hash = (hash * 397) ^ OperationId.GetHashCode();
                 hash = (hash * 397) ^ SubmitMode.GetHashCode();
                 hash = (hash * 397) ^ BudgetPolicy.GetHashCode();
                 hash = (hash * 397) ^ LossTolerancePolicy.GetHashCode();
-                hash = (hash * 397) ^ Reserved3.GetHashCode();
                 hash = (hash * 397) ^ ObjectRefMask.GetHashCode();
                 hash = (hash * 397) ^ DependencyFrameId.GetHashCode();
                 hash = (hash * 397) ^ PayloadKindBitmap.GetHashCode();
                 hash = (hash * 397) ^ PayloadFrameCount.GetHashCode();
-                hash = (hash * 397) ^ Reserved4.GetHashCode();
                 return hash;
             }
         }

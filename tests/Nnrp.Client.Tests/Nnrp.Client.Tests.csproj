@@ -23,8 +23,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Client\Nnrp.Client.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Server\Nnrp.Server.csproj" />
-    <ProjectReference Include="..\..\src\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.Ipc\Nnrp.Transport.Ipc.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TestSupport\RuntimeEntrypointHarness.cs" Link="TestSupport\RuntimeEntrypointHarness.cs" />
   </ItemGroup>
 
 </Project>

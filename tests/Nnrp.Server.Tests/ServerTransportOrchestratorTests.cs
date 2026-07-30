@@ -75,6 +75,28 @@ namespace Nnrp.Server.Tests
             await AssertPolicy(TransportPolicy.PreferWebSocket);
         }
 
+        [Fact]
+        public async Task ZeroServerIdAllocatesOneNonZeroIdentityForTheLogicalListenerSet()
+        {
+            var options = Options(
+                new[] { Provider(TransportId.Tcp, "tcp"), Provider(TransportId.WebSocket, "websocket") },
+                TransportPolicy.Auto);
+            var observedIds = new List<ulong>();
+
+            await using var listeners = await NnrpServerTransportOrchestrator.ListenAsync(
+                options,
+                binder: (provider, listen, server, cancellation) =>
+                {
+                    observedIds.Add(server.ServerId);
+                    return new ValueTask<INnrpServerTransportListener>(Listener(provider.Descriptor.TransportId));
+                });
+
+            Assert.Equal((ulong)0, options.ServerId);
+            Assert.Equal(2, observedIds.Count);
+            Assert.NotEqual((ulong)0, observedIds[0]);
+            Assert.All(observedIds, value => Assert.Equal(observedIds[0], value));
+        }
+
         [Theory]
         [InlineData(TransportPolicy.ForceTcp, TransportId.Tcp)]
         [InlineData(TransportPolicy.ForceQuic, TransportId.Quic)]

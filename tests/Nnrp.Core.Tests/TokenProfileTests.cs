@@ -9,7 +9,7 @@ namespace Nnrp.Core.Tests
         [Fact]
         public void DescriptorFlagsExposeFrozenPublicBits()
         {
-            Assert.Equal((ushort)0x000F, TypedPayloadDescriptor.KnownDescriptorFlagMask);
+            Assert.Equal((byte)0x0F, TypedPayloadDescriptor.KnownDescriptorFlagMask);
 
             var flags = TypedPayloadDescriptorFlags.Partial | TypedPayloadDescriptorFlags.ProfileHintPresent;
             var descriptor = new TypedPayloadDescriptor(
@@ -23,7 +23,7 @@ namespace Nnrp.Core.Tests
                 payloadLength: 4);
 
             Assert.Equal(flags, descriptor.Flags);
-            Assert.Equal((ushort)0x000A, descriptor.DescriptorFlags);
+            Assert.Equal((byte)0x0A, descriptor.DescriptorFlags);
         }
 
         [Fact]
@@ -36,6 +36,7 @@ namespace Nnrp.Core.Tests
 
             Assert.Equal(TypedPayloadProfileId.Token, token.Profile);
             Assert.Equal(PayloadKind.TokenChunk, token.PayloadKind);
+            Assert.Equal((byte)0x0A, token.DescriptorFlags);
             Assert.Equal(TokenPayloadDescriptor.DeltaSchemaId, token.SchemaId);
             Assert.Equal(TokenPayloadDescriptor.DeltaSchemaVersion, token.SchemaVersion);
             Assert.Equal(TokenPayloadDescriptor.DeltaStreamSemantics, token.StreamSemantics);

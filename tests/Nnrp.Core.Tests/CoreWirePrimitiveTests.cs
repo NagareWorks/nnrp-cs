@@ -267,24 +267,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 100,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 7,
                 tileBaseId: 11,
                 cameraBytes: 96,
                 tileIndexBytes: 160,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 42,
                 submitMode: SubmitMode.Inline,
                 budgetPolicy: BudgetPolicy.AllowStaleReuse,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
                 objectRefMask: 0,
                 dependencyFrameId: 5,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
 
             var payload = metadata.ToArray();
 
@@ -312,24 +308,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 100,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 7,
                 tileBaseId: 11,
                 cameraBytes: 96,
                 tileIndexBytes: 160,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 42,
                 submitMode: SubmitMode.Inline,
                 budgetPolicy: BudgetPolicy.AllowStaleReuse,
-                lossTolerancePolicy: 2,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.LowLatency,
                 objectRefMask: (uint)SubmitObjectSlot.CameraBlock,
                 dependencyFrameId: 5,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
 
             Assert.False(FrameSubmitMetadata.TryParse(inlineMetadata.ToArray(), strict: true, out _, out var error));
             Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
@@ -344,24 +336,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 100,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 7,
                 tileBaseId: 11,
                 cameraBytes: 96,
                 tileIndexBytes: 160,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 42,
                 submitMode: SubmitMode.Reference,
                 budgetPolicy: BudgetPolicy.AllowStaleReuse,
-                lossTolerancePolicy: 2,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.LowLatency,
                 objectRefMask: 0,
                 dependencyFrameId: 5,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
 
             Assert.False(FrameSubmitMetadata.TryParse(referenceMetadata.ToArray(), strict: true, out _, out error));
             Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
@@ -376,24 +364,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 100,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 7,
                 tileBaseId: 11,
                 cameraBytes: 96,
                 tileIndexBytes: 160,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 42,
                 submitMode: SubmitMode.Mixed,
                 budgetPolicy: BudgetPolicy.AllowStaleReuse,
-                lossTolerancePolicy: 2,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.LowLatency,
                 objectRefMask: 0x10,
                 dependencyFrameId: 5,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
 
             Assert.False(FrameSubmitMetadata.TryParse(reservedMaskMetadata.ToArray(), strict: true, out _, out error));
             Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
@@ -871,6 +855,16 @@ namespace Nnrp.Core.Tests
         [Fact]
         public void TypedPayloadDescriptorCoversProfileAndFlagEdgeBranches()
         {
+            var descriptor = new TypedPayloadDescriptor(
+                PayloadKind.TokenChunk,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 1);
+
             var invalidFlags = new TypedPayloadDescriptor(
                 PayloadKind.TokenChunk,
                 TypedPayloadDescriptor.ProfileToken,
@@ -895,6 +889,22 @@ namespace Nnrp.Core.Tests
                 reserved0: 1);
             Assert.False(invalidReserved.TryWrite(new byte[TypedPayloadDescriptor.DescriptorLength], out _));
 
+            var invalidPayloadKind = new TypedPayloadDescriptor(
+                (PayloadKind)0x80,
+                TypedPayloadDescriptor.ProfileToken,
+                descriptorFlags: 0,
+                schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+                schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+                payloadOffset: 0,
+                payloadLength: 1);
+            Assert.False(invalidPayloadKind.TryWrite(new byte[TypedPayloadDescriptor.DescriptorLength], out _));
+
+            var invalidPayloadKindBytes = descriptor.ToArray();
+            invalidPayloadKindBytes[2] = 0x80;
+            Assert.False(TypedPayloadDescriptor.TryParse(invalidPayloadKindBytes, strict: true, out _, out var error));
+            Assert.Equal(NnrpParseError.InvalidMessageLayout, error);
+
             var extensionProfile = new TypedPayloadDescriptor(
                 PayloadKind.OpaqueBytes,
                 profileId: 99,
@@ -904,9 +914,9 @@ namespace Nnrp.Core.Tests
                 streamSemantics: TypedPayloadDescriptor.StreamSemanticsSnapshot,
                 payloadOffset: 0,
                 payloadLength: 0);
-            Assert.True(TypedPayloadDescriptor.TryParse(extensionProfile.ToArray(), strict: true, out var parsed, out var error));
+            Assert.True(TypedPayloadDescriptor.TryParse(extensionProfile.ToArray(), strict: true, out var parsed, out error));
             Assert.Equal(NnrpParseError.None, error);
-            Assert.Equal(PayloadKind.None, parsed.PayloadKind);
+            Assert.Equal(PayloadKind.OpaqueBytes, parsed.PayloadKind);
         }
 
         [Fact]
@@ -1069,7 +1079,7 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void TypedPayloadRegionValidatorResolvesSinglePayloadKindForExtensionProfile()
+        public void TypedPayloadRegionValidatorPreservesExplicitKindForExtensionProfile()
         {
             var descriptor = new TypedPayloadDescriptor(
                 PayloadKind.OpaqueBytes,
@@ -1083,14 +1093,14 @@ namespace Nnrp.Core.Tests
 
             Assert.True(
                 TypedPayloadRegionValidator.TryValidateTypedPayloadRegion(
-                    PayloadKind.ToolDelta,
+                    PayloadKind.OpaqueBytes,
                     payloadFrameCount: 1,
                     descriptor.ToArray(),
                     new byte[] { 0x7F },
                     out var descriptors,
                     out var error));
             Assert.Equal(NnrpParseError.None, error);
-            Assert.Equal(PayloadKind.ToolDelta, descriptors[0].PayloadKind);
+            Assert.Equal(PayloadKind.OpaqueBytes, descriptors[0].PayloadKind);
         }
 
         [Fact]

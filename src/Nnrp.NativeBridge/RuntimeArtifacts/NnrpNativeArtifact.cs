@@ -799,7 +799,8 @@ namespace Nnrp.NativeBridge
     {
         public NnrpTypedPayloadDescriptor(
             ushort profileId,
-            ushort descriptorFlags,
+            byte payloadKind,
+            byte descriptorFlags,
             uint schemaId,
             uint schemaVersion,
             ushort streamSemantics,
@@ -807,6 +808,7 @@ namespace Nnrp.NativeBridge
             uint length)
         {
             ProfileId = profileId;
+            PayloadKind = payloadKind;
             DescriptorFlags = descriptorFlags;
             SchemaId = schemaId;
             SchemaVersion = schemaVersion;
@@ -818,7 +820,9 @@ namespace Nnrp.NativeBridge
 
         public readonly ushort ProfileId;
 
-        public readonly ushort DescriptorFlags;
+        public readonly byte PayloadKind;
+
+        public readonly byte DescriptorFlags;
 
         public readonly uint SchemaId;
 
@@ -1462,6 +1466,54 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpFfiRuntimeFrameHeader
+    {
+        public NnrpFfiRuntimeFrameHeader(
+            byte messageType,
+            uint frameId,
+            byte present = 1,
+            byte versionMajor = 1,
+            byte wireFormat = 0,
+            uint flags = 0,
+            uint sessionId = 0,
+            ushort viewId = 0,
+            ushort routeId = 0,
+            ulong traceId = 0)
+        {
+            Present = present;
+            VersionMajor = versionMajor;
+            WireFormat = wireFormat;
+            MessageType = messageType;
+            Flags = flags;
+            SessionId = sessionId;
+            FrameId = frameId;
+            ViewId = viewId;
+            RouteId = routeId;
+            TraceId = traceId;
+        }
+
+        public readonly byte Present;
+
+        public readonly byte VersionMajor;
+
+        public readonly byte WireFormat;
+
+        public readonly byte MessageType;
+
+        public readonly uint Flags;
+
+        public readonly uint SessionId;
+
+        public readonly uint FrameId;
+
+        public readonly ushort ViewId;
+
+        public readonly ushort RouteId;
+
+        public readonly ulong TraceId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpEvent
     {
         public NnrpEvent(
@@ -1476,11 +1528,10 @@ namespace Nnrp.NativeBridge
             NnrpFfiDiagnostic diagnostic)
         {
             Kind = kind;
-            MessageType = messageType;
+            Header = new NnrpFfiRuntimeFrameHeader(checked((byte)messageType), frameId);
             Connection = connection;
             Session = session;
             Operation = operation;
-            FrameId = frameId;
             PayloadOwner = payloadOwner;
             Payload = payload;
             Diagnostic = diagnostic;
@@ -1488,15 +1539,13 @@ namespace Nnrp.NativeBridge
 
         public readonly uint Kind;
 
-        public readonly uint MessageType;
+        public readonly NnrpFfiRuntimeFrameHeader Header;
 
         public readonly NnrpHandle Connection;
 
         public readonly NnrpHandle Session;
 
         public readonly NnrpHandle Operation;
-
-        public readonly uint FrameId;
 
         public readonly NnrpHandle PayloadOwner;
 
@@ -1822,11 +1871,23 @@ namespace Nnrp.NativeBridge
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpFfiSubmitRequest
     {
-        public NnrpFfiSubmitRequest(NnrpHandle session, ulong operationId, uint frameId, NnrpBufferView payload)
+        public NnrpFfiSubmitRequest(
+            NnrpHandle session,
+            ulong operationId,
+            uint frameId,
+            uint headerFlags,
+            ushort viewId,
+            ushort routeId,
+            ulong traceId,
+            NnrpBufferView payload)
         {
             Session = session;
             OperationId = operationId;
             FrameId = frameId;
+            HeaderFlags = headerFlags;
+            ViewId = viewId;
+            RouteId = routeId;
+            TraceId = traceId;
             Payload = payload;
         }
 
@@ -1835,6 +1896,14 @@ namespace Nnrp.NativeBridge
         public readonly ulong OperationId;
 
         public readonly uint FrameId;
+
+        public readonly uint HeaderFlags;
+
+        public readonly ushort ViewId;
+
+        public readonly ushort RouteId;
+
+        public readonly ulong TraceId;
 
         public readonly NnrpBufferView Payload;
     }
@@ -2078,6 +2147,48 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpResultDropReasonDescriptor
+    {
+        public NnrpResultDropReasonDescriptor(ResultDropReasonMetadata metadata)
+        {
+            OperationId = metadata.OperationId;
+            ResultSequence = metadata.ResultSequence;
+            DropReasonCode = (ushort)metadata.DropReasonCode;
+            SourceRole = (byte)metadata.SourceRole;
+            Flags = metadata.Flags;
+            DiagnosticBytes = metadata.DiagnosticBytes;
+        }
+
+        public readonly ulong OperationId;
+        public readonly ulong ResultSequence;
+        public readonly ushort DropReasonCode;
+        public readonly byte SourceRole;
+        public readonly byte Flags;
+        public readonly uint DiagnosticBytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerDropStaleResultRequest
+    {
+        public NnrpServerDropStaleResultRequest(
+            NnrpHandle operation,
+            ResultDropReasonMetadata metadata,
+            NnrpBufferView diagnostics,
+            UIntPtr maxEvents)
+        {
+            Operation = operation;
+            DropReason = new NnrpResultDropReasonDescriptor(metadata);
+            Diagnostics = diagnostics;
+            MaxEvents = maxEvents;
+        }
+
+        public readonly NnrpHandle Operation;
+        public readonly NnrpResultDropReasonDescriptor DropReason;
+        public readonly NnrpBufferView Diagnostics;
+        public readonly UIntPtr MaxEvents;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpServerFlowUpdateRequest
     {
         public NnrpServerFlowUpdateRequest(NnrpHandle session, uint frameId)
@@ -2227,7 +2338,9 @@ namespace Nnrp.NativeBridge
             TransportListenerEndpointInvoker? transportListenerEndpoint = null,
             TransportProbeInvoker? transportProbe = null,
             HandleStatusInvoker? transportClose = null,
-            RoleAwaitEventsInvoker? serverAwaitEvents = null)
+            RoleAwaitEventsInvoker? serverAwaitEvents = null,
+            ServerDropStaleResultInvoker? serverDropStaleResult = null,
+            RoleAwaitEventsInvoker? clientAwaitEvents = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -2299,7 +2412,9 @@ namespace Nnrp.NativeBridge
                 transportListenerEndpoint,
                 transportProbe,
                 transportClose,
-                serverAwaitEvents)
+                serverAwaitEvents,
+                serverDropStaleResult,
+                clientAwaitEvents)
         {
         }
 
@@ -2374,7 +2489,9 @@ namespace Nnrp.NativeBridge
             TransportListenerEndpointInvoker? transportListenerEndpoint,
             TransportProbeInvoker? transportProbe,
             HandleStatusInvoker? transportClose,
-            RoleAwaitEventsInvoker? serverAwaitEvents)
+            RoleAwaitEventsInvoker? serverAwaitEvents,
+            ServerDropStaleResultInvoker? serverDropStaleResult,
+            RoleAwaitEventsInvoker? clientAwaitEvents)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -2447,6 +2564,8 @@ namespace Nnrp.NativeBridge
             TransportProbe = transportProbe ?? MissingTransportProbe;
             TransportClose = transportClose ?? MissingHandleStatus;
             ServerAwaitEvents = serverAwaitEvents ?? MissingRoleAwaitEvents;
+            ServerDropStaleResult = serverDropStaleResult ?? MissingServerDropStaleResult;
+            ClientAwaitEvents = clientAwaitEvents ?? MissingRoleAwaitEvents;
         }
 
         private IntPtr _libraryHandle;
@@ -2558,7 +2677,9 @@ namespace Nnrp.NativeBridge
                         Bind<TransportListenerEndpointInvoker>(handle, "nnrp_transport_listener_endpoint"),
                         Bind<TransportProbeInvoker>(handle, "nnrp_transport_probe"),
                         Bind<HandleStatusInvoker>(handle, "nnrp_transport_close"),
-                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_server_await_events"));
+                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_server_await_events"),
+                        Bind<ServerDropStaleResultInvoker>(handle, "nnrp_server_drop_stale_result"),
+                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_client_await_events"));
                 }
                 catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
                 {
@@ -2701,6 +2822,11 @@ namespace Nnrp.NativeBridge
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ServerSendResultInvoker(NnrpServerSendResultRequest request);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerDropStaleResultInvoker(
+            NnrpServerDropStaleResultRequest request,
+            out NnrpPollResult result);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus ServerFlowUpdateInvoker(NnrpServerFlowUpdateRequest request);
@@ -2881,6 +3007,8 @@ namespace Nnrp.NativeBridge
 
         public AwaitEventInvoker ClientAwaitEvent { get; }
 
+        public RoleAwaitEventsInvoker ClientAwaitEvents { get; }
+
         public ServerBindInvoker ServerBind { get; }
 
         public ServerAcceptBeginInvoker ServerAcceptBegin { get; }
@@ -2896,6 +3024,8 @@ namespace Nnrp.NativeBridge
         public ServerReceiveSubmitInvoker ServerReceiveSubmit { get; }
 
         public ServerSendResultInvoker ServerSendResult { get; }
+
+        public ServerDropStaleResultInvoker ServerDropStaleResult { get; }
 
         public ServerFlowUpdateInvoker ServerSendFlowUpdate { get; }
 
@@ -3047,6 +3177,15 @@ namespace Nnrp.NativeBridge
         private static NnrpFfiStatus MissingServerFlowUpdate(NnrpServerFlowUpdateRequest request)
         {
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Control);
+        }
+
+        private static NnrpFfiStatus MissingServerDropStaleResult(
+            NnrpServerDropStaleResultRequest request,
+            out NnrpPollResult result)
+        {
+            var status = new NnrpFfiStatus(NnrpFfiStatusCode.InternalError, NnrpErrorFamily.Operation);
+            result = new NnrpPollResult(status, 0, default(NnrpEvent));
+            return status;
         }
 
         private static NnrpFfiStatus MissingControl(NnrpControlRequest request)
@@ -3338,27 +3477,29 @@ namespace Nnrp.NativeBridge
     {
         public NnrpNativeRuntimeEvent(
             uint kind,
-            uint messageType,
+            NnrpFfiRuntimeFrameHeader header,
             NnrpHandle connection,
             NnrpHandle session,
             NnrpHandle operation,
-            uint frameId,
             byte[] payload,
             NnrpNativeRuntimeDiagnostic diagnostic)
         {
             Kind = kind;
-            MessageType = messageType;
+            Header = header;
             Connection = connection;
             Session = session;
             Operation = operation;
-            FrameId = frameId;
             Payload = payload ?? throw new ArgumentNullException(nameof(payload));
             Diagnostic = diagnostic;
         }
 
         public uint Kind { get; }
 
-        public uint MessageType { get; }
+        public NnrpFfiRuntimeFrameHeader Header { get; }
+
+        public bool HasWireHeader => Header.Present != 0;
+
+        public uint MessageType => Header.MessageType;
 
         public NnrpHandle Connection { get; }
 
@@ -3366,7 +3507,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpHandle Operation { get; }
 
-        public uint FrameId { get; }
+        public uint FrameId => Header.FrameId;
 
         public byte[] Payload { get; }
 
@@ -3375,6 +3516,33 @@ namespace Nnrp.NativeBridge
         public ReadOnlySpan<byte> PayloadSpan => Payload;
 
         public NnrpNativeRuntimeDiagnostic Diagnostic { get; }
+
+        public NnrpRuntimeEvent ToRuntimeEvent()
+        {
+            if (!HasWireHeader)
+            {
+                throw new InvalidOperationException(
+                    "Native lifecycle events do not carry a wire runtime-frame header.");
+            }
+
+            if (!Enum.IsDefined(typeof(MessageType), Header.MessageType))
+            {
+                throw new InvalidOperationException("Native runtime event carries an unknown message type.");
+            }
+
+            return NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(
+                    (MessageType)Header.MessageType,
+                    (HeaderFlags)Header.Flags,
+                    Header.SessionId,
+                    Header.FrameId,
+                    Header.ViewId,
+                    Header.RouteId,
+                    Header.TraceId,
+                    Header.VersionMajor,
+                    Header.WireFormat),
+                Payload);
+        }
 
         public static NnrpNativeRuntimeEvent FromFfi(
             NnrpEvent @event,
@@ -3389,11 +3557,10 @@ namespace Nnrp.NativeBridge
             {
                 return new NnrpNativeRuntimeEvent(
                     @event.Kind,
-                    @event.MessageType,
+                    @event.Header,
                     @event.Connection,
                     @event.Session,
                     @event.Operation,
-                    @event.FrameId,
                     CopyPayload(@event.Payload),
                     NnrpNativeRuntimeDiagnostic.FromFfi(@event.Diagnostic));
             }
@@ -3417,11 +3584,10 @@ namespace Nnrp.NativeBridge
 
             return new NnrpNativeRuntimeEvent(
                 @event.Kind,
-                @event.MessageType,
+                @event.Header,
                 @event.Connection,
                 @event.Session,
                 @event.Operation,
-                @event.FrameId,
                 CopyPayload(@event.Payload),
                 NnrpNativeRuntimeDiagnostic.FromFfi(@event.Diagnostic));
         }
@@ -3839,6 +4005,42 @@ namespace Nnrp.NativeBridge
                 new NnrpServerSendResultRequest(operation.Handle.Handle, payload.BorrowView())).ThrowIfError();
         }
 
+        public void DropResult(
+            NnrpNativeRuntimeOperation operation,
+            ResultDropReasonMetadata metadata,
+            ReadOnlyMemory<byte> diagnostic = default)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            if (metadata.OperationId != operation.OperationId)
+            {
+                throw new ArgumentException(
+                    "Result-drop operation id does not match the native operation.",
+                    nameof(metadata));
+            }
+
+            EnsureOpen();
+            var payload = NnrpRuntimeControl.Encode(
+                MessageType.ResultDropReason,
+                metadata,
+                diagnostic.Span);
+            NnrpNativeRuntimeSession.WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    Entrypoints.RuntimeFrameSend(
+                        new NnrpRuntimeFrameSendRequest(
+                            operation.Handle.Handle,
+                            (uint)MessageType.ResultDropReason,
+                            operation.FrameId,
+                            payloadView)).ThrowIfError();
+                    return true;
+                });
+        }
+
         public void SendFlowUpdate(uint frameId)
         {
             EnsureOpen();
@@ -3875,6 +4077,21 @@ namespace Nnrp.NativeBridge
         public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
         {
             SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+        }
+
+        public void SendRuntimeObject(
+            MessageType messageType,
+            IRuntimeObjectMetadata metadata,
+            ReadOnlyMemory<byte> tail = default)
+        {
+            EnsureOpen();
+            SendEncodedRuntimeFrame(messageType, NnrpRuntimeObject.Encode(messageType, metadata, tail.Span));
+        }
+
+        public void SendCacheInvalidate(CacheInvalidateMetadata metadata)
+        {
+            EnsureOpen();
+            SendEncodedRuntimeFrame(MessageType.CacheInvalidate, metadata.ToArray());
         }
 
         public void SendRecoverableError(
@@ -4051,7 +4268,11 @@ namespace Nnrp.NativeBridge
             ReadOnlyMemory<byte> tail)
         {
             EnsureOpen();
-            var payload = NnrpRuntimeControl.Encode(messageType, metadata, tail.Span);
+            SendEncodedRuntimeFrame(messageType, NnrpRuntimeControl.Encode(messageType, metadata, tail.Span));
+        }
+
+        private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
+        {
             var frameId = nextRuntimeFrameId;
             NnrpNativeRuntimeSession.WithBorrowedView(
                 payload,
@@ -4356,34 +4577,34 @@ namespace Nnrp.NativeBridge
 
         private NnrpNativeRuntimeConnection? RuntimeConnection { get; }
 
-        public NnrpOperationHandle Submit(ulong operationId, uint frameId, byte[]? payload = null)
+        public NnrpOperationHandle Submit(ulong operationId, RuntimeFrameHeader header, byte[]? payload = null)
         {
             EnsureOpen();
-            return SubmitOperation(operationId, frameId, payload).Handle;
+            return SubmitOperation(operationId, header, payload).Handle;
         }
 
-        public NnrpOperationHandle Submit(ulong operationId, uint frameId, ReadOnlyMemory<byte> payload)
+        public NnrpOperationHandle Submit(ulong operationId, RuntimeFrameHeader header, ReadOnlyMemory<byte> payload)
         {
             EnsureOpen();
-            return SubmitOperation(operationId, frameId, payload).Handle;
+            return SubmitOperation(operationId, header, payload).Handle;
         }
 
-        public NnrpOperationHandle Submit(ulong operationId, uint frameId, NnrpNativeBuffer payload)
+        public NnrpOperationHandle Submit(ulong operationId, RuntimeFrameHeader header, NnrpNativeBuffer payload)
         {
             EnsureOpen();
-            return SubmitOperation(operationId, frameId, payload).Handle;
+            return SubmitOperation(operationId, header, payload).Handle;
         }
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
             return SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload == null ? ReadOnlyMemory<byte>.Empty : payload,
                 parentOperationId,
                 operationGroupId);
@@ -4391,19 +4612,28 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
             EnsureOpen();
+            ValidateSubmitHeader(header);
             return WithBorrowedView(
                 payload,
                 payloadView =>
                 {
                     NnrpHandle operation;
                     var status = Entrypoints.ClientSubmit(
-                        new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payloadView),
+                        new NnrpFfiSubmitRequest(
+                            Handle.Handle,
+                            operationId,
+                            header.FrameId,
+                            (uint)header.Flags,
+                            header.ViewId,
+                            header.RouteId,
+                            header.TraceId,
+                            payloadView),
                         out operation);
                     status.ThrowIfError();
                     return new NnrpNativeRuntimeOperation(
@@ -4411,7 +4641,7 @@ namespace Nnrp.NativeBridge
                         Handle,
                         new NnrpOperationHandle(operation),
                         operationId,
-                        frameId,
+                        header.FrameId,
                         parentOperationId,
                         operationGroupId);
                 });
@@ -4419,7 +4649,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
@@ -4430,9 +4660,18 @@ namespace Nnrp.NativeBridge
             }
 
             EnsureOpen();
+            ValidateSubmitHeader(header);
             NnrpHandle operation;
             var status = Entrypoints.ClientSubmit(
-                new NnrpFfiSubmitRequest(Handle.Handle, operationId, frameId, payload.BorrowView()),
+                new NnrpFfiSubmitRequest(
+                    Handle.Handle,
+                    operationId,
+                    header.FrameId,
+                    (uint)header.Flags,
+                    header.ViewId,
+                    header.RouteId,
+                    header.TraceId,
+                    payload.BorrowView()),
                 out operation);
             status.ThrowIfError();
             return new NnrpNativeRuntimeOperation(
@@ -4440,31 +4679,32 @@ namespace Nnrp.NativeBridge
                 Handle,
                 new NnrpOperationHandle(operation),
                 operationId,
-                frameId,
+                header.FrameId,
                 parentOperationId,
                 operationGroupId);
         }
 
         public Task<NnrpNativeRuntimeOperation> SubmitOperationAsync(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
             CancellationToken cancellationToken = default(CancellationToken))
         {
             EnsureOpen();
+            ValidateSubmitHeader(header);
             if (cancellationToken.IsCancellationRequested)
             {
-                Cancel(frameId);
+                Cancel(header.FrameId);
                 return Task.FromCanceled<NnrpNativeRuntimeOperation>(cancellationToken);
             }
 
-            using (cancellationToken.Register(() => Cancel(frameId)))
+            using (cancellationToken.Register(() => Cancel(header.FrameId)))
             {
                 var operation = SubmitOperation(
                     operationId,
-                    frameId,
+                    header,
                     payload,
                     parentOperationId,
                     operationGroupId);
@@ -4474,24 +4714,25 @@ namespace Nnrp.NativeBridge
 
         public Task<NnrpNativeRuntimeOperation> SubmitOperationAsync(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
             CancellationToken cancellationToken = default(CancellationToken))
         {
             EnsureOpen();
+            ValidateSubmitHeader(header);
             if (cancellationToken.IsCancellationRequested)
             {
-                Cancel(frameId);
+                Cancel(header.FrameId);
                 return Task.FromCanceled<NnrpNativeRuntimeOperation>(cancellationToken);
             }
 
-            using (cancellationToken.Register(() => Cancel(frameId)))
+            using (cancellationToken.Register(() => Cancel(header.FrameId)))
             {
                 var operation = SubmitOperation(
                     operationId,
-                    frameId,
+                    header,
                     payload,
                     parentOperationId,
                     operationGroupId);
@@ -4548,7 +4789,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -4557,7 +4798,7 @@ namespace Nnrp.NativeBridge
         {
             var operation = SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -4566,7 +4807,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -4575,7 +4816,7 @@ namespace Nnrp.NativeBridge
         {
             var operation = SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -4584,7 +4825,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -4593,7 +4834,7 @@ namespace Nnrp.NativeBridge
         {
             var operation = SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -4650,6 +4891,86 @@ namespace Nnrp.NativeBridge
                         lastResult.Status.ThrowIfError();
                         return checked((ulong)completed.ToUInt64());
                     }));
+        }
+
+        public IReadOnlyList<NnrpNativeRuntimeEvent> AwaitEvents(
+            uint maxEvents = 1,
+            uint timeoutMilliseconds = 0)
+        {
+            EnsureOpen();
+            if (maxEvents == 0)
+            {
+                return Array.Empty<NnrpNativeRuntimeEvent>();
+            }
+
+            var eventSize = Marshal.SizeOf<NnrpEvent>();
+            var allocationSize = checked(eventSize * checked((int)maxEvents));
+            var events = Marshal.AllocHGlobal(allocationSize);
+            try
+            {
+                UIntPtr eventCount;
+                var status = Entrypoints.ClientAwaitEvents(
+                    new NnrpRoleEventPollRequest(Handle.Handle, maxEvents, timeoutMilliseconds),
+                    events,
+                    new UIntPtr(maxEvents),
+                    out eventCount);
+                var count = eventCount.ToUInt64();
+                if (count > maxEvents)
+                {
+                    throw new NnrpNativeArtifactException(
+                        "Native client event poll returned more events than the supplied capacity.");
+                }
+
+                if (!status.Succeeded)
+                {
+                    ReleaseRemainingEventPayloads(events, eventSize, checked((int)count));
+                    status.ThrowIfError();
+                }
+
+                var snapshots = new NnrpNativeRuntimeEvent[checked((int)count)];
+                var consumed = 0;
+                try
+                {
+                    for (var index = 0; index < snapshots.Length; index++)
+                    {
+                        var nativeEvent = Marshal.PtrToStructure<NnrpEvent>(
+                            IntPtr.Add(events, checked(index * eventSize)));
+                        consumed = index + 1;
+                        snapshots[index] = NnrpNativeRuntimeEvent.FromFfi(nativeEvent, Entrypoints);
+                    }
+                }
+                catch
+                {
+                    ReleaseRemainingEventPayloads(events, eventSize, snapshots.Length, consumed);
+                    throw;
+                }
+
+                return snapshots;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(events);
+            }
+        }
+
+        private void ReleaseRemainingEventPayloads(IntPtr events, int eventSize, int count, int startIndex = 0)
+        {
+            for (var index = startIndex; index < count; index++)
+            {
+                var nativeEvent = Marshal.PtrToStructure<NnrpEvent>(
+                    IntPtr.Add(events, checked(index * eventSize)));
+                if (nativeEvent.PayloadOwner.IsValid)
+                {
+                    try
+                    {
+                        Entrypoints.BufferRelease(nativeEvent.PayloadOwner).ThrowIfError();
+                    }
+                    catch
+                    {
+                        // Cleanup must not hide the poll or conversion failure that selected this path.
+                    }
+                }
+            }
         }
 
         public void Close()
@@ -4727,6 +5048,21 @@ namespace Nnrp.NativeBridge
         public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
         {
             SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+        }
+
+        public void SendRuntimeObject(
+            MessageType messageType,
+            IRuntimeObjectMetadata metadata,
+            ReadOnlyMemory<byte> tail = default)
+        {
+            EnsureOpen();
+            SendEncodedRuntimeFrame(messageType, NnrpRuntimeObject.Encode(messageType, metadata, tail.Span));
+        }
+
+        public void SendCacheInvalidate(CacheInvalidateMetadata metadata)
+        {
+            EnsureOpen();
+            SendEncodedRuntimeFrame(MessageType.CacheInvalidate, metadata.ToArray());
         }
 
         public void Control(uint controlCode, byte[]? payload = null)
@@ -4813,7 +5149,11 @@ namespace Nnrp.NativeBridge
             ReadOnlyMemory<byte> tail)
         {
             EnsureOpen();
-            var payload = NnrpRuntimeControl.Encode(messageType, metadata, tail.Span);
+            SendEncodedRuntimeFrame(messageType, NnrpRuntimeControl.Encode(messageType, metadata, tail.Span));
+        }
+
+        private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
+        {
             var frameId = nextRuntimeFrameId;
             WithBorrowedView(
                 payload,
@@ -4902,6 +5242,28 @@ namespace Nnrp.NativeBridge
                 || @event.FrameId == operation.FrameId);
         }
 
+        private static void ValidateSubmitHeader(RuntimeFrameHeader header)
+        {
+            const HeaderFlags knownFlags = HeaderFlags.AckRequired
+                | HeaderFlags.CanDrop
+                | HeaderFlags.Stale
+                | HeaderFlags.Eos
+                | HeaderFlags.Retransmit
+                | HeaderFlags.Keyframe;
+
+            if (header.MessageType != MessageType.FrameSubmit
+                || header.FrameId == 0
+                || header.SessionId != 0
+                || header.VersionMajor != NnrpHeader.CurrentVersionMajor
+                || header.WireFormat != NnrpHeader.CurrentWireFormat
+                || (header.Flags & ~knownFlags) != 0)
+            {
+                throw new ArgumentException(
+                    "Submit headers must describe a current FRAME_SUBMIT frame, leave session id runtime-owned, and contain only known flags.",
+                    nameof(header));
+            }
+        }
+
         private void EnsureOpen()
         {
             if (IsClosed || IsConnectionClosed())
@@ -4955,8 +5317,8 @@ namespace Nnrp.NativeBridge
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
         public const ushort ExpectedAbiMajor = 4;
-        public const ushort ExpectedAbiMinor = 1;
-        public const ushort ExpectedAbiPatch = 1;
+        public const ushort ExpectedAbiMinor = 3;
+        public const ushort ExpectedAbiPatch = 0;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;
         public const uint TransportSlotQuic = 0x00000001;

@@ -6,9 +6,6 @@ Install this package when a host should expose TCP. `NnrpNativeTcpTransportProvi
 probe operations through the packaged TCP native library and returns opaque carriers to `Nnrp.NativeBridge`. Installing
 the package adds real TCP behavior; it is not a configuration switch over an implementation hidden in another package.
 
-The package also contains `NnrpTcpMessageTransport`, a managed framed-message helper for diagnostics and fixture
-inspection. Production Preview4 role adoption uses the native provider path.
-
 ```powershell
 dotnet add package Nnrp.Transport.Tcp --version <published-version>
 ```

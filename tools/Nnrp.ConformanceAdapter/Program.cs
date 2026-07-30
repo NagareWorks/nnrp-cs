@@ -222,6 +222,9 @@ public static class Program
                 case "l0.header.fixed_shape.golden":
                     RunHeaderFixedShapeGolden();
                     return Pass(caseId, "Common header fixed-shape golden vector matched.");
+                case "l0.typed_payload.descriptor.current.golden":
+                    RunCurrentTypedPayloadDescriptorGolden();
+                    return Pass(caseId, "Current typed payload descriptor golden vector matched.");
                 case "l1.control.cancel-abort":
                     RunPreview4CancelAbort();
                     return Pass(caseId, "Cancel, abort, trace context, and typed drop reason metadata round-tripped.");
@@ -472,7 +475,7 @@ public static class Program
             new byte[] { 0x54, 0x52 });
         AssertControlRoundTrip(
             MessageType.ResultDropReason,
-            new ResultDropReasonMetadata(42, 8, 9, RuntimeRole.Runtime, 0, 2),
+            new ResultDropReasonMetadata(42, 8, NnrpResultDropReasonCode.ConformanceInjection, RuntimeRole.Runtime, 0, 2),
             new byte[] { 0x44, 0x52 });
     }
 
@@ -542,11 +545,11 @@ public static class Program
     {
         AssertControlRoundTrip(
             MessageType.Supersede,
-            new SupersedeMetadata(42, 43, 12, 7, 0, 3),
+            new SupersedeMetadata(42, 43, 12, NnrpResultDropReasonCode.ObjectInvalidated, 0, 3),
             new byte[] { 0x4F, 0x4C, 0x44 });
         AssertControlRoundTrip(
             MessageType.ResultDropReason,
-            new ResultDropReasonMetadata(42, 12, 7, RuntimeRole.Scheduler, 0, 3),
+            new ResultDropReasonMetadata(42, 12, NnrpResultDropReasonCode.ObjectInvalidated, RuntimeRole.Scheduler, 0, 3),
             new byte[] { 0x4F, 0x4C, 0x44 });
     }
 
@@ -1238,7 +1241,7 @@ public static class Program
         var expected = new byte[]
         {
             0x02, 0x00,
-            0x02, 0x00,
+            0x02, 0x02,
             0x01, 0x10, 0x00, 0x00,
             0x03, 0x00, 0x00, 0x00,
             0x02, 0x00,
@@ -1256,6 +1259,34 @@ public static class Program
             !TypedPayloadDescriptor.TryParse(expected, strict: true, out _, out error)
             && error == NnrpParseError.NonZeroReservedField,
             "Typed payload descriptor accepted unknown descriptor flag bits.");
+    }
+
+    private static void RunCurrentTypedPayloadDescriptorGolden()
+    {
+        var descriptor = new TypedPayloadDescriptor(
+            PayloadKind.TokenChunk,
+            TypedPayloadDescriptor.ProfileToken,
+            descriptorFlags: (byte)TypedPayloadDescriptorFlags.Partial,
+            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
+            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
+            payloadOffset: 8,
+            payloadLength: 24);
+        var expected = new byte[]
+        {
+            0x02, 0x00, 0x02, 0x02,
+            0x01, 0x10, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00,
+            0x02, 0x00, 0x00, 0x00,
+            0x08, 0x00, 0x00, 0x00,
+            0x18, 0x00, 0x00, 0x00,
+        };
+
+        AssertTrue(descriptor.ToArray().SequenceEqual(expected), "Current typed payload descriptor bytes changed.");
+        AssertTrue(
+            TypedPayloadDescriptor.TryParse(expected, strict: true, out var parsed, out var error),
+            $"Current typed payload descriptor parse failed: {error}.");
+        AssertTrue(parsed.Equals(descriptor), "Current typed payload descriptor roundtrip changed.");
     }
 
     private static void RunTypedPayloadDescriptorValidation()

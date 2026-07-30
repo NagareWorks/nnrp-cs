@@ -381,7 +381,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: (uint)cameraBlock.Length,
-                tileIndexBytes: (uint)tileIndexBytes);
+                tileIndexBytes: (uint)tileIndexBytes,
+                operationId: 2,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
             var header = new NnrpHeader(
                 NnrpHeader.CurrentVersionMajor,
                 NnrpHeader.CurrentWireFormat,

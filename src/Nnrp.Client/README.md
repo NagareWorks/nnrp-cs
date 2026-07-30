@@ -1,10 +1,12 @@
 # Nnrp.Client
 
-Nnrp.Client provides the managed client-facing helpers for the current NNRP/1 session contract.
+Nnrp.Client provides the production client role for the current NNRP/1 contract.
 
-Use this package when you want managed client helpers for fixture inspection, diagnostics, or runtime combinations where packaged native artifacts are not available. For Preview4 production-style connection/session bootstrap, submit/result polling, cancellation, and control paths, prefer `Nnrp.NativeBridge` so the host surface runs through the Rust-backed native runtime facade. Do not treat this package as the default Preview4 hot path when native artifacts are available.
+`NnrpClient.ConnectAsync` resolves an installed transport provider, adopts its native connection, and exposes owned `NnrpClientSession` instances. Submission, runtime control, object, cache, result, and event operations use coarse Rust FFI calls; this package does not contain a managed protocol fallback.
 
-This package depends on Nnrp.Core.
+Install one or more transport packages alongside this package. With one provider installed it is selected directly; with multiple providers installed the client probes viable routes according to `TransportPolicy`.
+
+This package depends on `Nnrp.Core` and `Nnrp.NativeBridge`, but carries no native transport artifact itself.
 
 Install:
 

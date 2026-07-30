@@ -344,8 +344,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           python scripts/download_nnrp_rs_artifacts.py
-          --version 1.0.0-preview.4.19
-          --require-abi-version 4.1.1
+          --version 1.0.0-preview.4.21
+          --require-abi-version 4.3.0
+          --workflow-run-id 30580835592
+          --workflow-head-sha bcebd1b309326a787f68c5b196dd733527fc1d81
           --output artifacts/native
 
       - name: Upload coordinated native artifacts

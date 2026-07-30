@@ -18,7 +18,7 @@ namespace Nnrp.Core.Tests
         private const string CachePutMetadataGoldenHex = "010000000100000004030201000000000807060500000000983a0000000800000300000003000000";
         private const string CacheAckMetadataGoldenHex = "010000000000000004030201000000000807060500000000983a0000002000000000000000000000";
         private const string CacheInvalidateMetadataGoldenHex = "0300000001000000040302010000000008070605000000000200000000000000";
-        private const string FrameSubmitPacketGoldenHex = "4e4e525001001028010000004800000064000000070000002a000000030063000000000000000000800268012000200002000200000200003200701700000000050000000300000000000000000000000000000000000000000000000000ff000000000000000000010000000000000063616d00000000000100000500000000000000000000000008000000020000000000000000000000020000000000000061610000000000000500000500000000000000000000000008000000040000000000000000000000030000000100000078797a71";
+        private const string FrameSubmitPacketGoldenHex = "4e4e525001001028010000004800000090000000070000002a000000030000000000000000000000800268012000200002000100000201000000000000000000000000000300000004000000000000006300000000000000000000000000ff000000000000000000010000000000000070000000000000000000000000000000000000000000000000000000000000000100000000000000030000000000000063616d000000000002000000000000000400000000000000050006000000000003000000000000002c00000000000000010000000000000000000000000000000800000004000000000000000000000002000000020000006161626200000000";
         private const string ResultPushPacketGoldenHex = "4e4e5250010012280000000020000000720000002c0000005b000000070054007b000000000000000000050000000100110002001300000014000000520000000500000000000000020002000100000000000000040000000500060000000000640001050000010000000000020000000800000003000000000000000000000001000100000002000000414243000000650000050000000000000000000000000800000002000000000000000000000001000000010000007a7a";
 
         [Fact]
@@ -134,18 +134,27 @@ namespace Nnrp.Core.Tests
         {
             var bytes = HexToBytes(FrameSubmitPacketGoldenHex);
 
-            Assert.True(FrameSubmitMessage.TryParse(bytes, out var message, out var error), $"Parse error: {error}");
+            Assert.Equal(256, bytes.Length);
+            Assert.True(NnrpFramedMessage.TryParse(bytes, out var message, out var error), $"Parse error: {error}");
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(HeaderFlags.AckRequired, message.Header.Flags);
-            Assert.Equal(InputProfile.DenseLumaFrame, message.Metadata.InputProfile);
-            Assert.Equal(TileIndexMode.DenseRange, message.Metadata.TileIndexMode);
-            Assert.Equal(new byte[] { (byte)'c', (byte)'a', (byte)'m' }, message.CameraBlock.ToArray());
-            Assert.Equal(new ushort[] { 5, 6 }, message.TileIds.ToArray());
-            Assert.Equal(2, message.Sections.Length);
-            Assert.Equal((TensorRole)1, message.Sections.Span[0].Descriptor.Role);
-            Assert.Equal((TensorRole)5, message.Sections.Span[1].Descriptor.Role);
-            Assert.Equal(new uint[] { 2, 0 }, ReadLengthTable(message.Sections.Span[0].LengthTable.Span));
-            Assert.Equal(new uint[] { 3, 1 }, ReadLengthTable(message.Sections.Span[1].LengthTable.Span));
+            Assert.True(FrameSubmitMetadata.TryParse(message.Metadata.Span, strict: true, out var metadata, out error));
+            Assert.Equal(99UL, metadata.OperationId);
+            Assert.Equal(InputProfile.DenseLumaFrame, metadata.InputProfile);
+            Assert.Equal(TileIndexMode.RawUInt16, metadata.TileIndexMode);
+            Assert.True(BodyCodec.TryParse(message.Body, out var body, out error));
+            Assert.Equal("01000000000000000300000000000000", Convert.ToHexString(body.InlineObjectRegion.Span.Slice(0, 16)).ToLowerInvariant());
+            Assert.True(BodyCodec.TrySplitInlineObjectRegion(body.InlineObjectRegion, out var blocks, out error), $"Inline parse error: {error}");
+            Assert.Equal(3, blocks.Length);
+            Assert.Equal(CacheObjectKind.CameraBlock, blocks[0].Header.ObjectKind);
+            Assert.Equal(new byte[] { (byte)'c', (byte)'a', (byte)'m' }, blocks[0].Payload.ToArray());
+            Assert.Equal(CacheObjectKind.TileIndexBlock, blocks[1].Header.ObjectKind);
+            Assert.Equal(new ushort[] { 5, 6 }, TileIndexBlockCodec.Decode(blocks[1].Payload.Span, metadata.TileIndexMode, metadata.TileCount));
+            Assert.Equal(CacheObjectKind.TensorSectionTable, blocks[2].Header.ObjectKind);
+            Assert.True(TensorSectionBlock.TryParse(blocks[2].Payload, metadata.TileCount, out var section, out var consumed, out error));
+            Assert.Equal(blocks[2].Payload.Length, consumed);
+            Assert.Equal((TensorRole)1, section.Descriptor.Role);
+            Assert.Equal(new uint[] { 2, 2 }, ReadLengthTable(section.LengthTable.Span));
             Assert.Equal(bytes, message.ToArray());
         }
 

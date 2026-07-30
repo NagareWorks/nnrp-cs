@@ -29,11 +29,13 @@ class UpmPackageMetadataTests(unittest.TestCase):
     def test_runtime_package_descriptions_keep_preview4_boundary_visible(self) -> None:
         expected_descriptions = {
             "src/Nnrp.Client/Nnrp.Client.csproj": [
-                "managed diagnostic",
+                "production rust-backed",
+                "orchestration",
                 "client",
             ],
             "src/Nnrp.Server/Nnrp.Server.csproj": [
-                "managed diagnostic",
+                "production rust-backed",
+                "orchestration",
                 "server",
             ],
             "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj": [
@@ -64,6 +66,7 @@ class UpmPackageMetadataTests(unittest.TestCase):
                 description = self.read_project_description(REPO_ROOT / project_path).lower()
                 for fragment in required_fragments:
                     self.assertIn(fragment, description)
+                self.assertNotIn("managed diagnostic", description)
 
     def test_preview4_project_references_stay_on_declared_boundaries(self) -> None:
         expected_references = {

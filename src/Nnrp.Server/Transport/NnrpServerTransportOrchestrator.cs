@@ -102,11 +102,11 @@ namespace Nnrp.Server
             NnrpServerAcceptOptions? options = null,
             CancellationToken cancellationToken = default)
         {
-            options ??= new NnrpServerAcceptOptions();
             await acceptGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 EnsureOpen();
+                options = ResolveAcceptOptions(options);
                 var elapsed = Stopwatch.StartNew();
                 while (true)
                 {
@@ -238,6 +238,28 @@ namespace Nnrp.Server
             return Math.Min(PollTimeoutMilliseconds, remaining);
         }
 
+        private NnrpServerAcceptOptions ResolveAcceptOptions(NnrpServerAcceptOptions? options)
+        {
+            var configured = options ?? new NnrpServerAcceptOptions();
+            if (configured.SessionId != 0)
+            {
+                return configured;
+            }
+
+            while (true)
+            {
+                var allocated = NnrpRuntimeHandleIdAllocator.AllocateSession();
+                if (!acceptedSessions.Exists(session =>
+                    session.NativeSession?.Handle.Handle.Id == allocated))
+                {
+                    return new NnrpServerAcceptOptions(
+                        allocated,
+                        configured.SessionGeneration,
+                        configured.TimeoutMilliseconds);
+                }
+            }
+        }
+
         private void ReleasePendingAccepts(INnrpServerTransportListener? except = null)
         {
             foreach (var listener in listeners)
@@ -313,7 +335,6 @@ namespace Nnrp.Server
     internal static class NnrpServerTransportOrchestrator
     {
         private const ulong MaxPacketBytes = 16 * 1024 * 1024;
-
         internal static async ValueTask<NnrpServerTransportListenerSet> ListenAsync(
             NnrpServerOptions options,
             CancellationToken cancellationToken = default,
@@ -326,6 +347,7 @@ namespace Nnrp.Server
 
             cancellationToken.ThrowIfCancellationRequested();
             var plans = ResolvePlans(options);
+            var bindingOptions = ResolveBindingOptions(options);
             var listeners = new List<INnrpServerTransportListener>();
             try
             {
@@ -335,7 +357,7 @@ namespace Nnrp.Server
                     var listener = await (binder ?? BindNativeAsync)(
                         plan.Provider,
                         plan.ListenOptions,
-                        options,
+                        bindingOptions,
                         cancellationToken).ConfigureAwait(false);
                     if (listener == null)
                     {
@@ -363,6 +385,22 @@ namespace Nnrp.Server
 
                 throw;
             }
+        }
+
+        private static NnrpServerOptions ResolveBindingOptions(NnrpServerOptions options)
+        {
+            if (options.ServerId != 0)
+            {
+                return options;
+            }
+
+            return new NnrpServerOptions(
+                options.Endpoint,
+                options.ProviderRoutes,
+                options.TransportPolicy,
+                options.Transports,
+                NnrpRuntimeHandleIdAllocator.Allocate(),
+                options.ServerGeneration);
         }
 
         private static IReadOnlyList<ListenerPlan> ResolvePlans(NnrpServerOptions options)

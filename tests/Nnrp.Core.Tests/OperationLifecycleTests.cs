@@ -126,12 +126,35 @@ namespace Nnrp.Core.Tests
             Assert.True(lifecycle.IsTerminal);
         }
 
+        [Theory]
+        [InlineData(ResultClass.StaleReuse, ResultStatusCode.Success)]
+        [InlineData(ResultClass.Degraded, ResultStatusCode.Success)]
+        [InlineData(ResultClass.Degraded, ResultStatusCode.Degraded)]
+        public void OperationLifecycleTreatsUsableTerminalResultsAsCompleted(
+            ResultClass resultClass,
+            ResultStatusCode statusCode)
+        {
+            var lifecycle = new NnrpOperationLifecycle(303);
+            var result = CreateResultPush(
+                frameId: 303,
+                resultClass: resultClass,
+                resultFlags: ResultFlags.None,
+                coveredTileCount: 2,
+                droppedTileCount: 0,
+                statusCode: statusCode);
+
+            Assert.True(lifecycle.TryApplyResult(result, out var failure));
+            Assert.Equal(NnrpProtocolFailure.None, failure);
+            Assert.Equal(NnrpOperationState.Completed, lifecycle.State);
+        }
+
         private static ResultPushMessage CreateResultPush(
             uint frameId,
             ResultClass resultClass,
             ResultFlags resultFlags,
             ushort coveredTileCount,
-            ushort droppedTileCount)
+            ushort droppedTileCount,
+            ResultStatusCode statusCode = ResultStatusCode.Success)
         {
             var tileIds = new ushort[] { 5, 6 };
             var lengthTable = new byte[] { 1, 0, 0, 0, 1, 0, 0, 0 };
@@ -154,8 +177,10 @@ namespace Nnrp.Core.Tests
                 payload);
             var tileIndexBytes = TileIndexBlockCodec.GetEncodedLength(tileIds, TileIndexMode.RawUInt16);
             var metadata = new ResultPushMetadata(
-                statusCode: ResultStatusCode.Success,
-                resultFlags: resultFlags,
+                statusCode: statusCode,
+                resultFlags: resultClass == ResultClass.StaleReuse
+                    ? resultFlags | ResultFlags.Stale
+                    : resultFlags,
                 sectionCount: 1,
                 tileCount: (ushort)tileIds.Length,
                 activeProfileId: 0,
@@ -165,6 +190,10 @@ namespace Nnrp.Core.Tests
                 tileBaseId: 0,
                 tileIndexBytes: (uint)tileIndexBytes,
                 resultClass: resultClass,
+                appliedBudgetPolicy: resultClass == ResultClass.StaleReuse
+                    ? BudgetPolicy.AllowStaleReuse
+                    : BudgetPolicy.None,
+                reusedFrameId: resultClass == ResultClass.StaleReuse ? frameId - 1 : 0,
                 coveredTileCount: coveredTileCount,
                 droppedTileCount: droppedTileCount);
 

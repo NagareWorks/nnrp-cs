@@ -7,16 +7,6 @@ namespace Nnrp.Core.Tests
     public sealed class CoverageThresholdTests
     {
         [Fact]
-        public void ManagedDiagnosticSurfaceAttributeRequiresReason()
-        {
-            Assert.Throws<ArgumentException>(() => new NnrpManagedDiagnosticSurfaceAttribute(string.Empty));
-
-            var attribute = new NnrpManagedDiagnosticSurfaceAttribute("diagnostic surface");
-
-            Assert.Equal("diagnostic surface", attribute.Reason);
-        }
-
-        [Fact]
         public void FlowUpdateMetadataCoversValidationAndEqualityBranches()
         {
             var metadata = new FlowUpdateMetadata(

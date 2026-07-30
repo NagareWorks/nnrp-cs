@@ -177,7 +177,9 @@ namespace Nnrp.Core.Tests
             var metadata = new FrameSubmitMetadata(
                 640, 360, 32, 32, 1, 1,
                 FrameClass.Keyframe, InputProfile.DenseLumaFrame,
-                TileIndexMode.DenseRange, 16, 6000, 0, 0, 0, 0);
+                TileIndexMode.DenseRange, 16, 6000, 0, 0, 0, 0,
+                2, SubmitMode.Inline, BudgetPolicy.None, LossTolerancePolicy.InheritSession,
+                0, 0, PayloadKind.Tensor, 0);
             // bodyLength doesn't match actual body
             var wrongHeader = new NnrpHeader(
                 NnrpHeader.CurrentVersionMajor, NnrpHeader.CurrentWireFormat,
@@ -223,7 +225,9 @@ namespace Nnrp.Core.Tests
             var metadata = new FrameSubmitMetadata(
                 640, 360, 32, 32, 1, 1,
                 FrameClass.Keyframe, InputProfile.DenseLumaFrame,
-                TileIndexMode.DenseRange, 16, 6000, 0, 0, 0, 0);
+                TileIndexMode.DenseRange, 16, 6000, 0, 0, 0, 0,
+                2, SubmitMode.Inline, BudgetPolicy.None, LossTolerancePolicy.InheritSession,
+                0, 0, PayloadKind.Tensor, 0);
             var wrongHeader = new NnrpHeader(
                 NnrpHeader.CurrentVersionMajor, NnrpHeader.CurrentWireFormat,
                 MessageType.ResultPush, // wrong

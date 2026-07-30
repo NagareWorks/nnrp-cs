@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -33,7 +34,7 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             "nnrp_ffi.dll",
         )
 
-    def write_archive(self, path: Path, *, abi_version: str = "4.1.1") -> None:
+    def write_archive(self, path: Path, *, abi_version: str = "4.3.0") -> None:
         manifest = {
             "transport_scope": "tcp",
             "abi_version": abi_version,
@@ -54,13 +55,13 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
                 self.artifact,
                 output,
                 False,
-                "4.1.1",
+                "4.3.0",
             )
 
             self.assertEqual(library.read_bytes(), b"native")
             manifest = json.loads((library.parent / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["transport_scope"], "tcp")
-            self.assertEqual(manifest["abi_version"], "4.1.1")
+            self.assertEqual(manifest["abi_version"], "4.3.0")
 
     def test_rejects_a_release_asset_with_the_wrong_abi(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -68,14 +69,61 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             archive = root / "artifact.zip"
             self.write_archive(archive, abi_version="4.1.0")
 
-            with self.assertRaisesRegex(ValueError, "expected ABI 4.1.1"):
+            with self.assertRaisesRegex(ValueError, "expected ABI 4.3.0"):
                 self.downloader.extract_library(
                     archive,
                     self.artifact,
                     root / "output",
                     False,
-                    "4.1.1",
+                    "4.3.0",
                 )
+
+    def test_workflow_artifact_requires_exact_successful_commit(self):
+        completed = type(
+            "Completed",
+            (),
+            {
+                "stdout": json.dumps(
+                    {
+                        "headSha": "bcebd1b309326a787f68c5b196dd733527fc1d81",
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                )
+            },
+        )()
+        with tempfile.TemporaryDirectory() as temp_dir, patch.object(
+            self.downloader.subprocess,
+            "run",
+            side_effect=[completed, type("Downloaded", (), {})()],
+        ) as run:
+            self.downloader.download_workflow_artifact(
+                "NagareWorks/nnrp-rs",
+                "1.0.0-preview.4.21",
+                "30580835592",
+                "bcebd1b309326a787f68c5b196dd733527fc1d81",
+                Path(temp_dir),
+            )
+
+        self.assertEqual(2, run.call_count)
+
+    def test_checksum_evidence_is_mandatory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive = root / "artifact.zip"
+            archive.write_bytes(b"native")
+            digest = self.downloader.hashlib.sha256(b"native").hexdigest()
+            checksums = self.downloader.read_checksums(
+                self.write_text(root / "SHA256SUMS", f"{digest}  artifact.zip\n")
+            )
+            self.downloader.verify_checksum(archive, checksums)
+            with self.assertRaisesRegex(ValueError, "does not contain missing.zip"):
+                self.downloader.verify_checksum(root / "missing.zip", checksums)
+
+    @staticmethod
+    def write_text(path: Path, content: str) -> Path:
+        path.write_text(content, encoding="utf-8")
+        return path
 
 
 if __name__ == "__main__":

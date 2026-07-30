@@ -14,6 +14,14 @@ namespace Nnrp.Core
         Completed = 7,
     }
 
+    public enum NnrpResultTerminalState : byte
+    {
+        Success = 0,
+        Cancelled = 1,
+        Dropped = 2,
+        Error = 3,
+    }
+
     public sealed class NnrpOperationLifecycle
     {
         public NnrpOperationLifecycle(uint operationId)
@@ -98,8 +106,9 @@ namespace Nnrp.Core
                 return TryMarkPartial(out failure);
             }
 
-            if (result.Metadata.StatusCode == ResultStatusCode.Success
-                && result.Metadata.ResultClass == ResultClass.Complete)
+            if ((result.Metadata.StatusCode == ResultStatusCode.Success
+                    || result.Metadata.StatusCode == ResultStatusCode.Degraded)
+                && result.Metadata.ResultClass != ResultClass.Partial)
             {
                 return TryComplete(out failure);
             }

@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\src\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\TestSupport\RuntimeEntrypointHarness.cs" Link="TestSupport\RuntimeEntrypointHarness.cs" />
+  </ItemGroup>
+
 </Project>

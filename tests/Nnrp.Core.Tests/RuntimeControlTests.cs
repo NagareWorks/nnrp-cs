@@ -32,7 +32,7 @@ namespace Nnrp.Core.Tests
                 new SchedulingMetadata(51, 52, 5, 2, 53, 3));
             yield return Case(
                 MessageType.Supersede,
-                new SupersedeMetadata(61, 62, 63, 2, 1, 2),
+                new SupersedeMetadata(61, 62, 63, NnrpResultDropReasonCode.Superseded, 1, 2),
                 diagnostic);
             yield return Case(
                 MessageType.BudgetUpdate,
@@ -73,7 +73,7 @@ namespace Nnrp.Core.Tests
                 body);
             yield return Case(
                 MessageType.ResultDropReason,
-                new ResultDropReasonMetadata(171, 172, 4, RuntimeRole.Runtime, 3, 2),
+                new ResultDropReasonMetadata(171, 172, NnrpResultDropReasonCode.Backpressure, RuntimeRole.Runtime, 3, 2),
                 diagnostic);
             yield return Case(
                 MessageType.ErrorRecoverable,
@@ -153,7 +153,7 @@ namespace Nnrp.Core.Tests
 
             var encoded = NnrpRuntimeControl.Encode(
                 MessageType.ResultDropReason,
-                new ResultDropReasonMetadata(1, 2, 3, RuntimeRole.Server, 0, 0));
+                new ResultDropReasonMetadata(1, 2, NnrpResultDropReasonCode.PeerCancelled, RuntimeRole.Server, 0, 0));
             encoded[31] = 1;
             Assert.Throws<ArgumentException>(() => NnrpRuntimeControl.Decode(MessageType.ResultDropReason, encoded));
 
@@ -162,6 +162,26 @@ namespace Nnrp.Core.Tests
                 new PressureMetadata(1, 2, 3, 4, 5, 0));
             pressure[28] = 1;
             Assert.Throws<ArgumentException>(() => NnrpRuntimeControl.Decode(MessageType.Backpressure, pressure));
+        }
+
+        [Fact]
+        public void DropReasonRejectsReservedRangeAndPreservesPrivateRange()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpRuntimeControl.Encode(
+                MessageType.Supersede,
+                new SupersedeMetadata(1, 2, 3, (NnrpResultDropReasonCode)0x000a, 0, 0)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => NnrpRuntimeControl.Encode(
+                MessageType.ResultDropReason,
+                new ResultDropReasonMetadata(1, 2, (NnrpResultDropReasonCode)0x7fff, RuntimeRole.Server, 0, 0)));
+
+            var privateReason = (NnrpResultDropReasonCode)0x8001;
+            var decoded = NnrpRuntimeControl.Decode(
+                MessageType.ResultDropReason,
+                NnrpRuntimeControl.Encode(
+                    MessageType.ResultDropReason,
+                    new ResultDropReasonMetadata(1, 2, privateReason, RuntimeRole.Server, 0, 0)));
+
+            Assert.Equal(privateReason, decoded.GetMetadata<ResultDropReasonMetadata>().DropReasonCode);
         }
 
         [Fact]

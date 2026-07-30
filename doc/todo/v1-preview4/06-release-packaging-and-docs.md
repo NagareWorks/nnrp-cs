@@ -4,7 +4,7 @@
 
 - [x] Set the C# package train to `1.0.0-preview.4`.
 - [x] Default release workflow source to `main`.
-- [x] Default Rust artifact input to the coordinated `1.0.0-preview.4.19` release with exact FFI ABI `4.1.1`.
+- [x] Default Rust artifact input to the coordinated `1.0.0-preview.4.21` release with exact FFI ABI `4.3.0`.
 - [x] Validate that the requested Rust release tag and all required assets exist before packing.
 - [x] Reject release when any Preview4 TODO checkbox is open.
 

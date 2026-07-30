@@ -39,7 +39,8 @@ namespace Nnrp.Core.Tests
                 "cache.reference",
             }, NnrpPreview4CapabilityTokens.RuntimeObjectAndCache);
             Assert.Equal(new[] { "tcp", "quic", "ipc", "websocket" }, NnrpPreview4CapabilityTokens.Transports);
-            Assert.Equal(18, NnrpPreview4CapabilityTokens.AllCapabilities.Count);
+            Assert.Equal(19, NnrpPreview4CapabilityTokens.AllCapabilities.Count);
+            Assert.Contains(NnrpPreview4CapabilityTokens.PayloadTyped, NnrpPreview4CapabilityTokens.AllCapabilities);
             Assert.DoesNotContain(NnrpPreview4CapabilityTokens.TransportTcp, NnrpPreview4CapabilityTokens.AllCapabilities);
             Assert.IsAssignableFrom<IReadOnlyList<string>>(NnrpPreview4CapabilityTokens.AllCapabilities);
         }

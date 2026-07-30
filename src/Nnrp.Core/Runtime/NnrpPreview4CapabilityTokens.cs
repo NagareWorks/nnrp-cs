@@ -5,6 +5,7 @@ namespace Nnrp.Runtime
 {
     public static class NnrpPreview4CapabilityTokens
     {
+        public const string PayloadTyped = "payload.typed";
         public const string ControlCancelAbort = "control.cancel_abort";
         public const string ControlSupersede = "control.supersede";
         public const string ControlPriorityUpdate = "control.priority_update";
@@ -66,6 +67,7 @@ namespace Nnrp.Runtime
 
         private static readonly IReadOnlyList<string> CapabilityTokens = Array.AsReadOnly(new[]
         {
+            PayloadTyped,
             ControlCancelAbort,
             ControlSupersede,
             ControlPriorityUpdate,

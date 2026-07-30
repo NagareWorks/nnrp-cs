@@ -84,28 +84,4 @@ else
     Console.WriteLine($"Frame parse error: {frameError}");
 }
 
-// ── Fake client / server in-memory negotiation ─────────────────────
-Console.WriteLine("\n=== Fake negotiation ===");
-
-var clientProfile = new ClientProfile();
-var serverProfile = new ServerProfile();
-
-var clientHello = clientProfile.ToClientHello(requestedSessionId: 1, traceId: 0);
-Console.WriteLine($"ClientHello session_id hint: {clientHello.Metadata.RequestedSessionId}");
-
-var negotiation = NnrpCapabilityNegotiator.Negotiate(
-    clientHello.ToCapabilities(), serverProfile);
-
-if (negotiation.IsSuccess)
-{
-    var ack = serverProfile.CreateServerHelloAck(
-        sessionId: 99, negotiation: negotiation, traceId: 0);
-    Console.WriteLine($"ServerHelloAck assigned session: {ack.Metadata.SessionId}");
-    Console.WriteLine("Negotiation succeeded.");
-}
-else
-{
-    Console.WriteLine($"Negotiation failed: {negotiation.FailureReason}");
-}
-
 Console.WriteLine("Samples complete.");

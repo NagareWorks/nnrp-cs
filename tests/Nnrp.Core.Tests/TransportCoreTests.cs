@@ -1,6 +1,4 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nnrp.Core;
 using Xunit;
 
@@ -85,23 +83,6 @@ namespace Nnrp.Core.Tests
             Assert.Equal(NnrpParseError.InvalidMagic, error);
         }
 
-        [Fact]
-        public async Task MessageTransportInterfacesCarryMessagesAndCancellationTokens()
-        {
-            var cancellationToken = new CancellationTokenSource().Token;
-            var inbound = new NnrpFramedMessage(CreateHeader(0, 0, MessageType.Pong), Array.Empty<byte>(), Array.Empty<byte>());
-            var outbound = new NnrpFramedMessage(CreateHeader(0, 0, MessageType.Ping), Array.Empty<byte>(), Array.Empty<byte>());
-            var transport = new RecordingTransport(inbound);
-
-            await transport.SendAsync(outbound, cancellationToken);
-            var received = await transport.ReceiveAsync(cancellationToken);
-
-            Assert.Equal(outbound.Header, transport.LastSent.Header);
-            Assert.Equal(cancellationToken, transport.LastSendCancellationToken);
-            Assert.Equal(inbound.Header, received.Header);
-            Assert.Equal(cancellationToken, transport.LastReceiveCancellationToken);
-        }
-
         private static NnrpHeader CreateHeader(uint metaLength, uint bodyLength, MessageType messageType = MessageType.FrameSubmit, byte headerLength = NnrpHeader.HeaderLength)
         {
             return new NnrpHeader(
@@ -119,33 +100,5 @@ namespace Nnrp.Core.Tests
                 headerLength: headerLength);
         }
 
-        private sealed class RecordingTransport : INnrpMessageTransport
-        {
-            private readonly NnrpFramedMessage inbound;
-
-            public RecordingTransport(NnrpFramedMessage inbound)
-            {
-                this.inbound = inbound;
-            }
-
-            public NnrpFramedMessage LastSent { get; private set; }
-
-            public CancellationToken LastSendCancellationToken { get; private set; }
-
-            public CancellationToken LastReceiveCancellationToken { get; private set; }
-
-            public ValueTask SendAsync(NnrpFramedMessage message, CancellationToken cancellationToken)
-            {
-                LastSent = message;
-                LastSendCancellationToken = cancellationToken;
-                return default;
-            }
-
-            public ValueTask<NnrpFramedMessage> ReceiveAsync(CancellationToken cancellationToken)
-            {
-                LastReceiveCancellationToken = cancellationToken;
-                return new ValueTask<NnrpFramedMessage>(inbound);
-            }
-        }
     }
 }

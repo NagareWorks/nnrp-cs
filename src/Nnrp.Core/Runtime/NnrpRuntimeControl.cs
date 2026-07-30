@@ -285,10 +285,11 @@ namespace Nnrp.Runtime
         private static void WriteSupersede(SupersedeMetadata value, Span<byte> destination)
         {
             RequireMask(value.Flags, 0x0001, "supersede.flags");
+            RequireDropReason(value.DropReasonCode, "supersede.drop_reason_code");
             WriteUInt64(destination, 0, value.OldOperationId);
             WriteUInt64(destination, 8, value.NewOperationId);
             WriteUInt64(destination, 16, value.ControlSequence);
-            WriteUInt16(destination, 24, value.DropReasonCode);
+            WriteUInt16(destination, 24, (ushort)value.DropReasonCode);
             WriteUInt16(destination, 26, value.Flags);
             WriteUInt32(destination, 28, value.DiagnosticBytes);
         }
@@ -299,10 +300,11 @@ namespace Nnrp.Runtime
                 ReadUInt64(source, 0),
                 ReadUInt64(source, 8),
                 ReadUInt64(source, 16),
-                ReadUInt16(source, 24),
+                (NnrpResultDropReasonCode)ReadUInt16(source, 24),
                 ReadUInt16(source, 26),
                 ReadUInt32(source, 28));
             RequireMask(value.Flags, 0x0001, "supersede.flags");
+            RequireDropReason(value.DropReasonCode, "supersede.drop_reason_code");
             return value;
         }
 
@@ -492,9 +494,10 @@ namespace Nnrp.Runtime
         private static void WriteResultDropReason(ResultDropReasonMetadata value, Span<byte> destination)
         {
             RequireMask(value.Flags, 0x03, "result_drop_reason.flags");
+            RequireDropReason(value.DropReasonCode, "result_drop_reason.drop_reason_code");
             WriteUInt64(destination, 0, value.OperationId);
             WriteUInt64(destination, 8, value.ResultSequence);
-            WriteUInt16(destination, 16, value.DropReasonCode);
+            WriteUInt16(destination, 16, (ushort)value.DropReasonCode);
             destination[18] = (byte)value.SourceRole;
             destination[19] = value.Flags;
             WriteUInt32(destination, 20, value.DiagnosticBytes);
@@ -506,12 +509,22 @@ namespace Nnrp.Runtime
             var value = new ResultDropReasonMetadata(
                 ReadUInt64(source, 0),
                 ReadUInt64(source, 8),
-                ReadUInt16(source, 16),
+                (NnrpResultDropReasonCode)ReadUInt16(source, 16),
                 (RuntimeRole)source[18],
                 source[19],
                 ReadUInt32(source, 20));
             RequireMask(value.Flags, 0x03, "result_drop_reason.flags");
+            RequireDropReason(value.DropReasonCode, "result_drop_reason.drop_reason_code");
             return value;
+        }
+
+        private static void RequireDropReason(NnrpResultDropReasonCode value, string field)
+        {
+            var raw = (ushort)value;
+            if (raw > (ushort)NnrpResultDropReasonCode.ConformanceInjection && raw < 0x8000)
+            {
+                throw new ArgumentOutOfRangeException(field, value, "Drop reason uses a reserved protocol value.");
+            }
         }
 
         private static void WriteRecoverableError(RecoverableErrorMetadata value, Span<byte> destination)

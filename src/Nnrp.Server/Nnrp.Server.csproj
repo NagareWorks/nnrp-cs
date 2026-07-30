@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <PackageId>Nnrp.Server</PackageId>
-    <Description>Managed diagnostic server helpers for the NNRP runtime protocol.</Description>
+    <Description>Production Rust-backed server orchestration for the NNRP runtime protocol.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
@@ -12,6 +12,7 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
     <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+    <InternalsVisibleTo Include="Nnrp.Client.Tests" />
     <InternalsVisibleTo Include="Nnrp.Server.Tests" />
   </ItemGroup>
 

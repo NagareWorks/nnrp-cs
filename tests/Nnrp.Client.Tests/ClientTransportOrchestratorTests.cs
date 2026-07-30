@@ -35,11 +35,11 @@ namespace Nnrp.Client.Tests
             Assert.Equal(TransportPolicy.PreferTcp, options.TransportPolicy);
             Assert.Equal((uint)0, defaults.SessionId);
             Assert.Equal((uint)1, defaults.SessionGeneration);
-            Assert.Equal((ushort)0, defaults.ProfileId);
+            Assert.Equal(TypedPayloadProfileId.Token.Value, defaults.ProfileId);
             Assert.Equal((uint)7, defaults.SchemaId);
             Assert.Equal((uint)2, defaults.SchemaVersion);
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientSessionOptions(sessionGeneration: 0));
-            Assert.Throws<ArgumentException>(() => new NnrpClientSessionOptions(schemaId: 7));
+            Assert.Throws<ArgumentException>(() => new NnrpClientSessionOptions(schemaId: 7, schemaVersion: 0));
             Assert.Throws<ArgumentNullException>(() => new NnrpClientOptions(null!));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
@@ -47,6 +47,11 @@ namespace Nnrp.Client.Tests
             Assert.Throws<ArgumentException>(() => new NnrpClientOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 transports: new INnrpNativeTransportProvider[] { null! }));
+
+            var protocolDefaults = new NnrpClientSessionOptions();
+            Assert.Equal(TypedPayloadProfileId.Token.Value, protocolDefaults.ProfileId);
+            Assert.Equal(TypedPayloadDescriptor.TokenDeltaSchemaId, protocolDefaults.SchemaId);
+            Assert.Equal(TypedPayloadDescriptor.TokenDeltaSchemaVersion, protocolDefaults.SchemaVersion);
         }
 
         [Fact]

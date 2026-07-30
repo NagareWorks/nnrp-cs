@@ -2,12 +2,12 @@
 
 ## Role-First Package Graph
 
-- [ ] Complete the role-first package graph.
+- [x] Complete the role-first package graph.
   - [x] Put shared protocol, endpoint, runtime metadata, and provider-selection contracts in `Nnrp.Core`.
-  - [ ] Put the production client host and session APIs in `Nnrp.Client`.
-  - [ ] Put the production server host, accepted session, and operation APIs in `Nnrp.Server`.
+  - [x] Put the production client host and session APIs in `Nnrp.Client`.
+  - [x] Put the production server host, accepted session, and operation APIs in `Nnrp.Server`.
   - [x] Put native loading, ABI probing, SafeHandle types, and coarse FFI calls in `Nnrp.NativeBridge`.
-  - [ ] Put Unity client APIs and plugin metadata in `com.nnrp.client`.
+  - [x] Put Unity client APIs and plugin metadata in `com.nnrp.client`.
 - [x] Complete the transport package graph.
   - [x] Keep TCP behavior and artifacts in `Nnrp.Transport.Tcp`.
   - [x] Keep QUIC behavior and artifacts in `Nnrp.Transport.Quic`.
@@ -16,19 +16,19 @@
   - [x] Make every transport package depend on `Nnrp.Core` and `Nnrp.NativeBridge`, not on client or server roles.
   - [x] Scope every native artifact to the package that owns that transport.
   - [x] Keep client and server packages free of transport artifacts.
-- [ ] Enforce the low-level wire/tooling boundary.
-  - [ ] Keep transport-neutral message structs and packet codecs in `Nnrp.Core` for providers, diagnostics, conformance, and protocol tooling.
-  - [ ] Move managed loopback transports and fixture-only helpers out of production client/server projects.
-  - [ ] Prevent production client/server public signatures from accepting `INnrpMessageTransport` or managed packet pumps.
-  - [ ] Add architecture tests that reject managed packet-loop fallbacks from production role paths.
+- [x] Enforce the low-level wire/tooling boundary.
+  - [x] Keep transport-neutral message structs and packet codecs in `Nnrp.Core` for providers, diagnostics, conformance, and protocol tooling.
+  - [x] Move managed loopback transports and fixture-only helpers out of production client/server projects.
+  - [x] Prevent production client/server public signatures from accepting managed packet pumps.
+  - [x] Add architecture tests that reject managed packet-loop fallbacks from production role paths.
 
 ## Rust Artifact Baseline
 
-- [x] Pin the coordinated Rust artifact `1.0.0-preview.4.19` and exact FFI ABI `4.1.1` in build and release metadata.
-- [x] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.19`.
+- [x] Pin the coordinated Rust artifact `1.0.0-preview.4.21` and exact FFI ABI `4.3.0` in build and release metadata.
+- [x] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.21`.
 - [x] Probe protocol version.
 - [x] Probe ABI version.
-  - [x] Require ABI `4.1.1` and bind the persistent server accept ticket and runtime shutdown entrypoints.
+  - [x] Require ABI `4.3.0` and bind the persistent server accept ticket and runtime shutdown entrypoints.
   - [x] Remove the legacy one-shot `nnrp_server_accept` binding.
 - [x] Probe enabled transport slots.
 - [x] Probe runtime-control support.
@@ -37,29 +37,29 @@
 
 ## API Surface Policy
 
-- [ ] Replace earlier preview entrypoints with the frozen Preview4 names and semantics.
+- [x] Replace earlier preview entrypoints with the frozen Preview4 names and semantics.
   - [x] Add `NnrpEndpoint` for application-facing `nnrp://` and `nnrps://` endpoints.
   - [x] Add `NnrpProviderEndpoint` for explicit carrier-local overrides.
   - [x] Add `NnrpTransportClientSecurity` and `NnrpTransportServerSecurity`.
   - [x] Add `NnrpClientProviderRoute` and an immutable `TransportId`-keyed client route dictionary.
   - [x] Add `NnrpServerProviderRoute` and an immutable `TransportId`-keyed server route dictionary.
   - [x] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
-  - [ ] Add `NnrpClient.ConnectAsync(NnrpClientOptions, CancellationToken)`.
-  - [ ] Add `NnrpClient.OpenSession(NnrpClientSessionOptions)`.
+  - [x] Add `NnrpClient.ConnectAsync(NnrpClientOptions, CancellationToken)`.
+  - [x] Add `NnrpClient.OpenSession(NnrpClientSessionOptions)`.
   - [x] Add `NnrpServerOptions` and `NnrpServerAcceptOptions` with the frozen endpoint, route set, policy, server, session, and timeout fields.
-  - [ ] Add `NnrpServer.ListenAsync(NnrpServerOptions, CancellationToken)`.
-  - [ ] Add `NnrpServer.AcceptAsync(NnrpServerAcceptOptions, CancellationToken)`.
-  - [ ] Add the frozen production client session, server session, and server operation surfaces.
-    - [ ] Add `NnrpClientSession` with owned connection/session lifetime and typed runtime operations.
-    - [ ] Add `NnrpServerSession` with owned accepted-session lifetime and typed control/cache operations.
-    - [ ] Add `NnrpServerOperation` with owned request values, operation identity, trace context, and terminal-state enforcement.
-- [ ] Remove Preview1, Preview2, and Preview3 public entrypoints rather than forwarding or aliasing them.
-- [ ] Remove managed hot-path implementations from default runtime routes.
-- [ ] Keep low-level message builders available to provider/tooling code but out of production role signatures and default runtime routes.
+  - [x] Add `NnrpServer.ListenAsync(NnrpServerOptions, CancellationToken)`.
+  - [x] Add `NnrpServer.AcceptAsync(NnrpServerAcceptOptions, CancellationToken)`.
+  - [x] Add the frozen production client session, server session, and server operation surfaces.
+    - [x] Add `NnrpClientSession` with owned connection/session lifetime and typed runtime operations.
+    - [x] Add `NnrpServerSession` with owned accepted-session lifetime and typed control/cache operations.
+    - [x] Add `NnrpServerOperation` with owned request values, operation identity, trace context, and terminal-state enforcement.
+- [x] Remove Preview1, Preview2, and Preview3 public entrypoints rather than forwarding or aliasing them.
+- [x] Remove managed hot-path implementations from default runtime routes.
+- [x] Keep low-level message builders available to provider/tooling code but out of production role signatures and default runtime routes.
 - [x] Add `RuntimeFrameHeader` as the shared immutable runtime-frame header projection.
-- [ ] Document the native artifact and installed-provider requirements for every production entrypoint.
-- [ ] Reject singular production-role provider endpoint and role-wide security options.
-- [ ] Keep singular endpoint/security values only on low-level one-provider connect/listen options.
+- [x] Document the native artifact and installed-provider requirements for every production entrypoint.
+- [x] Reject singular production-role provider endpoint and role-wide security options.
+- [x] Keep singular endpoint/security values only on low-level one-provider connect/listen options.
 
 ## Capability Token Catalog
 
@@ -93,6 +93,6 @@
 
 - [x] Make NativeBridge own loading, ABI probing, native handles, and coarse FFI calls.
 - [x] Make transport packages own registration, provider metadata, connect/listen behavior, and native artifacts.
-- [ ] Make client/server packages own role-specific orchestration without implementing protocol hot paths in C#.
-- [ ] Make the Unity package own Unity plugin metadata and platform import layout.
+- [x] Make client/server packages own role-specific orchestration without implementing protocol hot paths in C#.
+- [x] Make the Unity package own Unity plugin metadata and platform import layout.
 - [x] Add architecture tests that reject role-to-role dependencies and transport artifacts outside transport packages.

@@ -7,6 +7,20 @@ namespace Nnrp.Runtime
     {
     }
 
+    public enum NnrpResultDropReasonCode : ushort
+    {
+        None = 0,
+        DeadlineExpired = 1,
+        Superseded = 2,
+        PeerCancelled = 3,
+        Backpressure = 4,
+        CapabilityMismatch = 5,
+        BudgetExceeded = 6,
+        ObjectInvalidated = 7,
+        TransportClosed = 8,
+        ConformanceInjection = 9,
+    }
+
     /// <summary>Runtime endpoint roles carried by control metadata.</summary>
     public enum RuntimeRole : byte
     {
@@ -49,7 +63,7 @@ namespace Nnrp.Runtime
         ulong OldOperationId,
         ulong NewOperationId,
         ulong ControlSequence,
-        ushort DropReasonCode,
+        NnrpResultDropReasonCode DropReasonCode,
         ushort Flags,
         uint DiagnosticBytes) : IRuntimeControlMetadata
     {
@@ -147,7 +161,7 @@ namespace Nnrp.Runtime
     public readonly record struct ResultDropReasonMetadata(
         ulong OperationId,
         ulong ResultSequence,
-        ushort DropReasonCode,
+        NnrpResultDropReasonCode DropReasonCode,
         RuntimeRole SourceRole,
         byte Flags,
         uint DiagnosticBytes) : IRuntimeControlMetadata

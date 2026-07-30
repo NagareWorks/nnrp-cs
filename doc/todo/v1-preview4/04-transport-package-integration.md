@@ -71,28 +71,28 @@
 
 ## Role Host Cardinality
 
-- [ ] Implement multi-route client orchestration in `Nnrp.Client`.
+- [x] Implement multi-route client orchestration in `Nnrp.Client`.
   - [x] Resolve each registered provider against its own route.
   - [x] Probe every eligible Auto/Prefer route.
   - [x] Preserve rejected candidates in ordered diagnostics.
-  - [ ] Transfer only the selected carrier into the native client runtime.
+  - [x] Transfer only the selected carrier into the native client runtime.
   - [x] Make Force fail without fallback.
-- [ ] Implement an atomic multi-listener server in `Nnrp.Server`.
+- [x] Implement an atomic multi-listener server in `Nnrp.Server`.
   - [x] Resolve every policy-allowed registered provider route.
   - [x] Bind every eligible Auto/Prefer listener.
   - [x] Restrict Force to the named listener.
   - [x] Roll back all opened listeners after any required bind or adoption failure.
-  - [ ] Accept across the listener set and expose active transport per session.
-  - [ ] Expose every actual bound provider endpoint, including assigned ports.
-  - [ ] Expose the actual listener transport as `NnrpServerSession.ActiveTransportId`.
+  - [x] Accept across the listener set and expose active transport per session.
+  - [x] Expose every actual bound provider endpoint, including assigned ports.
+  - [x] Expose the actual listener transport as `NnrpServerSession.ActiveTransportId`.
   - [x] Fail and close the complete logical server after a terminal provider-listener failure.
   - [x] Close listeners and accepted sessions exactly once.
-- [ ] Add architecture tests preserving the coarse native boundary.
-  - [ ] Keep one carrier per client and accepted-session handle.
+- [x] Add architecture tests preserving the coarse native boundary.
+  - [x] Keep one carrier per client and accepted-session handle.
   - [x] Keep one provider listener per low-level native listener handle.
   - [x] Retain one native accept ticket per provider listener across bounded host polls.
   - [x] Release a pending accept ticket before closing its provider listener.
-  - [ ] Reject per-frame managed dispatch across multiple transport libraries.
+  - [x] Reject per-frame managed dispatch across multiple transport libraries.
 
 ## TCP Package
 

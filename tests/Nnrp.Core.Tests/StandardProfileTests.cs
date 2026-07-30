@@ -82,10 +82,10 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void DescriptorTreatsZeroProfileAsUnspecifiedWithoutTensorInference()
+        public void DescriptorPreservesExplicitKindForUnspecifiedProfile()
         {
             var descriptor = new TypedPayloadDescriptor(
-                PayloadKind.None,
+                PayloadKind.OpaqueBytes,
                 TypedPayloadProfileId.Unspecified,
                 descriptorFlags: 0,
                 schemaId: 0,
@@ -97,7 +97,7 @@ namespace Nnrp.Core.Tests
             Assert.True(TypedPayloadDescriptor.TryParse(descriptor.ToArray(), strict: true, out var parsed, out var error));
             Assert.Equal(NnrpParseError.None, error);
             Assert.Equal(TypedPayloadProfileId.Unspecified, parsed.Profile);
-            Assert.Equal(PayloadKind.None, parsed.PayloadKind);
+            Assert.Equal(PayloadKind.OpaqueBytes, parsed.PayloadKind);
         }
 
         [Fact]

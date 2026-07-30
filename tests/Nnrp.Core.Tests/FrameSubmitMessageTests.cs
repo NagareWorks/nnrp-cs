@@ -73,7 +73,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: (uint)cameraBlock.Length,
-                tileIndexBytes: (uint)tileIndexBytes);
+                tileIndexBytes: (uint)tileIndexBytes,
+                operationId: 0x5B,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
 
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
@@ -124,7 +132,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 7,
                 tileBaseId: 0,
                 cameraBytes: 2,
-                tileIndexBytes: 4);
+                tileIndexBytes: 4,
+                operationId: 15,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 7,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 wireFormat: NnrpHeader.CurrentWireFormat,
@@ -215,7 +231,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 0,
                 tileBaseId: 5,
                 cameraBytes: 0,
-                tileIndexBytes: 0);
+                tileIndexBytes: 0,
+                operationId: 2,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 wireFormat: NnrpHeader.CurrentWireFormat,
@@ -257,7 +281,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 7,
                 tileBaseId: 0,
                 cameraBytes: 2,
-                tileIndexBytes: 4);
+                tileIndexBytes: 4,
+                operationId: 15,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 7,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 wireFormat: NnrpHeader.CurrentWireFormat,
@@ -306,24 +338,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.DenseLumaFrame,
                 tileIndexMode: TileIndexMode.DenseRange,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 16,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: 0,
                 tileIndexBytes: 0,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 1,
                 submitMode: SubmitMode.Reference,
                 budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
                 objectRefMask: SubmitObjectReferenceMask.Build(SubmitObjectSlot.CameraBlock),
                 dependencyFrameId: 0,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
                 wireFormat: NnrpHeader.CurrentWireFormat,
@@ -461,16 +489,14 @@ namespace Nnrp.Core.Tests
                     FrameClass.Delta,
                     InputProfile.ChangedTilesLuma,
                     TileIndexMode.RawUInt16,
-                    0, 33, 6000, 7, 0, 2, 4,
-                    0, 0,
+                    33, 6000, 7, 0, 2, 4,
+                    15,
                     SubmitMode.Reference,
                     BudgetPolicy.None,
-                    0xFF,
-                    0,
+                    LossTolerancePolicy.InheritSession,
                     SubmitObjectReferenceMask.Build(SubmitObjectSlot.CameraBlock),
                     7,
                     PayloadKind.Tensor,
-                    0,
                     0),
                 cameraBlock,
                 tileIds,
@@ -528,62 +554,15 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void FrameSubmitMessageConstructorZeroesReservedMetadataFieldsForStrictRoundTrip()
+        public void FrameSubmitMetadataStrictParserRejectsEveryReservedField()
         {
-            var section = CreateSection(
-                role: TensorRole.LumaHint,
-                lengthTable: new byte[] { 1, 0, 0, 0, 2, 0, 0, 0 },
-                payload: new byte[] { 0xAA, 0xBB, 0xCC });
-            var metadata = new FrameSubmitMetadata(
-                sourceWidth: 640,
-                sourceHeight: 360,
-                tileWidth: 32,
-                tileHeight: 32,
-                tileCount: 2,
-                sectionCount: 1,
-                frameClass: FrameClass.Delta,
-                inputProfile: InputProfile.ChangedTilesLuma,
-                tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 7,
-                latencyBudgetMilliseconds: 33,
-                targetFpsTimes100: 6000,
-                retryOfFrame: 7,
-                tileBaseId: 0,
-                cameraBytes: 2,
-                tileIndexBytes: 4,
-                reserved1: 9,
-                reserved2: 11,
-                submitMode: SubmitMode.Inline,
-                budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 13,
-                objectRefMask: 0,
-                dependencyFrameId: 7,
-                payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 15);
-            var header = new NnrpHeader(
-                versionMajor: NnrpHeader.CurrentVersionMajor,
-                wireFormat: NnrpHeader.CurrentWireFormat,
-                messageType: MessageType.FrameSubmit,
-                flags: HeaderFlags.None,
-                metaLength: FrameSubmitMessage.MetadataLength,
-                bodyLength: FrameSubmitMessage.ComputeBodyLength(2, 4, new[] { section }),
-                sessionId: 9,
-                frameId: 15,
-                viewId: 1,
-                routeId: 0,
-                traceId: 88);
-
-            var packet = new FrameSubmitMessage(header, metadata, new byte[] { 0xCA, 0xFE }, new ushort[] { 1, 9 }, new[] { section }).ToArray();
-
-            Assert.True(FrameSubmitMessage.TryParse(packet, out var parsed, out var error));
-            Assert.Equal(NnrpParseError.None, error);
-            Assert.Equal(0, parsed.Metadata.Reserved0);
-            Assert.Equal(0UL, parsed.Metadata.Reserved1);
-            Assert.Equal(0UL, parsed.Metadata.Reserved2);
-            Assert.Equal(0, parsed.Metadata.Reserved3);
-            Assert.Equal(0, parsed.Metadata.Reserved4);
+            foreach (var offset in new[] { 15, 36, 48, 55, 70 })
+            {
+                var bytes = CreateMetadata().ToArray();
+                bytes[offset] = 1;
+                Assert.False(FrameSubmitMetadata.TryParse(bytes, strict: true, out _, out var error));
+                Assert.Equal(NnrpParseError.NonZeroReservedField, error);
+            }
         }
 
         private static FrameSubmitMetadata CreateMetadata(
@@ -605,24 +584,20 @@ namespace Nnrp.Core.Tests
                 frameClass: FrameClass.Delta,
                 inputProfile: InputProfile.ChangedTilesLuma,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 33,
                 targetFpsTimes100: 6000,
                 retryOfFrame: 7,
                 tileBaseId: 0,
                 cameraBytes: cameraBytes,
                 tileIndexBytes: tileIndexBytes,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: 15,
                 submitMode: SubmitMode.Inline,
                 budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
                 objectRefMask: objectRefMask,
                 dependencyFrameId: 7,
                 payloadKindBitmap: payloadKindBitmap,
-                payloadFrameCount: payloadFrameCount,
-                reserved4: 0);
+                payloadFrameCount: payloadFrameCount);
         }
 
         private static void AssertMetadataContractRejects(

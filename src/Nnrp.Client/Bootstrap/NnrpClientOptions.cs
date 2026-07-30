@@ -12,9 +12,9 @@ namespace Nnrp.Client
         public NnrpClientSessionOptions(
             uint sessionId = 0,
             uint sessionGeneration = 1,
-            ushort profileId = 0,
-            uint schemaId = 0,
-            uint schemaVersion = 0)
+            ushort profileId = TypedPayloadProfileId.TokenValue,
+            uint schemaId = TypedPayloadDescriptor.TokenDeltaSchemaId,
+            uint schemaVersion = TypedPayloadDescriptor.TokenDeltaSchemaVersion)
         {
             if (sessionGeneration == 0)
             {

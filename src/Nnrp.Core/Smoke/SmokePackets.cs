@@ -46,7 +46,15 @@ namespace Nnrp.Core
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: (uint)DefaultCameraBlock.Length,
-                tileIndexBytes: (uint)tileIndexBytes);
+                tileIndexBytes: (uint)tileIndexBytes,
+                operationId: frameId,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
             var bodyLength = FrameSubmitMessage.ComputeBodyLength(DefaultCameraBlock.Length, tileIndexBytes, new[] { section });
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,
@@ -76,24 +84,20 @@ namespace Nnrp.Core
                 frameClass: FrameClass.Keyframe,
                 inputProfile: InputProfile.ChangedTilesLuma,
                 tileIndexMode: TileIndexMode.RawUInt16,
-                reserved0: 0,
                 latencyBudgetMilliseconds: 16,
                 targetFpsTimes100: 0,
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: (uint)DefaultCameraBlock.Length,
                 tileIndexBytes: (uint)tileIndexBytes,
-                reserved1: 0,
-                reserved2: 0,
+                operationId: frameId,
                 submitMode: SubmitMode.Inline,
                 budgetPolicy: BudgetPolicy.None,
-                lossTolerancePolicy: 0xFF,
-                reserved3: 0,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
                 objectRefMask: 0,
                 dependencyFrameId: 0,
                 payloadKindBitmap: PayloadKind.Tensor,
-                payloadFrameCount: 0,
-                reserved4: 0);
+                payloadFrameCount: 0);
             var bodyLength = FrameSubmitMessage.ComputeBodyLength(DefaultCameraBlock.Length, tileIndexBytes, new[] { section });
             var header = new NnrpHeader(
                 versionMajor: NnrpHeader.CurrentVersionMajor,

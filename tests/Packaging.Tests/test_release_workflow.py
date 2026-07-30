@@ -14,9 +14,10 @@ class ReleaseWorkflowTests(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_defaults_to_current_rust_artifact_release(self):
-        self.assertEqual(self.workflow.count("1.0.0-preview.4.19"), 2)
+        self.assertEqual(self.workflow.count("1.0.0-preview.4.21"), 2)
         self.assertNotIn("1.0.0-preview.4.15", self.workflow)
-        self.assertIn("--require-abi-version 4.1.1", self.workflow)
+        self.assertIn("--require-abi-version 4.3.0", self.workflow)
+        self.assertNotIn("--workflow-run-id", self.workflow)
 
     def test_verifies_packed_nuget_boundaries_before_bundling_or_publishing(self):
         canonical_index = self.workflow.index("Canonicalize NuGet package archives")

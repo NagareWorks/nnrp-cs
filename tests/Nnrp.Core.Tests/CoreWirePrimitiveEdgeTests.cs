@@ -239,7 +239,15 @@ namespace Nnrp.Core.Tests
                 retryOfFrame: 0,
                 tileBaseId: 0,
                 cameraBytes: cameraBytes,
-                tileIndexBytes: 0);
+                tileIndexBytes: 0,
+                operationId: 1,
+                submitMode: SubmitMode.Inline,
+                budgetPolicy: BudgetPolicy.None,
+                lossTolerancePolicy: LossTolerancePolicy.InheritSession,
+                objectRefMask: 0,
+                dependencyFrameId: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
         }
 
         private static FrameSubmitMessage CreateFrameSubmitMessage(FrameSubmitMetadata metadata)

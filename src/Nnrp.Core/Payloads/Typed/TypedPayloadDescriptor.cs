@@ -5,8 +5,8 @@ namespace Nnrp.Core
     public readonly struct TypedPayloadDescriptor : IEquatable<TypedPayloadDescriptor>
     {
         public const int DescriptorLength = 24;
-        public const ushort KnownDescriptorFlagMask =
-            (ushort)(TypedPayloadDescriptorFlags.Terminal
+        public const byte KnownDescriptorFlagMask =
+            (byte)(TypedPayloadDescriptorFlags.Terminal
                 | TypedPayloadDescriptorFlags.Partial
                 | TypedPayloadDescriptorFlags.SchemaOverride
                 | TypedPayloadDescriptorFlags.ProfileHintPresent);
@@ -45,7 +45,7 @@ namespace Nnrp.Core
         public TypedPayloadDescriptor(
             PayloadKind payloadKind,
             ushort profileId,
-            ushort descriptorFlags,
+            byte descriptorFlags,
             uint schemaId,
             uint schemaVersion,
             ushort streamSemantics,
@@ -67,7 +67,7 @@ namespace Nnrp.Core
         public TypedPayloadDescriptor(
             PayloadKind payloadKind,
             TypedPayloadProfileId profile,
-            ushort descriptorFlags,
+            byte descriptorFlags,
             uint schemaId,
             uint schemaVersion,
             ushort streamSemantics,
@@ -100,7 +100,7 @@ namespace Nnrp.Core
             : this(
                   payloadKind,
                   profile,
-                  (ushort)flags,
+                  (byte)flags,
                   schemaId,
                   schemaVersion,
                   streamSemantics,
@@ -112,7 +112,7 @@ namespace Nnrp.Core
 
         public PayloadKind PayloadKind { get; }
 
-        public ushort DescriptorFlags { get; }
+        public byte DescriptorFlags { get; }
 
         public TypedPayloadDescriptorFlags Flags => (TypedPayloadDescriptorFlags)DescriptorFlags;
 
@@ -150,14 +150,17 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if ((DescriptorFlags & ~KnownDescriptorFlagMask) != 0 || Reserved0 != 0)
+            if (!PayloadKindValidator.IsSingleDefinedKind(PayloadKind)
+                || (DescriptorFlags & ~KnownDescriptorFlagMask) != 0
+                || Reserved0 != 0)
             {
                 return false;
             }
 
             var writer = new FixedBinaryWriter(destination);
             if (!writer.TryWriteUInt16(ProfileId)
-                || !writer.TryWriteUInt16(DescriptorFlags)
+                || !writer.TryWriteByte((byte)PayloadKind)
+                || !writer.TryWriteByte(DescriptorFlags)
                 || !writer.TryWriteUInt32(SchemaId)
                 || !writer.TryWriteUInt32(SchemaVersion)
                 || !writer.TryWriteUInt16(StreamSemantics)
@@ -196,7 +199,8 @@ namespace Nnrp.Core
 
             var reader = new FixedBinaryReader(source);
             if (!reader.TryReadUInt16(out var profileId)
-                || !reader.TryReadUInt16(out var descriptorFlags)
+                || !reader.TryReadByte(out var payloadKind)
+                || !reader.TryReadByte(out var descriptorFlags)
                 || !reader.TryReadUInt32(out var schemaId)
                 || !reader.TryReadUInt32(out var schemaVersion)
                 || !reader.TryReadUInt16(out var streamSemantics)
@@ -208,6 +212,12 @@ namespace Nnrp.Core
                 return false;
             }
 
+            if (strict && !PayloadKindValidator.IsSingleDefinedKind((PayloadKind)payloadKind))
+            {
+                error = NnrpParseError.InvalidMessageLayout;
+                return false;
+            }
+
             if (strict && ((descriptorFlags & ~KnownDescriptorFlagMask) != 0 || reserved0 != 0))
             {
                 error = NnrpParseError.NonZeroReservedField;
@@ -215,7 +225,7 @@ namespace Nnrp.Core
             }
 
             descriptor = new TypedPayloadDescriptor(
-                InferPayloadKind(profileId),
+                (PayloadKind)payloadKind,
                 profileId,
                 descriptorFlags,
                 schemaId,
@@ -225,20 +235,6 @@ namespace Nnrp.Core
                 payloadLength,
                 reserved0);
             return true;
-        }
-
-        internal TypedPayloadDescriptor WithPayloadKind(PayloadKind payloadKind)
-        {
-            return new TypedPayloadDescriptor(
-                payloadKind,
-                ProfileId,
-                DescriptorFlags,
-                SchemaId,
-                SchemaVersion,
-                StreamSemantics,
-                PayloadOffset,
-                PayloadLength,
-                Reserved0);
         }
 
         public bool Equals(TypedPayloadDescriptor other)
@@ -276,14 +272,10 @@ namespace Nnrp.Core
             }
         }
 
-        private static PayloadKind InferPayloadKind(ushort profileId)
-        {
-            return TypedPayloadProfileId.FromValue(profileId).PayloadKind;
-        }
     }
 
     [Flags]
-    public enum TypedPayloadDescriptorFlags : ushort
+    public enum TypedPayloadDescriptorFlags : byte
     {
         None = 0x0000,
         Terminal = 0x0001,

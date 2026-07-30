@@ -25,6 +25,7 @@ namespace Nnrp.Core.Tests
                   },
                   "cases": [
                     { "id": "l0.header.fixed_shape.golden", "layer": "L0", "status": "mandatory", "feature": "header", "required_capabilities": [], "description": "Header." },
+                    { "id": "l0.typed_payload.descriptor.current.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed payload descriptor." },
                     { "id": "l1.control.cancel-abort", "layer": "L1", "status": "mandatory", "feature": "control.cancel_abort", "required_capabilities": ["control.cancel_abort"], "description": "Cancel." },
                     { "id": "l1.control.priority-deadline", "layer": "L1", "status": "mandatory", "feature": "control.priority_deadline", "required_capabilities": ["control.priority_update"], "description": "Scheduling." },
                     { "id": "l1.control.progress-backpressure", "layer": "L1", "status": "mandatory", "feature": "control.progress_backpressure", "required_capabilities": ["control.progress_partial"], "description": "Progress." },
@@ -44,7 +45,7 @@ namespace Nnrp.Core.Tests
             var root = document.RootElement;
             Assert.Equal("nnrp-1-preview4", root.GetProperty("protocol_version").GetString());
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(12, results.Length);
+            Assert.Equal(13, results.Length);
             Assert.All(results, result => Assert.Equal("pass", result.GetProperty("outcome").GetString()));
         }
 

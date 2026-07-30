@@ -3,6 +3,7 @@
   "implementation_name": "nnrp-cs",
   "protocol_version": "nnrp-1-preview4",
   "supports": [
+    "payload.typed",
     "control.cancel_abort",
     "control.supersede",
     "control.priority_update",

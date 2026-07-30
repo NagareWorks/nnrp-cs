@@ -803,6 +803,19 @@ namespace Nnrp.Core
     }
 
     /// <summary>
+    /// Per-submit loss tolerance policy. The inherit value delegates to the
+    /// negotiated session preference.
+    /// </summary>
+    public enum LossTolerancePolicy : byte
+    {
+        Strict = 0,
+        BestEffort = 1,
+        LowLatency = 2,
+        FireAndForget = 3,
+        InheritSession = 0xFF,
+    }
+
+    /// <summary>
     /// FLOW_UPDATE scope identifiers.
     /// </summary>
     public enum FlowUpdateScopeKind : byte

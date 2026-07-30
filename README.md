@@ -14,7 +14,7 @@
 
 C# bindings and Unity/.NET host surfaces for NNRP Preview4.
 
-The Preview4 runtime path is Rust-backed. `Nnrp.NativeBridge` loads packaged `nnrp-rs` provider artifacts and probes the ABI, protocol, and feature flags. Each transport package owns its transport-specific native entry surface and pins the selected transport before opening native connection, session, server, event polling, control, and cancellation facades. Managed client/server helpers remain diagnostic or unsupported-runtime surfaces for fixture inspection, conformance support, and local host development.
+The Preview4 runtime path is Rust-backed. `Nnrp.Client` and `Nnrp.Server` own role-specific orchestration, while each transport package owns its native provider implementation and artifacts. Production role packages do not contain a managed protocol fallback or transport artifact.
 
 Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-doc/.
 
@@ -24,18 +24,21 @@ Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-
 | --- | --- |
 | `Nnrp.Core` | Protocol enums, fixed-layout codecs, state machines, capability negotiation, and conformance-oriented models. |
 | `Nnrp.NativeBridge` | Rust-backed Preview4 FFI substrate, artifact loading, ABI probing, and raw native handle facades. |
-| `Nnrp.Client` | Managed diagnostic client helpers for fixture and unsupported-runtime scenarios. |
-| `Nnrp.Server` | Managed diagnostic server helpers for fixture and unsupported-runtime scenarios. |
-| `Nnrp.Transport.Tcp` | TCP native transport entry surface plus managed diagnostic TCP framed transport adapter. |
+| `Nnrp.Client` | Production client connection, session, submit, control, object, cache, result, and event APIs. |
+| `Nnrp.Server` | Production multi-listener server, accepted session, operation, control, object, cache, and result APIs. |
+| `Nnrp.Transport.Tcp` | TCP native provider and transport-scoped artifacts. |
 | `Nnrp.Transport.Quic` | QUIC native transport entry surface. |
+| `Nnrp.Transport.Ipc` | Unix-domain socket and Windows named-pipe native provider. |
+| `Nnrp.Transport.WebSocket` | WS/WSS native provider and binary runtime-frame codec. |
 
 ## Install
 
-NuGet-style package publication is CI owned. When a package is available, install the Rust-backed host facade with:
+NuGet-style package publication is CI owned. Install one role package and every transport allowed by the deployment:
 
 ```powershell
-dotnet add package Nnrp.NativeBridge --version <published-version>
+dotnet add package Nnrp.Client --version <published-version>
 dotnet add package Nnrp.Transport.Tcp --version <published-version>
+dotnet add package Nnrp.Transport.Quic --version <published-version>
 ```
 
 Unity package generation is also CI owned. The Unity package is expected to contain managed assemblies plus platform-specific native plugins under Unity importer-aware plugin paths.
@@ -44,66 +47,43 @@ The common Preview4 native platform scope is Windows, macOS, Linux, Android, and
 
 Reviewer-facing packaging policy and CI-owned release rules are documented in [doc/packaging/ci-first-package-strategy.md](./doc/packaging/ci-first-package-strategy.md).
 
-## Native Session Example
+## Client Example
 
 ```csharp
-using Nnrp.NativeBridge;
-using Nnrp.Transport.Tcp;
+using Nnrp.Client;
+using Nnrp.Core;
 
-var options = new NnrpNativeTcpRuntimeSessionHostOptions(
-    connectionId: 1,
-    connectionGeneration: 1,
-    sessionId: 1,
-    sessionGeneration: 1,
-    profileId: 1,
-    schemaId: 1,
-    schemaVersion: 1);
-
-using var host = NnrpNativeTcpRuntime.OpenSessionHost(options);
-var operation = host.SubmitOperation(operationId: 1, frameId: 1, payload: Array.Empty<byte>());
-var result = host.PollResult(operation);
+await using var client = await NnrpClient.ConnectAsync(
+    new NnrpClientOptions(NnrpEndpoint.Parse("nnrp://runtime.example/session/default")),
+    cancellationToken);
+await using var session = client.OpenSession();
+var result = await session.SubmitAsync(request, cancellationToken);
 ```
 
-By default the native facade fails fast when the artifact is missing or incompatible. Diagnostic fallback must be explicit:
+## Server Example
 
 ```csharp
-options.FallbackBackend = diagnosticBackend;
-options.FallbackPolicy = NnrpNativeRuntimeFallbackPolicy.UseFallbackForDiagnostics;
-```
+using Nnrp.Core;
+using Nnrp.Server;
 
-## Native Server Example
-
-```csharp
-using Nnrp.NativeBridge;
-using Nnrp.Transport.Tcp;
-
-var serverOptions = new NnrpNativeTcpRuntimeServerHostOptions(
-    serverId: 1,
-    serverGeneration: 1);
-
-using var serverHost = NnrpNativeTcpRuntime.OpenServerHost(serverOptions);
-serverHost.AcceptSession(new NnrpNativeRuntimeSessionOptions(
-    sessionId: 1,
-    sessionGeneration: 1,
-    profileId: 1,
-    schemaId: 1,
-    schemaVersion: 1));
-
-var operation = serverHost.ReceiveSubmit(sessionId: 1, operationId: 1, frameId: 1);
-serverHost.SendResult(sessionId: 1, operation, payload: Array.Empty<byte>());
+await using var server = await NnrpServer.ListenAsync(
+    new NnrpServerOptions(NnrpEndpoint.Parse("nnrp://0.0.0.0:7700/runtime/default")),
+    cancellationToken);
+await using var session = await server.AcceptAsync(cancellationToken: cancellationToken);
+var operation = await session.ReceiveSubmitAsync(cancellationToken);
+await operation.SendResultAsync(resultMetadata, resultBody, cancellationToken);
 ```
 
 ## Repository Layout
 
 - `src/Nnrp.Core/`: protocol models, fixed-width codecs, negotiation, and state machines.
 - `src/Nnrp.NativeBridge/`: Preview4 Rust-backed native runtime substrate and artifact packaging.
-- `src/Nnrp.Client/`: managed diagnostic client helpers.
-- `src/Nnrp.Server/`: managed diagnostic server helpers.
-- `src/Nnrp.Transport.Tcp/`: TCP native transport entry surface and managed diagnostic TCP transport adapter.
-- `src/Nnrp.Transport.Quic/`: QUIC native transport entry surface.
+- `src/Nnrp.Client/`: production client role orchestration.
+- `src/Nnrp.Server/`: production server role orchestration.
+- `src/Nnrp.Transport.*`: transport-owned native providers and artifacts.
 - `tools/`: conformance and benchmark adapters.
 - `tests/`: xUnit and packaging regression tests.
-- `doc/todo/v1-preview3/`: preview3 task breakdown and implementation status.
+- `doc/todo/v1-preview4/`: Preview4 task breakdown and implementation status.
 
 ## Validation
 

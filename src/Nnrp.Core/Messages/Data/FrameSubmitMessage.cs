@@ -335,24 +335,20 @@ namespace Nnrp.Core
                 frameClass: metadata.FrameClass,
                 inputProfile: metadata.InputProfile,
                 tileIndexMode: metadata.TileIndexMode,
-                reserved0: 0,
                 latencyBudgetMilliseconds: metadata.LatencyBudgetMilliseconds,
                 targetFpsTimes100: metadata.TargetFpsTimes100,
                 retryOfFrame: metadata.RetryOfFrame,
                 tileBaseId: metadata.TileBaseId,
                 cameraBytes: checked((uint)cameraBytes),
                 tileIndexBytes: checked((uint)tileIndexBytes),
-                reserved1: 0,
-                reserved2: 0,
+                operationId: metadata.OperationId,
                 submitMode: metadata.SubmitMode,
                 budgetPolicy: metadata.BudgetPolicy,
                 lossTolerancePolicy: metadata.LossTolerancePolicy,
-                reserved3: 0,
                 objectRefMask: metadata.ObjectRefMask,
                 dependencyFrameId: metadata.DependencyFrameId,
                 payloadKindBitmap: metadata.PayloadKindBitmap,
-                payloadFrameCount: metadata.PayloadFrameCount,
-                reserved4: 0);
+                payloadFrameCount: metadata.PayloadFrameCount);
         }
 
         private static TensorSubmitBlock CreateTensorSubmitBlock(FrameSubmitMetadata metadata)

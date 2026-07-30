@@ -18,7 +18,7 @@ namespace Nnrp.Core
             : this(new TypedPayloadDescriptor(
                   PayloadKind.TokenChunk,
                   TypedPayloadProfileId.Token,
-                  (ushort)flags,
+                  (byte)flags,
                   schemaId,
                   schemaVersion,
                   streamSemantics,
@@ -45,7 +45,7 @@ namespace Nnrp.Core
 
         public TypedPayloadDescriptorFlags Flags => (TypedPayloadDescriptorFlags)Descriptor.DescriptorFlags;
 
-        public ushort DescriptorFlags => Descriptor.DescriptorFlags;
+        public byte DescriptorFlags => Descriptor.DescriptorFlags;
 
         public uint SchemaId => Descriptor.SchemaId;
 

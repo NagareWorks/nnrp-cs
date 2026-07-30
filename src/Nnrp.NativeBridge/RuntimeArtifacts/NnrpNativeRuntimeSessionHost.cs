@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Nnrp.Runtime;
 
 namespace Nnrp.NativeBridge
 {
@@ -87,7 +88,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
@@ -95,7 +96,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -103,7 +104,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
@@ -111,7 +112,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -119,7 +120,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeOperation SubmitOperation(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
@@ -127,7 +128,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -135,7 +136,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -145,7 +146,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,
@@ -155,7 +156,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -165,7 +166,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,
@@ -175,7 +176,7 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -185,7 +186,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             return Session.SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,
@@ -449,14 +450,14 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeOperation SubmitOperation(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
             return GetSession(sessionId).SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -465,14 +466,14 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeOperation SubmitOperation(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
             return GetSession(sessionId).SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -481,14 +482,14 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeOperation SubmitOperation(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null)
         {
             return GetSession(sessionId).SubmitOperation(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId);
@@ -506,7 +507,7 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             byte[]? payload = null,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -515,7 +516,7 @@ namespace Nnrp.NativeBridge
         {
             return GetSession(sessionId).SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,
@@ -526,7 +527,7 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             ReadOnlyMemory<byte> payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -535,7 +536,7 @@ namespace Nnrp.NativeBridge
         {
             return GetSession(sessionId).SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,
@@ -546,7 +547,7 @@ namespace Nnrp.NativeBridge
         public NnrpNativeRuntimeResult SubmitAndPollResult(
             uint sessionId,
             ulong operationId,
-            uint frameId,
+            RuntimeFrameHeader header,
             NnrpNativeBuffer payload,
             ulong? parentOperationId = null,
             ulong? operationGroupId = null,
@@ -555,7 +556,7 @@ namespace Nnrp.NativeBridge
         {
             return GetSession(sessionId).SubmitAndPollResult(
                 operationId,
-                frameId,
+                header,
                 payload,
                 parentOperationId,
                 operationGroupId,

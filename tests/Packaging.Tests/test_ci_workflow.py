@@ -33,8 +33,10 @@ class CiWorkflowTests(unittest.TestCase):
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("native-artifacts:", workflow)
-        self.assertIn("--version 1.0.0-preview.4.19", workflow)
-        self.assertIn("--require-abi-version 4.1.1", workflow)
+        self.assertIn("--version 1.0.0-preview.4.21", workflow)
+        self.assertIn("--require-abi-version 4.3.0", workflow)
+        self.assertIn("--workflow-run-id 30580835592", workflow)
+        self.assertIn("--workflow-head-sha bcebd1b309326a787f68c5b196dd733527fc1d81", workflow)
         self.assertIn("coordinated-native-artifacts", workflow)
         self.assertNotIn("scripts/package_native_artifacts.py", workflow)
         self.assertIn("native-e2e:", workflow)

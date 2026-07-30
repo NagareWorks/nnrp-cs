@@ -4,10 +4,10 @@ Preview4 C# work adapts managed client/server/Unity surfaces to runtime control,
 
 ## Workstreams
 
-- [ ] [01 - Contract and package boundaries](01-contract-and-package-boundaries.md)
-- [ ] [02 - Managed runtime control API](02-managed-runtime-control-api.md)
+- [x] [01 - Contract and package boundaries](01-contract-and-package-boundaries.md)
+- [x] [02 - Managed runtime control API](02-managed-runtime-control-api.md)
 - [x] [03 - Runtime object and cache references](03-runtime-object-cache-references.md)
-- [ ] [04 - Transport package integration](04-transport-package-integration.md)
+- [x] [04 - Transport package integration](04-transport-package-integration.md)
 - [ ] [05 - Wire conformance and validation](05-wire-conformance-and-validation.md)
 - [ ] [06 - Release packaging and docs](06-release-packaging-and-docs.md)
 
