@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Runtime;
+using Nnrp.Transport.Ipc;
 using Nnrp.Transport.Quic;
 using Nnrp.Transport.Tcp;
+using Nnrp.Transport.WebSocket;
 
 namespace Nnrp.WireConformance;
 
@@ -18,6 +20,13 @@ public sealed record WireTargetTransport(
     [property: JsonPropertyName("endpoint")] string Endpoint,
     [property: JsonPropertyName("tls")] bool Tls = false,
     [property: JsonPropertyName("security")] WireTargetTransportSecurity? Security = null);
+
+public sealed record WireHostRouteProvider(
+    [property: JsonPropertyName("transport")] string Transport,
+    [property: JsonPropertyName("provider_id")] string ProviderId,
+    [property: JsonPropertyName("installed")] bool Installed,
+    [property: JsonPropertyName("platforms")] IReadOnlyList<string> Platforms,
+    [property: JsonPropertyName("security_modes")] IReadOnlyList<string> SecurityModes);
 
 public sealed class WireTargetSupport
 {
@@ -38,12 +47,14 @@ public sealed class WireTargetSupport
     public IReadOnlySet<string> Capabilities { get; }
 
     public static WireTargetSupport Compiled { get; } = new(
-        [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer],
+        [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
         [
             ToSchemaTransportName(NnrpNativeTcpTransportProvider.Instance.Descriptor.TransportId),
             ToSchemaTransportName(NnrpNativeQuicTransportProvider.Instance.Descriptor.TransportId),
+            ToSchemaTransportName(NnrpNativeIpcTransportProvider.Instance.Descriptor.TransportId),
+            ToSchemaTransportName(NnrpNativeWebSocketTransportProvider.Instance.Descriptor.TransportId),
         ],
-        NnrpPreview4CapabilityTokens.AllCapabilities);
+        NnrpPreview4CapabilityTokens.AllCapabilities.Append(WireTargetCapabilities.HostRoutes));
 
     private static IReadOnlySet<string> ToFrozenSet(IEnumerable<string> values, string parameterName)
     {
@@ -71,8 +82,15 @@ public sealed class WireTargetSupport
     {
         Nnrp.Core.TransportId.Tcp => NnrpPreview4CapabilityTokens.TransportTcp,
         Nnrp.Core.TransportId.Quic => NnrpPreview4CapabilityTokens.TransportQuic,
+        Nnrp.Core.TransportId.Ipc => NnrpPreview4CapabilityTokens.TransportIpc,
+        Nnrp.Core.TransportId.WebSocket => NnrpPreview4CapabilityTokens.TransportWebSocket,
         _ => throw new InvalidOperationException($"Transport id {transportId} has no preview4 schema name."),
     };
+}
+
+public static class WireTargetCapabilities
+{
+    public const string HostRoutes = "host.routes";
 }
 
 public static class WireTargetModes
@@ -100,6 +118,21 @@ public sealed class WireTargetManifestBuilder
     private static readonly HashSet<string> ValidTransports =
         new(NnrpPreview4CapabilityTokens.Transports, StringComparer.Ordinal);
 
+    private static readonly HashSet<string> ValidHostPlatforms = new(StringComparer.Ordinal)
+    {
+        "native",
+        "browser",
+    };
+
+    private static readonly HashSet<string> ValidHostSecurityModes = new(StringComparer.Ordinal)
+    {
+        "plain",
+        "tls_server_auth",
+        "mutual_tls",
+        "wss",
+        "browser_host",
+    };
+
     private readonly WireTargetSupport support;
 
     public WireTargetManifestBuilder(WireTargetSupport support)
@@ -114,7 +147,8 @@ public sealed class WireTargetManifestBuilder
         IEnumerable<WireTargetTransport> transports,
         IEnumerable<string> capabilities,
         int maxFrameBytes = DefaultMaxFrameBytes,
-        int maxInFlight = DefaultMaxInFlight)
+        int maxInFlight = DefaultMaxInFlight,
+        IEnumerable<WireHostRouteProvider>? hostRouteProviders = null)
     {
         RequireNonEmpty(targetName, nameof(targetName));
         RequireNonEmpty(suiteVersion, nameof(suiteVersion));
@@ -134,6 +168,22 @@ public sealed class WireTargetManifestBuilder
             capabilities,
             "capability",
             ValidateCapability);
+        IReadOnlyList<WireHostRouteProvider> normalizedHostRouteProviders =
+            NormalizeHostRouteProviders(hostRouteProviders ?? []);
+        bool claimsHostRoutes = normalizedCapabilities.Contains(WireTargetCapabilities.HostRoutes);
+        if (claimsHostRoutes != (normalizedHostRouteProviders.Count != 0))
+        {
+            throw new ArgumentException(
+                "host.routes capability and host_route_providers must be declared together.",
+                nameof(hostRouteProviders));
+        }
+
+        if (normalizedTransports.Count == 0 && normalizedHostRouteProviders.Count == 0)
+        {
+            throw new ArgumentException(
+                "Wire target must declare transports or host-route providers.",
+                nameof(transports));
+        }
 
         return new WireTargetManifest(
             SchemaUrl,
@@ -143,6 +193,7 @@ public sealed class WireTargetManifestBuilder
             new WireTargetDeclaration(
                 normalizedModes,
                 normalizedTransports,
+                normalizedHostRouteProviders.Count == 0 ? null : normalizedHostRouteProviders,
                 normalizedCapabilities,
                 new WireTargetLimits(maxFrameBytes, maxInFlight)));
     }
@@ -213,12 +264,66 @@ public sealed class WireTargetManifestBuilder
             result.Add(transport with { Name = name, Endpoint = endpoint });
         }
 
-        if (result.Count == 0)
+        return new ReadOnlyCollection<WireTargetTransport>(result);
+    }
+
+    private IReadOnlyList<WireHostRouteProvider> NormalizeHostRouteProviders(
+        IEnumerable<WireHostRouteProvider> providers)
+    {
+        ArgumentNullException.ThrowIfNull(providers);
+        List<WireHostRouteProvider> result = [];
+        HashSet<(string Transport, string ProviderId)> seen = [];
+        foreach (WireHostRouteProvider provider in providers)
         {
-            throw new ArgumentException("Transports must not be empty.", nameof(transports));
+            ArgumentNullException.ThrowIfNull(provider);
+            string transport = provider.Transport.Trim().ToLowerInvariant();
+            string providerId = provider.ProviderId.Trim();
+            if (!ValidTransports.Contains(transport) || !support.Transports.Contains(transport))
+            {
+                throw new InvalidOperationException(
+                    $"Host-route transport provider is not compiled into this command: {transport}");
+            }
+
+            RequireNonEmpty(providerId, nameof(providers));
+            if (!seen.Add((transport, providerId)))
+            {
+                throw new ArgumentException(
+                    $"Duplicate host-route provider identity: {transport}/{providerId}",
+                    nameof(providers));
+            }
+
+            IReadOnlyList<string> platforms = NormalizeEnumStrings(
+                provider.Platforms,
+                ValidHostPlatforms,
+                "host-route platform");
+            IReadOnlyList<string> securityModes = NormalizeEnumStrings(
+                provider.SecurityModes,
+                ValidHostSecurityModes,
+                "host-route security mode");
+            result.Add(provider with
+            {
+                Transport = transport,
+                ProviderId = providerId,
+                Platforms = platforms,
+                SecurityModes = securityModes,
+            });
         }
 
-        return new ReadOnlyCollection<WireTargetTransport>(result);
+        return new ReadOnlyCollection<WireHostRouteProvider>(result);
+    }
+
+    private static IReadOnlyList<string> NormalizeEnumStrings(
+        IEnumerable<string> values,
+        IReadOnlySet<string> validValues,
+        string fieldName)
+    {
+        return NormalizeStrings(values, fieldName, value =>
+        {
+            if (!validValues.Contains(value))
+            {
+                throw new ArgumentException($"Unsupported {fieldName}: {value}", fieldName);
+            }
+        });
     }
 
     private static void ValidateTransportSecurity(
@@ -329,6 +434,9 @@ public sealed record WireTargetManifest(
 public sealed record WireTargetDeclaration(
     [property: JsonPropertyName("modes")] IReadOnlyList<string> Modes,
     [property: JsonPropertyName("transports")] IReadOnlyList<WireTargetTransport> Transports,
+    [property: JsonPropertyName("host_route_providers")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<WireHostRouteProvider>? HostRouteProviders,
     [property: JsonPropertyName("capabilities")] IReadOnlyList<string> Capabilities,
     [property: JsonPropertyName("limits")] WireTargetLimits Limits);
 

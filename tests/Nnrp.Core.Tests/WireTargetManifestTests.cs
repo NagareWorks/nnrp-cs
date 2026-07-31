@@ -101,28 +101,127 @@ public sealed class WireTargetManifestTests
     }
 
     [Fact]
-    public void CompiledSupportRejectsUnimplementedModeTransportAndCapability()
+    public void CompiledSupportIncludesEveryPreview4ModeAndTransport()
     {
         WireTargetManifestBuilder builder = new(WireTargetSupport.Compiled);
 
-        Assert.Throws<InvalidOperationException>(() => builder.Build(
+        WireTargetManifest manifest = builder.Build(
             "target",
             "0.1.0",
-            [WireTargetModes.SuiteAsProxy],
-            [new WireTargetTransport("tcp", "127.0.0.1:1")],
-            [NnrpPreview4CapabilityTokens.ControlCancelAbort]));
-        Assert.Throws<InvalidOperationException>(() => builder.Build(
-            "target",
-            "0.1.0",
-            [WireTargetModes.SuiteAsClient],
-            [new WireTargetTransport("ipc", "npipe://nnrp")],
-            [NnrpPreview4CapabilityTokens.ControlCancelAbort]));
+            [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
+            [
+                new WireTargetTransport("tcp", "127.0.0.1:1"),
+                new WireTargetTransport("quic", "127.0.0.1:2", true, Security),
+                new WireTargetTransport("ipc", "npipe://nnrp"),
+                new WireTargetTransport("websocket", "ws://127.0.0.1:3"),
+            ],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort]);
+
+        Assert.Equal(3, manifest.WireConformance.Modes.Count);
+        Assert.Equal(4, manifest.WireConformance.Transports.Count);
         Assert.Throws<InvalidOperationException>(() => builder.Build(
             "target",
             "0.1.0",
             [WireTargetModes.SuiteAsClient],
             [new WireTargetTransport("tcp", "127.0.0.1:1")],
             ["control.not-implemented"]));
+    }
+
+    [Fact]
+    public void BuildRequiresHostRouteCapabilityAndProvidersTogether()
+    {
+        WireTargetManifestBuilder builder = new(FullSupport());
+        WireHostRouteProvider provider = new(
+            "ipc",
+            "nnrp.transport.ipc.native",
+            true,
+            ["native"],
+            ["plain"]);
+
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes]));
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort],
+            hostRouteProviders: [provider]));
+
+        WireTargetManifest manifest = builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [provider]);
+
+        Assert.Empty(manifest.WireConformance.Transports);
+        WireHostRouteProvider actual = Assert.Single(manifest.WireConformance.HostRouteProviders!);
+        Assert.Equal(provider.Transport, actual.Transport);
+        Assert.Equal(provider.ProviderId, actual.ProviderId);
+        Assert.Equal(provider.Installed, actual.Installed);
+        Assert.Equal(provider.Platforms, actual.Platforms);
+        Assert.Equal(provider.SecurityModes, actual.SecurityModes);
+    }
+
+    [Fact]
+    public void BuildRejectsMalformedHostRouteProviders()
+    {
+        WireTargetManifestBuilder builder = new(FullSupport());
+        WireHostRouteProvider valid = new(
+            "ipc",
+            "nnrp.transport.ipc.native",
+            true,
+            ["native"],
+            ["plain"]);
+
+        Assert.Throws<ArgumentNullException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [null!]));
+        Assert.Throws<InvalidOperationException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [valid with { Transport = "udp" }]));
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [valid with { ProviderId = "" }]));
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [valid, valid]));
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [valid with { Platforms = ["runtime"] }]));
+        Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [],
+            [WireTargetCapabilities.HostRoutes],
+            hostRouteProviders: [valid with { SecurityModes = ["tls"] }]));
     }
 
     [Theory]
@@ -180,13 +279,72 @@ public sealed class WireTargetManifestTests
                 "manifest",
                 "--mode", WireTargetModes.SuiteAsClient,
                 "--transport", "ipc=npipe://nnrp",
-                "--capability", NnrpPreview4CapabilityTokens.ControlCancelAbort,
+                "--capability", "control.not-implemented",
                 "--output", outputPath,
             ],
             standardOutput,
             standardError);
         Assert.Equal(2, result);
-        Assert.Contains("not compiled", standardError.ToString(), StringComparison.Ordinal);
+        Assert.Contains("not implemented", standardError.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommandWritesHostRouteProviderManifest()
+    {
+        string outputPath = Path.Combine(CreateTemporaryDirectory(), "target.json");
+        string providerJson = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["transport"] = "ipc",
+            ["provider_id"] = "nnrp.transport.ipc.native",
+            ["installed"] = true,
+            ["platforms"] = new[] { "native" },
+            ["security_modes"] = new[] { "plain" },
+        });
+
+        int result = WireTargetManifestCommand.Run(
+            [
+                "manifest",
+                "--mode", WireTargetModes.SuiteAsClient,
+                "--host-route-provider", providerJson,
+                "--capability", WireTargetCapabilities.HostRoutes,
+                "--output", outputPath,
+            ],
+            TextWriter.Null,
+            TextWriter.Null);
+
+        Assert.Equal(0, result);
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(outputPath));
+        JsonElement provider = document.RootElement
+            .GetProperty("wire_conformance")
+            .GetProperty("host_route_providers")[0];
+        Assert.Equal("ipc", provider.GetProperty("transport").GetString());
+        Assert.True(provider.GetProperty("installed").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("[]", "must be a JSON object")]
+    [InlineData("{\"transport\":\"ipc\",\"provider_id\":\"id\",\"installed\":true,\"platforms\":[\"native\"],\"security_modes\":[\"plain\"],\"extra\":1}", "unknown field")]
+    [InlineData("{\"transport\":\"ipc\"}", "missing fields")]
+    [InlineData("{\"transport\":\"ipc\",\"provider_id\":\"id\",\"installed\":\"yes\",\"platforms\":[\"native\"],\"security_modes\":[\"plain\"]}", "must be a bool")]
+    [InlineData("{\"transport\":\"ipc\",\"provider_id\":\"id\",\"installed\":true,\"platforms\":\"native\",\"security_modes\":[\"plain\"]}", "must be an array")]
+    [InlineData("{\"transport\":\"ipc\",\"provider_id\":\"id\",\"installed\":true,\"platforms\":[1],\"security_modes\":[\"plain\"]}", "non-empty strings")]
+    public void CommandRejectsMalformedHostRouteProvider(string providerJson, string expectedError)
+    {
+        StringWriter error = new();
+
+        int result = WireTargetManifestCommand.Run(
+            [
+                "manifest",
+                "--mode", WireTargetModes.SuiteAsClient,
+                "--host-route-provider", providerJson,
+                "--capability", WireTargetCapabilities.HostRoutes,
+                "--output", "target.json",
+            ],
+            TextWriter.Null,
+            error);
+
+        Assert.Equal(2, result);
+        Assert.Contains(expectedError, error.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -237,7 +395,7 @@ public sealed class WireTargetManifestTests
     private static WireTargetSupport FullSupport() => new(
         [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
         NnrpPreview4CapabilityTokens.Transports,
-        NnrpPreview4CapabilityTokens.AllCapabilities);
+        NnrpPreview4CapabilityTokens.AllCapabilities.Append(WireTargetCapabilities.HostRoutes));
 
     private static string CreateTemporaryDirectory()
     {

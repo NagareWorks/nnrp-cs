@@ -32,7 +32,8 @@ public static class WireTargetManifestCommand
                 AttachSecurity(options.Transports, options.SecurityByTransport),
                 options.Capabilities,
                 options.MaxFrameBytes,
-                options.MaxInFlight);
+                options.MaxInFlight,
+                options.HostRouteProviders);
             WireTargetManifestBuilder.Write(options.OutputPath, manifest);
             return 0;
         }
@@ -52,6 +53,7 @@ public static class WireTargetManifestCommand
         int maxInFlight = WireTargetManifestBuilder.DefaultMaxInFlight;
         List<string> modes = [];
         List<WireTargetTransport> transports = [];
+        List<WireHostRouteProvider> hostRouteProviders = [];
         List<string> capabilities = [];
         Dictionary<string, WireTargetTransportSecurity> security = new(StringComparer.Ordinal);
 
@@ -81,6 +83,9 @@ public static class WireTargetManifestCommand
                     }
 
                     break;
+                case "--host-route-provider":
+                    hostRouteProviders.Add(ParseHostRouteProvider(value));
+                    break;
                 case "--capability":
                     capabilities.Add(value);
                     break;
@@ -108,6 +113,7 @@ public static class WireTargetManifestCommand
             suiteVersion,
             modes,
             transports,
+            hostRouteProviders,
             security,
             capabilities,
             maxFrameBytes,
@@ -191,6 +197,74 @@ public static class WireTargetManifestCommand
                 ReadRequiredString(root, "private_key_pkcs8_der_path")));
     }
 
+    private static WireHostRouteProvider ParseHostRouteProvider(string value)
+    {
+        using JsonDocument document = JsonDocument.Parse(value);
+        JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            throw new ArgumentException("Host-route provider must be a JSON object.");
+        }
+
+        HashSet<string> expected =
+        [
+            "transport",
+            "provider_id",
+            "installed",
+            "platforms",
+            "security_modes",
+        ];
+        foreach (JsonProperty property in root.EnumerateObject())
+        {
+            if (!expected.Remove(property.Name))
+            {
+                throw new ArgumentException($"Host-route provider contains unknown field: {property.Name}");
+            }
+        }
+
+        if (expected.Count != 0)
+        {
+            throw new ArgumentException(
+                $"Host-route provider is missing fields: {string.Join(", ", expected.Order())}");
+        }
+
+        JsonElement installed = root.GetProperty("installed");
+        if (installed.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+        {
+            throw new ArgumentException("Host-route provider installed must be a bool.");
+        }
+
+        return new WireHostRouteProvider(
+            ReadRequiredString(root, "transport"),
+            ReadRequiredString(root, "provider_id"),
+            installed.GetBoolean(),
+            ReadRequiredStringArray(root, "platforms"),
+            ReadRequiredStringArray(root, "security_modes"));
+    }
+
+    private static IReadOnlyList<string> ReadRequiredStringArray(JsonElement root, string name)
+    {
+        JsonElement value = root.GetProperty(name);
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            throw new ArgumentException($"Host-route provider field must be an array: {name}");
+        }
+
+        List<string> result = [];
+        foreach (JsonElement item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))
+            {
+                throw new ArgumentException(
+                    $"Host-route provider field must contain non-empty strings: {name}");
+            }
+
+            result.Add(item.GetString()!);
+        }
+
+        return result;
+    }
+
     private static string ReadRequiredString(JsonElement root, string name)
     {
         JsonElement value = root.GetProperty(name);
@@ -238,9 +312,10 @@ public static class WireTargetManifestCommand
         output.WriteLine("Usage: Nnrp.WireConformance manifest [options]");
         output.WriteLine("  --target-name NAME");
         output.WriteLine("  --suite-version VERSION");
-        output.WriteLine("  --mode suite_as_client|suite_as_server");
+        output.WriteLine("  --mode suite_as_client|suite_as_server|suite_as_proxy");
         output.WriteLine("  --transport name=endpoint");
         output.WriteLine("  --transport-security JSON");
+        output.WriteLine("  --host-route-provider JSON");
         output.WriteLine("  --capability TOKEN");
         output.WriteLine("  --max-frame-bytes COUNT");
         output.WriteLine("  --max-in-flight COUNT");
@@ -252,6 +327,7 @@ public static class WireTargetManifestCommand
         string SuiteVersion,
         IReadOnlyList<string> Modes,
         IReadOnlyList<WireTargetTransport> Transports,
+        IReadOnlyList<WireHostRouteProvider> HostRouteProviders,
         IReadOnlyDictionary<string, WireTargetTransportSecurity> SecurityByTransport,
         IReadOnlyList<string> Capabilities,
         int MaxFrameBytes,

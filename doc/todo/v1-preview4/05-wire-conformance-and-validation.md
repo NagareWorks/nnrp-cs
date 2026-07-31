@@ -6,15 +6,15 @@
 - [x] Include implementation name.
 - [x] Include protocol version.
 - [x] Include suite version.
-- [ ] Declare every implemented runner mode.
+- [x] Declare every implemented runner mode.
   - [x] `suite_as_client`.
   - [x] `suite_as_server`.
-  - [ ] `suite_as_proxy`.
-- [ ] Declare every implemented transport.
+  - [x] `suite_as_proxy`.
+- [x] Declare every implemented transport.
   - [x] TCP.
   - [x] QUIC.
-  - [ ] IPC.
-  - [ ] WebSocket.
+  - [x] IPC.
+  - [x] WebSocket.
 - [x] Include capabilities and limits.
 - [ ] Reject a release target manifest unless it declares all three modes and all four transports.
 
