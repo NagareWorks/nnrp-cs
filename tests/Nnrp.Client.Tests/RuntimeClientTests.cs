@@ -22,10 +22,19 @@ namespace Nnrp.Client.Tests
             var @event = NnrpRuntimeEvent.Decode(
                 new RuntimeFrameHeader(MessageType.ResultPush),
                 ResultPayload(ResultStatusCode.Success));
+            var terminalEvent = NnrpTerminalEvent.FromRuntime(@event);
             Assert.Throws<ArgumentOutOfRangeException>(() =>
-                new NnrpResult(0, NnrpResultTerminalState.Success, @event));
+                new NnrpResult(0, NnrpResultTerminalState.Success, terminalEvent));
             Assert.Throws<ArgumentNullException>(() =>
                 new NnrpResult(1, NnrpResultTerminalState.Success, null!));
+            Assert.Throws<ArgumentException>(() =>
+                new NnrpResult(1, NnrpResultTerminalState.Error, terminalEvent));
+            Assert.Throws<ArgumentException>(() =>
+                new NnrpResult(
+                    2,
+                    NnrpResultTerminalState.Cancelled,
+                    NnrpTerminalEvent.FromLifecycle(
+                        new NnrpOperationLifecycleEvent(1, NnrpOperationState.Cancelled))));
 
             using var harness = new RuntimeEntrypointHarness();
             var client = CreateClient(harness);
@@ -56,11 +65,10 @@ namespace Nnrp.Client.Tests
 
             Assert.Equal((ulong)201, result.OperationId);
             Assert.Equal(NnrpResultTerminalState.Success, result.TerminalState);
-            Assert.Equal(MessageType.ResultPush, result.Header.MessageType);
-            Assert.NotNull(result.ResultMetadata);
-            Assert.Null(result.DropMetadata);
-            Assert.Empty(result.Diagnostic.ToArray());
-            Assert.Empty(result.Body.ToArray());
+            var resultEvent = RuntimeEventOf(result);
+            Assert.Equal(MessageType.ResultPush, resultEvent.Header.MessageType);
+            Assert.Equal(NnrpRuntimeEventMetadataKind.ResultPush, resultEvent.Metadata.Kind);
+            Assert.Empty(BodyOf(resultEvent).ToArray());
             Assert.Equal((uint)41, session.Options.SessionId);
             Assert.False(session.IsClosed);
             Assert.Equal(TransportId.Tcp, client.ActiveTransportId);
@@ -69,7 +77,9 @@ namespace Nnrp.Client.Tests
                 client.Options.Endpoint);
             Assert.Equal("test-tcp", client.Selection.SelectedProvider.Name);
             Assert.Equal((ulong)202, deferredResult.OperationId);
-            Assert.NotNull(deferredResult.ResultMetadata);
+            Assert.Equal(
+                NnrpRuntimeEventMetadataKind.ResultPush,
+                RuntimeEventOf(deferredResult).Metadata.Kind);
             Assert.Equal(MessageType.Progress, deferredEvent.Header.MessageType);
             Assert.Equal(progress, deferredEvent.Metadata.Get<ProgressMetadata>());
             Assert.Single(harness.SubmitRequests);
@@ -117,21 +127,20 @@ namespace Nnrp.Client.Tests
             var result = await session.NextResultAsync();
             var trace = await session.NextEventAsync();
 
-            Assert.Equal(NnrpResultTerminalState.Cancelled, result.TerminalState);
-            Assert.Equal(drop, result.DropMetadata);
-            Assert.Equal(new byte[] { 3, 4 }, result.Diagnostic.ToArray());
+            Assert.Equal(NnrpResultTerminalState.Dropped, result.TerminalState);
+            var dropEvent = RuntimeEventOf(result);
+            Assert.Equal(drop, dropEvent.Metadata.Get<ResultDropReasonMetadata>());
+            Assert.Equal(new byte[] { 3, 4 }, DiagnosticOf(dropEvent).ToArray());
             Assert.Equal(MessageType.TraceContext, trace.Header.MessageType);
             Assert.Contains(harness.RuntimeFrames, frame => frame.Request.MessageType == (uint)MessageType.Cancel);
         }
 
         [Theory]
-        [InlineData(ResultStatusCode.Success, NnrpResultTerminalState.Success)]
-        [InlineData(ResultStatusCode.Degraded, NnrpResultTerminalState.Success)]
-        [InlineData(ResultStatusCode.Rejected, NnrpResultTerminalState.Error)]
-        [InlineData(ResultStatusCode.Failed, NnrpResultTerminalState.Error)]
-        public async Task ResultStatusMapsToFrozenTerminalState(
-            ResultStatusCode statusCode,
-            NnrpResultTerminalState terminalState)
+        [InlineData(ResultStatusCode.Success)]
+        [InlineData(ResultStatusCode.Degraded)]
+        [InlineData(ResultStatusCode.Rejected)]
+        [InlineData(ResultStatusCode.Failed)]
+        public async Task ResultPushStatusDoesNotSelectProtocolTerminalState(ResultStatusCode statusCode)
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
@@ -140,7 +149,121 @@ namespace Nnrp.Client.Tests
 
             var result = await session.NextResultAsync();
 
+            Assert.Equal(NnrpResultTerminalState.Success, result.TerminalState);
+        }
+
+        [Fact]
+        public async Task ResultDropWithoutMetadataMapsToDropped()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            harness.QueueClientEvent(MessageType.ResultDrop, 11, 201, Array.Empty<byte>());
+
+            var result = await session.NextResultAsync();
+
+            Assert.Equal((ulong)201, result.OperationId);
+            Assert.Equal(NnrpResultTerminalState.Dropped, result.TerminalState);
+            Assert.Equal(MessageType.ResultDrop, RuntimeEventOf(result).Header.MessageType);
+        }
+
+        [Theory]
+        [InlineData(6u, NnrpResultTerminalState.Success, NnrpOperationState.Completed)]
+        [InlineData(7u, NnrpResultTerminalState.Cancelled, NnrpOperationState.Cancelled)]
+        [InlineData(10u, NnrpResultTerminalState.Error, NnrpOperationState.Failed)]
+        public async Task HeaderlessNativeLifecycleMapsWithoutFabricatingWireHeader(
+            uint eventKind,
+            NnrpResultTerminalState terminalState,
+            NnrpOperationState operationState)
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            harness.QueueClientLifecycleEvent(eventKind, 201);
+
+            var result = await session.NextResultAsync();
+
+            Assert.Equal((ulong)201, result.OperationId);
             Assert.Equal(terminalState, result.TerminalState);
+            var lifecycle = LifecycleEventOf(result);
+            Assert.Equal((ulong)201, lifecycle.OperationId);
+            Assert.Equal(operationState, lifecycle.State);
+        }
+
+        [Fact]
+        public async Task FailedNativeLifecycleStatusMapsToFailedRegardlessOfEventKind()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            harness.QueueClientLifecycleEvent(
+                6,
+                201,
+                new NnrpFfiStatus(NnrpFfiStatusCode.ProtocolError, NnrpErrorFamily.Operation));
+
+            var result = await session.NextResultAsync();
+
+            Assert.Equal(NnrpResultTerminalState.Error, result.TerminalState);
+            Assert.Equal(NnrpOperationState.Failed, LifecycleEventOf(result).State);
+        }
+
+        [Fact]
+        public void TerminalEventRejectsNonTerminalEvidenceAndRequiresBothHandlers()
+        {
+            var progress = NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.Progress),
+                NnrpRuntimeControl.Encode(
+                    MessageType.Progress,
+                    new ProgressMetadata(1, 2, 3, 4, 0, 0)));
+            Assert.Throws<ArgumentException>(() => NnrpTerminalEvent.FromRuntime(progress));
+            Assert.Throws<ArgumentException>(() =>
+                NnrpTerminalEvent.FromLifecycle(
+                    new NnrpOperationLifecycleEvent(1, NnrpOperationState.Running)));
+
+            var terminal = NnrpTerminalEvent.FromLifecycle(
+                new NnrpOperationLifecycleEvent(1, NnrpOperationState.Completed));
+            Func<NnrpRuntimeEvent, int> runtime = _ => 1;
+            Func<NnrpOperationLifecycleEvent, int> lifecycle = _ => 2;
+            Assert.Throws<ArgumentNullException>(() => terminal.Match(null!, lifecycle));
+            Assert.Throws<ArgumentNullException>(() => terminal.Match(runtime, null!));
+            Assert.Equal(2, terminal.Match(runtime, lifecycle));
+        }
+
+        [Theory]
+        [InlineData(NnrpOperationState.Completed, NnrpResultTerminalState.Success)]
+        [InlineData(NnrpOperationState.Cancelled, NnrpResultTerminalState.Cancelled)]
+        [InlineData(NnrpOperationState.Superseded, NnrpResultTerminalState.Dropped)]
+        [InlineData(NnrpOperationState.Failed, NnrpResultTerminalState.Error)]
+        public void LifecycleTerminalEvidenceUsesTheFrozenMapping(
+            NnrpOperationState operationState,
+            NnrpResultTerminalState terminalState)
+        {
+            var terminal = NnrpTerminalEvent.FromLifecycle(
+                new NnrpOperationLifecycleEvent(1, operationState));
+
+            var result = new NnrpResult(1, terminalState, terminal);
+
+            Assert.Equal(terminalState, result.TerminalState);
+            Assert.Equal(operationState, LifecycleEventOf(result).State);
+        }
+
+        [Fact]
+        public void ResultDropReasonEvidenceRequiresMatchingOperationIdentity()
+        {
+            var metadata = new ResultDropReasonMetadata(
+                101,
+                1,
+                NnrpResultDropReasonCode.Backpressure,
+                RuntimeRole.Server,
+                0,
+                0);
+            var terminal = NnrpTerminalEvent.FromRuntime(
+                NnrpRuntimeEvent.Decode(
+                    new RuntimeFrameHeader(MessageType.ResultDropReason),
+                    NnrpRuntimeControl.Encode(MessageType.ResultDropReason, metadata)));
+
+            Assert.Throws<ArgumentException>(() =>
+                new NnrpResult(102, NnrpResultTerminalState.Dropped, terminal));
         }
 
         [Fact]
@@ -310,6 +433,38 @@ namespace Nnrp.Client.Tests
                 0,
                 0,
                 0).ToArray();
+        }
+
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpResult result)
+        {
+            return result.Event.Match(
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Expected runtime terminal evidence."));
+        }
+
+        private static NnrpOperationLifecycleEvent LifecycleEventOf(NnrpResult result)
+        {
+            return result.Event.Match(
+                _ => throw new InvalidOperationException("Expected lifecycle terminal evidence."),
+                lifecycle => lifecycle);
+        }
+
+        private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a body tail."),
+                body => body,
+                _ => throw new InvalidOperationException("Expected a body tail."),
+                (_, _) => throw new InvalidOperationException("Expected a body tail."));
+        }
+
+        private static ReadOnlyMemory<byte> DiagnosticOf(NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a diagnostic tail."),
+                _ => throw new InvalidOperationException("Expected a diagnostic tail."),
+                diagnostic => diagnostic,
+                (_, _) => throw new InvalidOperationException("Expected a diagnostic tail."));
         }
     }
 }

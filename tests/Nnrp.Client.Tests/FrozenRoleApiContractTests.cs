@@ -104,24 +104,37 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
-        public void RuntimeEventAndTerminalStateLiveInTheSharedCoreAssembly()
+        public void RuntimeAndTerminalEvidenceMatchTheFrozenClosedUnions()
         {
             Assert.Same(typeof(NnrpRuntimeEvent).Assembly, typeof(NnrpResultTerminalState).Assembly);
             Assert.Same(typeof(RuntimeFrameHeader).Assembly, typeof(NnrpResultTerminalState).Assembly);
 
-            var properties = typeof(NnrpRuntimeEvent)
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .ToDictionary(property => property.Name, property => property.PropertyType, StringComparer.Ordinal);
-            Assert.Equal(typeof(RuntimeFrameHeader), properties[nameof(NnrpRuntimeEvent.Header)]);
-            Assert.Equal(typeof(NnrpRuntimeEventMetadata), properties[nameof(NnrpRuntimeEvent.Metadata)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.Body)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.Diagnostic)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.CapabilityEntries)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.HintBody)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.TraceAttributes)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.ObjectMetadata)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.Delta)]);
-            Assert.Equal(typeof(ReadOnlyMemory<byte>), properties[nameof(NnrpRuntimeEvent.CacheMetadata)]);
+            AssertProperties(
+                typeof(NnrpResult),
+                (nameof(NnrpResult.OperationId), typeof(ulong)),
+                (nameof(NnrpResult.TerminalState), typeof(NnrpResultTerminalState)),
+                (nameof(NnrpResult.Event), typeof(NnrpTerminalEvent)));
+            AssertProperties(
+                typeof(NnrpRuntimeEvent),
+                (nameof(NnrpRuntimeEvent.Header), typeof(RuntimeFrameHeader)),
+                (nameof(NnrpRuntimeEvent.Metadata), typeof(NnrpRuntimeEventMetadata)),
+                (nameof(NnrpRuntimeEvent.Tail), typeof(NnrpRuntimeEventTail)));
+            AssertProperties(
+                typeof(NnrpRuntimeEventTail),
+                (nameof(NnrpRuntimeEventTail.Kind), typeof(NnrpRuntimeEventTailKind)));
+            AssertProperties(
+                typeof(NnrpTerminalEvent),
+                (nameof(NnrpTerminalEvent.Kind), typeof(NnrpTerminalEventKind)));
+            AssertProperties(
+                typeof(NnrpOperationLifecycleEvent),
+                (nameof(NnrpOperationLifecycleEvent.OperationId), typeof(ulong)),
+                (nameof(NnrpOperationLifecycleEvent.State), typeof(NnrpOperationState)));
+            Assert.Single(
+                typeof(NnrpRuntimeEventTail).GetMethods(BindingFlags.Public | BindingFlags.Instance),
+                method => method.Name == nameof(NnrpRuntimeEventTail.Match));
+            Assert.Single(
+                typeof(NnrpTerminalEvent).GetMethods(BindingFlags.Public | BindingFlags.Instance),
+                method => method.Name == nameof(NnrpTerminalEvent.Match));
         }
 
         [Fact]
@@ -193,6 +206,21 @@ namespace Nnrp.Client.Tests
                 modifiers: null);
             Assert.NotNull(method);
             Assert.Equal(returnType, method!.ReturnType);
+        }
+
+        private static void AssertProperties(
+            Type type,
+            params (string Name, Type Type)[] expected)
+        {
+            var properties = type
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .ToDictionary(property => property.Name, property => property.PropertyType, StringComparer.Ordinal);
+            Assert.Equal(expected.Length, properties.Count);
+            foreach (var property in expected)
+            {
+                Assert.True(properties.TryGetValue(property.Name, out var actualType));
+                Assert.Equal(property.Type, actualType);
+            }
         }
     }
 }

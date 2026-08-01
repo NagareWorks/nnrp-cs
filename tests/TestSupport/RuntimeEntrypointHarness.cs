@@ -75,6 +75,28 @@ namespace Nnrp.TestSupport
             clientEvents.Enqueue(CreateEvent(messageType, frameId, operationId, payload, sessionId, kind));
         }
 
+        internal void QueueClientLifecycleEvent(
+            uint kind,
+            ulong operationId,
+            NnrpFfiStatus status = default,
+            uint sessionId = 41)
+        {
+            if (operationId == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(operationId));
+            }
+
+            clientEvents.Enqueue(new NnrpEvent(
+                kind,
+                new NnrpFfiRuntimeFrameHeader(0, 0, present: 0),
+                new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                new NnrpHandle(NnrpHandleKind.Session, sessionId, 1),
+                new NnrpHandle(NnrpHandleKind.Operation, checked(operationId + 10_000), 1),
+                NnrpHandle.Invalid,
+                NnrpBufferView.Empty,
+                new NnrpFfiDiagnostic(status, relatedOperationId: operationId)));
+        }
+
         internal void QueueServerBatch(params NnrpEvent[] events)
         {
             serverEventBatches.Enqueue(events ?? throw new ArgumentNullException(nameof(events)));

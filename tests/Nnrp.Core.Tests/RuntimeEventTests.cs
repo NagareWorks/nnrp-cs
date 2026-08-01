@@ -28,9 +28,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(NnrpRuntimeEventMetadataKind.Progress, @event.Metadata.Kind);
             Assert.Equal(metadata, @event.Metadata.Get<ProgressMetadata>());
             Assert.Equal(NnrpRuntimeEventTailKind.Body, @event.Tail.Kind);
-            Assert.Equal(new byte[] { 7, 8, 9 }, @event.Tail.Body.ToArray());
-            Assert.Equal(new byte[] { 7, 8, 9 }, @event.Body.ToArray());
-            Assert.Empty(@event.CapabilityEntries.ToArray());
+            Assert.Equal(new byte[] { 7, 8, 9 }, BodyOf(@event).ToArray());
             Assert.Throws<InvalidOperationException>(() => @event.Metadata.Get<PressureMetadata>());
         }
 
@@ -50,17 +48,15 @@ namespace Nnrp.Core.Tests
             Assert.Equal(NnrpRuntimeEventMetadataKind.ObjectDelta, @event.Metadata.Kind);
             Assert.Equal(metadata, @event.Metadata.Get<ObjectDeltaMetadata>());
             Assert.Equal(NnrpRuntimeEventTailKind.MetadataBodyAndDelta, @event.Tail.Kind);
-            Assert.Equal(new byte[] { 10, 11, 12 }, @event.Tail.MetadataBody.ToArray());
-            Assert.Equal(new byte[] { 20, 21 }, @event.Tail.Delta.ToArray());
-            Assert.Equal(new byte[] { 10, 11, 12 }, @event.ObjectMetadata.ToArray());
-            Assert.Equal(new byte[] { 20, 21 }, @event.Delta.ToArray());
-            Assert.Empty(@event.CacheMetadata.ToArray());
+            var parts = DeltaOf(@event);
+            Assert.Equal(new byte[] { 10, 11, 12 }, parts.MetadataBody.ToArray());
+            Assert.Equal(new byte[] { 20, 21 }, parts.Delta.ToArray());
         }
 
         [Theory]
         [InlineData(MessageType.CapabilityNegotiation)]
         [InlineData(MessageType.DegradeProfile)]
-        public void DecodeExposesCapabilityEntriesBySemanticName(MessageType messageType)
+        public void DecodePreservesCapabilityBodyTail(MessageType messageType)
         {
             var entries = new byte[] { 1, 2, 3 };
             var payload = NnrpRuntimeControl.Encode(
@@ -70,12 +66,11 @@ namespace Nnrp.Core.Tests
 
             var @event = NnrpRuntimeEvent.Decode(new RuntimeFrameHeader(messageType), payload);
 
-            Assert.Equal(entries, @event.CapabilityEntries.ToArray());
-            Assert.Empty(@event.HintBody.ToArray());
+            Assert.Equal(entries, BodyOf(@event).ToArray());
         }
 
         [Fact]
-        public void DecodeExposesHintTraceObjectAndCacheTailsBySemanticName()
+        public void DecodePreservesHintTraceObjectAndCacheBodyTails()
         {
             var bytes = new byte[] { 4, 5, 6 };
             var hint = NnrpRuntimeEvent.Decode(
@@ -114,10 +109,10 @@ namespace Nnrp.Core.Tests
                     new CacheReferenceMetadata(1, 2, 3, 4, CacheReuseScope.Session, 5, 6, 7, 3, 0),
                     bytes));
 
-            Assert.Equal(bytes, hint.HintBody.ToArray());
-            Assert.Equal(bytes, trace.TraceAttributes.ToArray());
-            Assert.Equal(bytes, declared.ObjectMetadata.ToArray());
-            Assert.Equal(bytes, cached.CacheMetadata.ToArray());
+            Assert.Equal(bytes, BodyOf(hint).ToArray());
+            Assert.Equal(bytes, BodyOf(trace).ToArray());
+            Assert.Equal(bytes, BodyOf(declared).ToArray());
+            Assert.Equal(bytes, BodyOf(cached).ToArray());
         }
 
         [Fact]
@@ -154,6 +149,24 @@ namespace Nnrp.Core.Tests
             AssertInvalidFixedMetadata(MessageType.FlowUpdate, FlowUpdateMetadata.MetadataLength);
             AssertInvalidFixedMetadata(MessageType.CacheInvalidate, CacheInvalidateMetadata.MetadataLength);
             AssertInvalidFixedMetadata(MessageType.SessionClose, SessionCloseMetadata.MetadataLength);
+        }
+
+        [Fact]
+        public void TailMatchRequiresEveryVariantHandler()
+        {
+            var tail = NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.ResultDrop),
+                Array.Empty<byte>()).Tail;
+            Func<int> none = () => 0;
+            Func<ReadOnlyMemory<byte>, int> body = _ => 1;
+            Func<ReadOnlyMemory<byte>, int> diagnostic = _ => 2;
+            Func<ReadOnlyMemory<byte>, ReadOnlyMemory<byte>, int> delta = (_, _) => 3;
+
+            Assert.Throws<ArgumentNullException>(() => tail.Match(null!, body, diagnostic, delta));
+            Assert.Throws<ArgumentNullException>(() => tail.Match(none, null!, diagnostic, delta));
+            Assert.Throws<ArgumentNullException>(() => tail.Match(none, body, null!, delta));
+            Assert.Throws<ArgumentNullException>(() => tail.Match(none, body, diagnostic, null!));
+            Assert.Equal(0, tail.Match(none, body, diagnostic, delta));
         }
 
         [Fact]
@@ -274,13 +287,30 @@ namespace Nnrp.Core.Tests
             var @event = NnrpRuntimeEvent.Decode(new RuntimeFrameHeader(messageType), payload);
             Assert.Equal(kind, @event.Metadata.Kind);
             Assert.Equal(tailKind, @event.Tail.Kind);
-            _ = @event.Body;
-            _ = @event.Diagnostic;
-            _ = @event.Tail.Body;
-            _ = @event.Tail.Diagnostic;
-            _ = @event.Tail.MetadataBody;
-            _ = @event.Tail.Delta;
-            _ = @event.ObjectMetadata;
+            Assert.Equal(tailKind, @event.Tail.Match(
+                () => NnrpRuntimeEventTailKind.None,
+                _ => NnrpRuntimeEventTailKind.Body,
+                _ => NnrpRuntimeEventTailKind.Diagnostic,
+                (_, _) => NnrpRuntimeEventTailKind.MetadataBodyAndDelta));
+        }
+
+        private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a body tail."),
+                body => body,
+                _ => throw new InvalidOperationException("Expected a body tail."),
+                (_, _) => throw new InvalidOperationException("Expected a body tail."));
+        }
+
+        private static (ReadOnlyMemory<byte> MetadataBody, ReadOnlyMemory<byte> Delta) DeltaOf(
+            NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a delta tail."),
+                _ => throw new InvalidOperationException("Expected a delta tail."),
+                _ => throw new InvalidOperationException("Expected a delta tail."),
+                (metadataBody, delta) => (metadataBody, delta));
         }
 
         private static byte[] Append(byte[] first, byte[] second)

@@ -450,6 +450,11 @@ jobs:
           dotnet test tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj
           --configuration Release --no-build
 
+      - name: Run managed client and server role E2E
+        run: >-
+          dotnet test tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj
+          --configuration Release --no-build
+
   native-e2e-windows-x86:
     needs:
       - changes
@@ -520,6 +525,11 @@ jobs:
       - name: Run x86 WebSocket provider E2E
         run: >-
           dotnet test tests/Nnrp.Transport.WebSocket.Tests/Nnrp.Transport.WebSocket.Tests.csproj
+          --configuration Release --no-build
+
+      - name: Run x86 managed client and server role E2E
+        run: >-
+          dotnet test tests/Nnrp.Client.Tests/Nnrp.Client.Tests.csproj
           --configuration Release --no-build
 
   package-validation:

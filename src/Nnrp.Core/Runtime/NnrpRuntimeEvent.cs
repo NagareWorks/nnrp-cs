@@ -82,45 +82,68 @@ namespace Nnrp.Runtime
 
     public sealed class NnrpRuntimeEventTail
     {
+        private readonly byte[] first;
+        private readonly byte[] second;
+
         private NnrpRuntimeEventTail(
             NnrpRuntimeEventTailKind kind,
-            byte[] body,
-            byte[] diagnostic,
-            byte[] metadataBody,
-            byte[] delta)
+            byte[] first,
+            byte[] second)
         {
             Kind = kind;
-            Body = body;
-            Diagnostic = diagnostic;
-            MetadataBody = metadataBody;
-            Delta = delta;
+            this.first = first;
+            this.second = second;
         }
 
         public NnrpRuntimeEventTailKind Kind { get; }
-
-        public ReadOnlyMemory<byte> Body { get; }
-
-        public ReadOnlyMemory<byte> Diagnostic { get; }
-
-        public ReadOnlyMemory<byte> MetadataBody { get; }
-
-        public ReadOnlyMemory<byte> Delta { get; }
 
         public static NnrpRuntimeEventTail None { get; } =
             new NnrpRuntimeEventTail(
                 NnrpRuntimeEventTailKind.None,
                 Array.Empty<byte>(),
-                Array.Empty<byte>(),
-                Array.Empty<byte>(),
                 Array.Empty<byte>());
+
+        public TResult Match<TResult>(
+            Func<TResult> none,
+            Func<ReadOnlyMemory<byte>, TResult> body,
+            Func<ReadOnlyMemory<byte>, TResult> diagnostic,
+            Func<ReadOnlyMemory<byte>, ReadOnlyMemory<byte>, TResult> metadataBodyAndDelta)
+        {
+            if (none == null)
+            {
+                throw new ArgumentNullException(nameof(none));
+            }
+
+            if (body == null)
+            {
+                throw new ArgumentNullException(nameof(body));
+            }
+
+            if (diagnostic == null)
+            {
+                throw new ArgumentNullException(nameof(diagnostic));
+            }
+
+            if (metadataBodyAndDelta == null)
+            {
+                throw new ArgumentNullException(nameof(metadataBodyAndDelta));
+            }
+
+            return Kind switch
+            {
+                NnrpRuntimeEventTailKind.None => none(),
+                NnrpRuntimeEventTailKind.Body => body(first),
+                NnrpRuntimeEventTailKind.Diagnostic => diagnostic(first),
+                NnrpRuntimeEventTailKind.MetadataBodyAndDelta => metadataBodyAndDelta(first, second),
+                _ => throw new InvalidOperationException("Runtime event tail has an unknown variant."),
+            };
+        }
 
         internal static NnrpRuntimeEventTail FromBody(ReadOnlySpan<byte> body)
         {
             return new NnrpRuntimeEventTail(
                 NnrpRuntimeEventTailKind.Body,
                 body.ToArray(),
-                Array.Empty<byte>(),
-                Array.Empty<byte>(),
                 Array.Empty<byte>());
         }
 
@@ -128,9 +151,7 @@ namespace Nnrp.Runtime
         {
             return new NnrpRuntimeEventTail(
                 NnrpRuntimeEventTailKind.Diagnostic,
-                Array.Empty<byte>(),
                 diagnostic.ToArray(),
-                Array.Empty<byte>(),
                 Array.Empty<byte>());
         }
 
@@ -138,8 +159,6 @@ namespace Nnrp.Runtime
         {
             return new NnrpRuntimeEventTail(
                 NnrpRuntimeEventTailKind.MetadataBodyAndDelta,
-                Array.Empty<byte>(),
-                Array.Empty<byte>(),
                 metadataBody.ToArray(),
                 delta.ToArray());
         }
@@ -167,43 +186,6 @@ namespace Nnrp.Runtime
         public NnrpRuntimeEventMetadata Metadata { get; }
 
         public NnrpRuntimeEventTail Tail { get; }
-
-        public ReadOnlyMemory<byte> Body => Tail.Body;
-
-        public ReadOnlyMemory<byte> Diagnostic => Tail.Diagnostic;
-
-        public ReadOnlyMemory<byte> CapabilityEntries =>
-            Metadata.Kind == NnrpRuntimeEventMetadataKind.Capability
-                ? Tail.Body
-                : ReadOnlyMemory<byte>.Empty;
-
-        public ReadOnlyMemory<byte> HintBody =>
-            Metadata.Kind == NnrpRuntimeEventMetadataKind.RouteHint
-                ? Tail.Body
-                : ReadOnlyMemory<byte>.Empty;
-
-        public ReadOnlyMemory<byte> TraceAttributes =>
-            Metadata.Kind == NnrpRuntimeEventMetadataKind.TraceContext
-                ? Tail.Body
-                : ReadOnlyMemory<byte>.Empty;
-
-        public ReadOnlyMemory<byte> ObjectMetadata => Metadata.Kind switch
-        {
-            NnrpRuntimeEventMetadataKind.ObjectDescriptor or
-            NnrpRuntimeEventMetadataKind.ObjectReference => Tail.Body,
-            NnrpRuntimeEventMetadataKind.ObjectDelta => Tail.MetadataBody,
-            _ => ReadOnlyMemory<byte>.Empty,
-        };
-
-        public ReadOnlyMemory<byte> Delta =>
-            Metadata.Kind == NnrpRuntimeEventMetadataKind.ObjectDelta
-                ? Tail.Delta
-                : ReadOnlyMemory<byte>.Empty;
-
-        public ReadOnlyMemory<byte> CacheMetadata =>
-            Metadata.Kind == NnrpRuntimeEventMetadataKind.CacheReference
-                ? Tail.Body
-                : ReadOnlyMemory<byte>.Empty;
 
         public static NnrpRuntimeEvent Decode(RuntimeFrameHeader header, ReadOnlySpan<byte> payload)
         {

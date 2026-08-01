@@ -93,7 +93,7 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
-        public void OperationLifecycleAppliesFirstPartialResultFromAccepted()
+        public void OperationLifecycleTreatsPartialClassResultPushAsTerminalEvidence()
         {
             var lifecycle = new NnrpOperationLifecycle(303);
             var result = CreateResultPush(
@@ -105,8 +105,8 @@ namespace Nnrp.Core.Tests
 
             Assert.True(lifecycle.TryApplyResult(result, out var failure));
             Assert.Equal(NnrpProtocolFailure.None, failure);
-            Assert.Equal(NnrpOperationState.Partial, lifecycle.State);
-            Assert.False(lifecycle.IsTerminal);
+            Assert.Equal(NnrpOperationState.Completed, lifecycle.State);
+            Assert.True(lifecycle.IsTerminal);
         }
 
         [Fact]
@@ -130,7 +130,9 @@ namespace Nnrp.Core.Tests
         [InlineData(ResultClass.StaleReuse, ResultStatusCode.Success)]
         [InlineData(ResultClass.Degraded, ResultStatusCode.Success)]
         [InlineData(ResultClass.Degraded, ResultStatusCode.Degraded)]
-        public void OperationLifecycleTreatsUsableTerminalResultsAsCompleted(
+        [InlineData(ResultClass.Complete, ResultStatusCode.Rejected)]
+        [InlineData(ResultClass.Complete, ResultStatusCode.Failed)]
+        public void OperationLifecycleTreatsEveryTerminalResultPushAsCompleted(
             ResultClass resultClass,
             ResultStatusCode statusCode)
         {

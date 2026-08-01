@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -19,7 +20,8 @@ namespace Nnrp.Client.Tests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             var artifactPath = Environment.GetEnvironmentVariable(
                 LiveRuntimeRoleFactAttribute.ArtifactPathVariableName)!;
-            var providerEndpoint = NnrpProviderEndpoint.Parse($"npipe://nnrp-cs-role-{Guid.NewGuid():N}");
+            using var endpointLease = IpcEndpointLease.Create();
+            var providerEndpoint = endpointLease.Endpoint;
             var serverProvider = new NnrpNativeIpcTransportProvider(artifactPath);
             await using var server = await NnrpServer.ListenAsync(
                 new NnrpServerOptions(
@@ -36,7 +38,7 @@ namespace Nnrp.Client.Tests
                 timeout.Token);
 
             var boundProviderEndpoint = server.BoundProviderEndpoints[TransportId.Ipc];
-            Assert.Equal("npipe", boundProviderEndpoint.Scheme);
+            Assert.Equal(providerEndpoint.Scheme, boundProviderEndpoint.Scheme);
             var acceptTask = server.AcceptAsync(
                 new NnrpServerAcceptOptions(timeoutMilliseconds: 15_000),
                 timeout.Token).AsTask();
@@ -91,7 +93,7 @@ namespace Nnrp.Client.Tests
             var serverTrace = await serverSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.TraceContext, serverTrace.Header.MessageType);
             Assert.Equal(clientTrace, serverTrace.Metadata.Get<TraceContextMetadata>());
-            Assert.Equal(new byte[] { 4, 5 }, serverTrace.TraceAttributes.ToArray());
+            Assert.Equal(new byte[] { 4, 5 }, BodyOf(serverTrace).ToArray());
 
             var clientCapability = new CapabilityMetadata(701, 12, 1, 2, 3, 4, 3, 0);
             await clientSession.NegotiateCapabilitiesAsync(
@@ -101,14 +103,14 @@ namespace Nnrp.Client.Tests
             var serverCapability = await serverSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.CapabilityNegotiation, serverCapability.Header.MessageType);
             Assert.Equal(clientCapability, serverCapability.Metadata.Get<CapabilityMetadata>());
-            Assert.Equal(new byte[] { 20, 21, 22 }, serverCapability.CapabilityEntries.ToArray());
+            Assert.Equal(new byte[] { 20, 21, 22 }, BodyOf(serverCapability).ToArray());
 
             var clientRoute = new RouteHintMetadata(701, 13, 1, 2, 3, 2, 0);
             await clientSession.SendRouteHintAsync(clientRoute, new byte[] { 23, 24 }, timeout.Token);
             var serverRoute = await serverSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.RouteHint, serverRoute.Header.MessageType);
             Assert.Equal(clientRoute, serverRoute.Metadata.Get<RouteHintMetadata>());
-            Assert.Equal(new byte[] { 23, 24 }, serverRoute.HintBody.ToArray());
+            Assert.Equal(new byte[] { 23, 24 }, BodyOf(serverRoute).ToArray());
 
             var clientObject = new ObjectDescriptorMetadata(
                 81,
@@ -152,8 +154,9 @@ namespace Nnrp.Client.Tests
             var serverDelta = await serverSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.ObjectDelta, serverDelta.Header.MessageType);
             Assert.Equal(clientDelta, serverDelta.Metadata.Get<ObjectDeltaMetadata>());
-            Assert.Equal(new byte[] { 25, 26 }, serverDelta.ObjectMetadata.ToArray());
-            Assert.Equal(new byte[] { 27, 28 }, serverDelta.Delta.ToArray());
+            var serverDeltaParts = DeltaOf(serverDelta);
+            Assert.Equal(new byte[] { 25, 26 }, serverDeltaParts.MetadataBody.ToArray());
+            Assert.Equal(new byte[] { 27, 28 }, serverDeltaParts.Delta.ToArray());
 
             var clientInvalidate = new CacheInvalidateMetadata(
                 CacheInvalidateScope.ObjectKey,
@@ -186,7 +189,7 @@ namespace Nnrp.Client.Tests
             var clientTraceEvent = await clientSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.TraceContext, clientTraceEvent.Header.MessageType);
             Assert.Equal(serverTraceMetadata, clientTraceEvent.Metadata.Get<TraceContextMetadata>());
-            Assert.Equal(new byte[] { 29, 30 }, clientTraceEvent.TraceAttributes.ToArray());
+            Assert.Equal(new byte[] { 29, 30 }, BodyOf(clientTraceEvent).ToArray());
 
             var recoverableError = new RecoverableErrorMetadata(
                 501,
@@ -206,7 +209,7 @@ namespace Nnrp.Client.Tests
             var clientError = await clientSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.ErrorRecoverable, clientError.Header.MessageType);
             Assert.Equal(recoverableError, clientError.Metadata.Get<RecoverableErrorMetadata>());
-            Assert.Equal(new byte[] { 31, 32 }, clientError.Diagnostic.ToArray());
+            Assert.Equal(new byte[] { 31, 32 }, DiagnosticOf(clientError).ToArray());
 
             var serverObjectReference = new ObjectReferenceMetadata(81, 701, 3, 4, 5, 0, 2);
             await serverSession.ReferenceObjectAsync(
@@ -232,8 +235,9 @@ namespace Nnrp.Client.Tests
             var clientDeltaEvent = await clientSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.ObjectPatch, clientDeltaEvent.Header.MessageType);
             Assert.Equal(serverDeltaMetadata, clientDeltaEvent.Metadata.Get<ObjectDeltaMetadata>());
-            Assert.Equal(new byte[] { 33 }, clientDeltaEvent.ObjectMetadata.ToArray());
-            Assert.Equal(new byte[] { 34, 35 }, clientDeltaEvent.Delta.ToArray());
+            var clientDeltaParts = DeltaOf(clientDeltaEvent);
+            Assert.Equal(new byte[] { 33 }, clientDeltaParts.MetadataBody.ToArray());
+            Assert.Equal(new byte[] { 34, 35 }, clientDeltaParts.Delta.ToArray());
 
             var serverInvalidateMetadata = new CacheInvalidateMetadata(
                 CacheInvalidateScope.ObjectKey,
@@ -267,7 +271,7 @@ namespace Nnrp.Client.Tests
             var result = await clientSession.NextResultAsync(timeout.Token);
             Assert.Equal((ulong)701, result.OperationId);
             Assert.Equal(NnrpResultTerminalState.Success, result.TerminalState);
-            Assert.Equal(new byte[] { 18, 19 }, result.Body.ToArray());
+            Assert.Equal(new byte[] { 18, 19 }, BodyOf(RuntimeEventOf(result)).ToArray());
 
             var cancelledRequest = NnrpSubmitRequest.CreateToken(new NnrpTokenSubmitInput(
                 new NnrpSubmitIdentity(702, 72, new NnrpSubmitHeaderContext(traceId: 7002)),
@@ -283,7 +287,7 @@ namespace Nnrp.Client.Tests
             var serverCancel = await serverSession.NextEventAsync(timeout.Token);
             Assert.Equal(MessageType.Cancel, serverCancel.Header.MessageType);
             Assert.Equal(cancel, serverCancel.Metadata.Get<ControlRequestMetadata>());
-            Assert.Equal(new byte[] { 38, 39 }, serverCancel.Diagnostic.ToArray());
+            Assert.Equal(new byte[] { 38, 39 }, DiagnosticOf(serverCancel).ToArray());
 
             await serverSession.SendPartialResultAsync(
                 new PartialResultMetadata(702, 1, 2, 3, 2, 0),
@@ -305,9 +309,10 @@ namespace Nnrp.Client.Tests
             var cancelledResult = await clientSession.NextResultAsync(timeout.Token);
             var postCancellationTrace = await clientSession.NextEventAsync(timeout.Token);
             Assert.Equal((ulong)702, cancelledResult.OperationId);
-            Assert.Equal(NnrpResultTerminalState.Cancelled, cancelledResult.TerminalState);
-            Assert.Equal(drop, cancelledResult.DropMetadata);
-            Assert.Equal(new byte[] { 43, 44 }, cancelledResult.Diagnostic.ToArray());
+            Assert.Equal(NnrpResultTerminalState.Dropped, cancelledResult.TerminalState);
+            var cancelledEvent = RuntimeEventOf(cancelledResult);
+            Assert.Equal(drop, cancelledEvent.Metadata.Get<ResultDropReasonMetadata>());
+            Assert.Equal(new byte[] { 43, 44 }, DiagnosticOf(cancelledEvent).ToArray());
             Assert.Equal(MessageType.TraceContext, postCancellationTrace.Header.MessageType);
             Assert.Equal(
                 cancellationTrace,
@@ -337,6 +342,87 @@ namespace Nnrp.Client.Tests
             Assert.Equal(status.ErrorFamily, error.Status.ErrorFamily);
             Assert.Equal(status.ProtocolErrorCode, error.Status.ProtocolErrorCode);
             Assert.Equal(status.DetailCode, error.Status.DetailCode);
+        }
+
+        [Fact]
+        public void RoleIpcEndpointUsesPlatformCarrier()
+        {
+            using var endpointLease = IpcEndpointLease.Create();
+
+            Assert.Equal(OperatingSystem.IsWindows() ? "npipe" : "unix", endpointLease.Endpoint.Scheme);
+        }
+
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpResult result)
+        {
+            return result.Event.Match(
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Expected runtime terminal evidence."));
+        }
+
+        private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a body tail."),
+                body => body,
+                _ => throw new InvalidOperationException("Expected a body tail."),
+                (_, _) => throw new InvalidOperationException("Expected a body tail."));
+        }
+
+        private static ReadOnlyMemory<byte> DiagnosticOf(NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a diagnostic tail."),
+                _ => throw new InvalidOperationException("Expected a diagnostic tail."),
+                diagnostic => diagnostic,
+                (_, _) => throw new InvalidOperationException("Expected a diagnostic tail."));
+        }
+
+        private static (ReadOnlyMemory<byte> MetadataBody, ReadOnlyMemory<byte> Delta) DeltaOf(
+            NnrpRuntimeEvent @event)
+        {
+            return @event.Tail.Match(
+                () => throw new InvalidOperationException("Expected a delta tail."),
+                _ => throw new InvalidOperationException("Expected a delta tail."),
+                _ => throw new InvalidOperationException("Expected a delta tail."),
+                (metadataBody, delta) => (metadataBody, delta));
+        }
+
+        private sealed class IpcEndpointLease : IDisposable
+        {
+            private readonly string? socketPath;
+
+            private IpcEndpointLease(NnrpProviderEndpoint endpoint, string? socketPath)
+            {
+                Endpoint = endpoint;
+                this.socketPath = socketPath;
+            }
+
+            public NnrpProviderEndpoint Endpoint { get; }
+
+            public static IpcEndpointLease Create()
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    return new IpcEndpointLease(
+                        NnrpProviderEndpoint.Parse($"npipe://nnrp-cs-role-{Guid.NewGuid():N}"),
+                        null);
+                }
+
+                var socketPath = Path.Combine(
+                    Path.GetTempPath(),
+                    $"nnrp-cs-role-{Guid.NewGuid():N}.sock");
+                return new IpcEndpointLease(
+                    NnrpProviderEndpoint.Parse($"unix://{socketPath.Replace('\\', '/')}"),
+                    socketPath);
+            }
+
+            public void Dispose()
+            {
+                if (socketPath != null && File.Exists(socketPath))
+                {
+                    File.Delete(socketPath);
+                }
+            }
         }
     }
 }

@@ -35,7 +35,11 @@ namespace Nnrp.Server
 
         public FrameSubmitMetadata Metadata => Submit.Metadata.Get<FrameSubmitMetadata>();
 
-        public ReadOnlyMemory<byte> Body => Submit.Tail.Body;
+        public ReadOnlyMemory<byte> Body => Submit.Tail.Match(
+            none: () => ReadOnlyMemory<byte>.Empty,
+            body: value => value,
+            diagnostic: _ => throw new InvalidOperationException("FRAME_SUBMIT cannot carry a diagnostic tail."),
+            metadataBodyAndDelta: (_, _) => throw new InvalidOperationException("FRAME_SUBMIT cannot carry a delta tail."));
 
         public ulong TraceId => Submit.Header.TraceId;
 

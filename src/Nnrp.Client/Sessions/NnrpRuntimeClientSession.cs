@@ -13,7 +13,7 @@ namespace Nnrp.Client
         internal NnrpResult(
             ulong operationId,
             NnrpResultTerminalState terminalState,
-            NnrpRuntimeEvent @event)
+            NnrpTerminalEvent @event)
         {
             if (operationId == 0)
             {
@@ -23,33 +23,21 @@ namespace Nnrp.Client
             OperationId = operationId;
             TerminalState = terminalState;
             Event = @event ?? throw new ArgumentNullException(nameof(@event));
+            Event.ValidateResult(operationId, terminalState);
         }
 
         public ulong OperationId { get; }
 
         public NnrpResultTerminalState TerminalState { get; }
 
-        public NnrpRuntimeEvent Event { get; }
-
-        public RuntimeFrameHeader Header => Event.Header;
-
-        public ResultPushMetadata? ResultMetadata =>
-            Event.Metadata.Kind == NnrpRuntimeEventMetadataKind.ResultPush
-                ? Event.Metadata.Get<ResultPushMetadata>()
-                : null;
-
-        public ResultDropReasonMetadata? DropMetadata =>
-            Event.Metadata.Kind == NnrpRuntimeEventMetadataKind.ResultDropReason
-                ? Event.Metadata.Get<ResultDropReasonMetadata>()
-                : null;
-
-        public ReadOnlyMemory<byte> Body => Event.Tail.Body;
-
-        public ReadOnlyMemory<byte> Diagnostic => Event.Tail.Diagnostic;
+        public NnrpTerminalEvent Event { get; }
     }
 
     public sealed class NnrpClientSession : IAsyncDisposable
     {
+        private const uint NativeEventKindResultPushed = 6;
+        private const uint NativeEventKindResultDropped = 7;
+        private const uint NativeEventKindError = 10;
         private const int MaxCancelledOperationSuppressions = 4096;
 
         private readonly object stateGate = new object();
@@ -369,9 +357,18 @@ namespace Nnrp.Client
 
         private static bool IsTerminalResult(NnrpNativeRuntimeEvent @event)
         {
-            return @event.HasWireHeader
-                && (@event.MessageType == (uint)MessageType.ResultPush
-                    || @event.MessageType == (uint)MessageType.ResultDropReason);
+            if (@event.HasWireHeader)
+            {
+                return @event.MessageType == (uint)MessageType.ResultPush
+                    || @event.MessageType == (uint)MessageType.ResultDrop
+                    || @event.MessageType == (uint)MessageType.ResultDropReason;
+            }
+
+            return OperationIdOf(@event) != 0
+                && (!@event.Diagnostic.Status.Succeeded
+                    || @event.Kind == NativeEventKindResultPushed
+                    || @event.Kind == NativeEventKindResultDropped
+                    || @event.Kind == NativeEventKindError);
         }
 
         private static bool MatchesOperation(
@@ -450,11 +447,6 @@ namespace Nnrp.Client
             }
 
             var operationId = OperationIdOf(@event);
-            if (operationId == 0 && @event.MessageType == (uint)MessageType.PartialResult)
-            {
-                operationId = @event.ToRuntimeEvent().Metadata.Get<PartialResultMetadata>().OperationId;
-            }
-
             lock (stateGate)
             {
                 return operationId != 0 && cancelledOperations.Contains(operationId);
@@ -490,23 +482,35 @@ namespace Nnrp.Client
                 return @event.ToRuntimeEvent().Metadata.Get<ResultDropReasonMetadata>().OperationId;
             }
 
-            return @event.Diagnostic.RelatedOperationId;
+            if (@event.MessageType == (uint)MessageType.PartialResult && @event.HasWireHeader)
+            {
+                return @event.ToRuntimeEvent().Metadata.Get<PartialResultMetadata>().OperationId;
+            }
+
+            return 0;
         }
 
         private static NnrpResult ToResult(NnrpNativeRuntimeEvent nativeEvent)
         {
-            var @event = nativeEvent.ToRuntimeEvent();
-            var state = @event.Header.MessageType == MessageType.ResultDropReason
-                ? @event.Metadata.Get<ResultDropReasonMetadata>().DropReasonCode
-                    == NnrpResultDropReasonCode.PeerCancelled
-                    ? NnrpResultTerminalState.Cancelled
-                    : NnrpResultTerminalState.Dropped
-                : @event.Metadata.Get<ResultPushMetadata>().StatusCode == ResultStatusCode.Success
-                    || @event.Metadata.Get<ResultPushMetadata>().StatusCode == ResultStatusCode.Degraded
-                    ? NnrpResultTerminalState.Success
-                    : NnrpResultTerminalState.Error;
             var operationId = OperationIdOf(nativeEvent);
-            return new NnrpResult(operationId, state, @event);
+            if (nativeEvent.HasWireHeader)
+            {
+                var terminalEvent = NnrpTerminalEvent.FromRuntime(nativeEvent.ToRuntimeEvent());
+                return new NnrpResult(operationId, terminalEvent.ExpectedTerminalState, terminalEvent);
+            }
+
+            var lifecycleState = !nativeEvent.Diagnostic.Status.Succeeded
+                    || nativeEvent.Kind == NativeEventKindError
+                ? NnrpOperationState.Failed
+                : nativeEvent.Kind == NativeEventKindResultDropped
+                    ? NnrpOperationState.Cancelled
+                    : nativeEvent.Kind == NativeEventKindResultPushed
+                        ? NnrpOperationState.Completed
+                        : throw new InvalidOperationException(
+                            "Native lifecycle event does not describe a frozen terminal operation state.");
+            var lifecycleEvent = NnrpTerminalEvent.FromLifecycle(
+                new NnrpOperationLifecycleEvent(operationId, lifecycleState));
+            return new NnrpResult(operationId, lifecycleEvent.ExpectedTerminalState, lifecycleEvent);
         }
 
         private void EnsureOpen()

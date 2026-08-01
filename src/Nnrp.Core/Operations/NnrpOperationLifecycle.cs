@@ -95,25 +95,7 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if (result.Metadata.ResultClass == ResultClass.Partial
-                || (result.Metadata.ResultFlags & ResultFlags.Partial) != 0)
-            {
-                if (State == NnrpOperationState.Accepted)
-                {
-                    State = NnrpOperationState.Running;
-                }
-
-                return TryMarkPartial(out failure);
-            }
-
-            if ((result.Metadata.StatusCode == ResultStatusCode.Success
-                    || result.Metadata.StatusCode == ResultStatusCode.Degraded)
-                && result.Metadata.ResultClass != ResultClass.Partial)
-            {
-                return TryComplete(out failure);
-            }
-
-            return TryFail(out failure);
+            return TryComplete(out failure);
         }
 
         public bool TryApplyDrop(ResultDropMessage drop, out NnrpProtocolFailure failure)

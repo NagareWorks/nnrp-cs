@@ -1526,9 +1526,30 @@ namespace Nnrp.NativeBridge
             NnrpHandle payloadOwner,
             NnrpBufferView payload,
             NnrpFfiDiagnostic diagnostic)
+            : this(
+                kind,
+                new NnrpFfiRuntimeFrameHeader(checked((byte)messageType), frameId),
+                connection,
+                session,
+                operation,
+                payloadOwner,
+                payload,
+                diagnostic)
+        {
+        }
+
+        internal NnrpEvent(
+            uint kind,
+            NnrpFfiRuntimeFrameHeader header,
+            NnrpHandle connection,
+            NnrpHandle session,
+            NnrpHandle operation,
+            NnrpHandle payloadOwner,
+            NnrpBufferView payload,
+            NnrpFfiDiagnostic diagnostic)
         {
             Kind = kind;
-            Header = new NnrpFfiRuntimeFrameHeader(checked((byte)messageType), frameId);
+            Header = header;
             Connection = connection;
             Session = session;
             Operation = operation;

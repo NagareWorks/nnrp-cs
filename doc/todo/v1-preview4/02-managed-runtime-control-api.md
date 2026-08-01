@@ -72,8 +72,9 @@
 ## Managed Event And Error Model
 
 - [x] Add the role-neutral `NnrpRuntimeEvent` projection.
-  - [x] Preserve `RuntimeFrameHeader` and typed metadata.
-  - [x] Expose diagnostic, body, capability-entry, hint, trace, object-metadata, delta, and cache-metadata tails by semantic name.
+  - [x] Expose exactly `Header`, closed typed `Metadata`, and closed `Tail` properties.
+  - [x] Expose tail variants only through exhaustive `Match<TResult>(...)` callbacks.
+  - [x] Reject parallel nullable or semantic-name convenience fields that can expose inactive variants.
   - [x] Return owned memory or lifetime-guarded borrowed memory without exposing native buffers.
 - [x] Add the owned `DecodedRuntimeFrame` projection used by WebSocket and conformance decoders.
   - [x] Expose `RuntimeFrameHeader`, owned metadata, and owned body regions.
@@ -82,7 +83,13 @@
   - [x] Use the enum in `SupersedeMetadata`.
   - [x] Use the enum in `ResultDropReasonMetadata`.
   - [x] Reject reserved `0x000a..0x7fff` values while preserving private `0x8000..0xffff` values.
-- [x] Add `NnrpResultTerminalState` and the frozen operation-to-terminal mapping.
+- [x] Add the frozen terminal result and evidence model.
+  - [x] Expose `NnrpResult` with exactly `OperationId`, `TerminalState`, and `Event`.
+  - [x] Model terminal evidence as the closed `Runtime` or `Lifecycle` `NnrpTerminalEvent` union.
+  - [x] Preserve headerless native lifecycle events without fabricating a wire header.
+  - [x] Map `ResultPush` to `Success` and both wire drop forms to `Dropped`, independent of result status code.
+  - [x] Map lifecycle `Completed`, `Cancelled`, `Superseded`, and `Failed` to their frozen terminal states.
+  - [x] Reject terminal-state or operation-identity mismatches between a result and its evidence.
 - [x] Preserve Rust error identity in managed exceptions.
   - [x] Preserve `NnrpErrorFamily`.
   - [x] Preserve the numeric error code.
@@ -93,7 +100,7 @@
 
 - [x] Add public API compile tests for every frozen client and server method.
 - [x] Add unit tests for drop-reason reserved and private ranges.
-- [x] Add unit tests for operation-to-terminal mapping and duplicate terminal sends.
+- [x] Add exact public-shape and variant tests for runtime events, terminal evidence, operation-to-terminal mapping, and duplicate terminal sends.
 - [x] Add native-backed integration tests against `1.0.0-preview.4.21` artifacts with exact FFI ABI `4.3.0`.
   - [x] Client control send and server event receive.
   - [x] Server progress, partial, drop, and trace send and client event receive.
