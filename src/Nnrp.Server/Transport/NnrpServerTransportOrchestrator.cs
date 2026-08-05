@@ -488,8 +488,10 @@ namespace Nnrp.Server
                 var boundEndpoint = listener.BoundEndpoint;
                 var defaults = serverOptions.SessionDefaults;
                 var server = listener.AdoptServer(new NnrpNativeServerBindOptions(
-                    NnrpRuntimeHandleIdAllocator.Allocate(),
-                    generation: 1,
+                    serverOptions.ServerId == 0
+                        ? NnrpRuntimeHandleIdAllocator.Allocate()
+                        : serverOptions.ServerId,
+                    serverOptions.ServerGeneration,
                     defaults.SupportedProfiles,
                     defaults.SupportedCacheObjects,
                     defaults.MaxCacheObjects,
@@ -597,8 +599,10 @@ namespace Nnrp.Server
                 cancellationToken.ThrowIfCancellationRequested();
                 var current = server ?? throw new ObjectDisposedException(nameof(NativeListener));
                 var session = current.AcceptSession(
-                    NnrpRuntimeHandleIdAllocator.Allocate(),
-                    generation: 1,
+                    options.SessionId == 0
+                        ? NnrpRuntimeHandleIdAllocator.Allocate()
+                        : options.SessionId,
+                    options.SessionGeneration,
                     pollTimeoutMilliseconds);
                 return new ValueTask<NnrpAcceptedServerTransportSession>(
                     new NnrpAcceptedServerTransportSession(

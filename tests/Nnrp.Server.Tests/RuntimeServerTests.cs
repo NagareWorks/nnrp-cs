@@ -51,7 +51,8 @@ namespace Nnrp.Server.Tests
                         new ProgressMetadata(401, 1, 1, 5000, 0, 0))),
                 harness.CreateEvent(MessageType.FrameSubmit, 41, 401, SubmitPayload(401)));
 
-            await using var session = await server.AcceptAsync(new NnrpServerAcceptOptions(100));
+            await using var session = await server.AcceptAsync(
+                new NnrpServerAcceptOptions(timeoutMilliseconds: 100));
             var operation = await session.ReceiveSubmitAsync();
             var progress = await session.NextEventAsync();
 

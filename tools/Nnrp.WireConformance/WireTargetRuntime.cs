@@ -224,7 +224,7 @@ internal sealed class NnrpWireTargetServer(
     public async ValueTask<IWireTargetServerSession> AcceptAsync(CancellationToken cancellationToken)
     {
         NnrpServerSession session = await server.AcceptAsync(
-            new NnrpServerAcceptOptions(15_000),
+            new NnrpServerAcceptOptions(timeoutMilliseconds: 15_000),
             cancellationToken).ConfigureAwait(false);
         return new NnrpWireTargetServerSession(session);
     }

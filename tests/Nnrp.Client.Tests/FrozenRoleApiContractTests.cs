@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Client;
 using Nnrp.Core;
+using Nnrp.NativeBridge;
 using Nnrp.Runtime;
 using Nnrp.Server;
 using Xunit;
@@ -77,10 +78,12 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpClientOptions.Endpoint), typeof(NnrpEndpoint)),
                 (nameof(NnrpClientOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>)),
                 (nameof(NnrpClientOptions.TransportPolicy), typeof(TransportPolicy)),
+                (nameof(NnrpClientOptions.Transports), typeof(IReadOnlyList<INnrpNativeTransportProvider>)),
                 (nameof(NnrpClientOptions.SessionDefaults), typeof(NnrpClientSessionOptions)));
             AssertProperties(
                 typeof(NnrpClientSessionOptions),
-                (nameof(NnrpClientSessionOptions.RequestedSessionId), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.SessionId), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.SessionGeneration), typeof(uint)),
                 (nameof(NnrpClientSessionOptions.ProfileId), typeof(ushort)),
                 (nameof(NnrpClientSessionOptions.SchemaId), typeof(uint)),
                 (nameof(NnrpClientSessionOptions.SchemaVersion), typeof(uint)),
@@ -102,9 +105,14 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpServerOptions.Endpoint), typeof(NnrpEndpoint)),
                 (nameof(NnrpServerOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>)),
                 (nameof(NnrpServerOptions.TransportPolicy), typeof(TransportPolicy)),
+                (nameof(NnrpServerOptions.Transports), typeof(IReadOnlyList<INnrpNativeTransportProvider>)),
+                (nameof(NnrpServerOptions.ServerId), typeof(ulong)),
+                (nameof(NnrpServerOptions.ServerGeneration), typeof(uint)),
                 (nameof(NnrpServerOptions.SessionDefaults), typeof(NnrpServerSessionOptions)));
             AssertProperties(
                 typeof(NnrpServerAcceptOptions),
+                (nameof(NnrpServerAcceptOptions.SessionId), typeof(ulong)),
+                (nameof(NnrpServerAcceptOptions.SessionGeneration), typeof(uint)),
                 (nameof(NnrpServerAcceptOptions.TimeoutMilliseconds), typeof(uint)));
             AssertProperties(
                 typeof(NnrpServerSessionOptions),

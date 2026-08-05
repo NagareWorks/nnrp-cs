@@ -62,7 +62,8 @@ namespace Nnrp.Client.Tests
 
             Assert.Equal(TransportId.Ipc, client.ActiveTransportId);
             Assert.Equal(TransportId.Ipc, serverSession.ActiveTransportId);
-            Assert.Equal((uint)0, clientSession.Options.RequestedSessionId);
+            Assert.Equal((uint)0, clientSession.Options.SessionId);
+            Assert.Equal((uint)1, clientSession.Options.SessionGeneration);
             Assert.Equal(TypedPayloadProfileId.Token.Value, clientSession.Options.ProfileId);
             Assert.Equal(TypedPayloadDescriptor.TokenDeltaSchemaId, clientSession.Options.SchemaId);
             Assert.Equal(TypedPayloadDescriptor.TokenDeltaSchemaVersion, clientSession.Options.SchemaVersion);

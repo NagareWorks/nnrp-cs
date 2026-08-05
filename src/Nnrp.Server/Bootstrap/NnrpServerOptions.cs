@@ -132,10 +132,24 @@ namespace Nnrp.Server
 
     public sealed class NnrpServerAcceptOptions
     {
-        public NnrpServerAcceptOptions(uint timeoutMilliseconds = 0)
+        public NnrpServerAcceptOptions(
+            ulong sessionId = 0,
+            uint sessionGeneration = 1,
+            uint timeoutMilliseconds = 0)
         {
+            if (sessionGeneration == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sessionGeneration));
+            }
+
+            SessionId = sessionId;
+            SessionGeneration = sessionGeneration;
             TimeoutMilliseconds = timeoutMilliseconds;
         }
+
+        public ulong SessionId { get; }
+
+        public uint SessionGeneration { get; }
 
         public uint TimeoutMilliseconds { get; }
     }
@@ -146,43 +160,26 @@ namespace Nnrp.Server
             NnrpEndpoint endpoint,
             IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes = null,
             TransportPolicy transportPolicy = TransportPolicy.Auto,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports = null,
+            ulong serverId = 0,
+            uint serverGeneration = 1,
             NnrpServerSessionOptions? sessionDefaults = null)
-            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, null)
-        {
-        }
-
-        internal NnrpServerOptions(
-            NnrpEndpoint endpoint,
-            IReadOnlyList<INnrpNativeTransportProvider> transports)
-            : this(endpoint, null, TransportPolicy.Auto, null, transports)
-        {
-        }
-
-        internal NnrpServerOptions(
-            NnrpEndpoint endpoint,
-            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes,
-            TransportPolicy transportPolicy,
-            IReadOnlyList<INnrpNativeTransportProvider> transports,
-            NnrpServerSessionOptions? sessionDefaults = null)
-            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, transports)
-        {
-        }
-
-        internal NnrpServerOptions(
-            NnrpEndpoint endpoint,
-            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes,
-            TransportPolicy transportPolicy,
-            NnrpServerSessionOptions? sessionDefaults,
-            IReadOnlyList<INnrpNativeTransportProvider>? transports)
         {
             if (!Enum.IsDefined(typeof(TransportPolicy), transportPolicy))
             {
                 throw new ArgumentOutOfRangeException(nameof(transportPolicy));
             }
 
+            if (serverGeneration == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(serverGeneration));
+            }
+
             Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
             ProviderRoutes = NnrpTransportRouteSet.CopyServer(providerRoutes);
             TransportPolicy = transportPolicy;
+            ServerId = serverId;
+            ServerGeneration = serverGeneration;
             SessionDefaults = sessionDefaults ?? new NnrpServerSessionOptions();
             Transports = transports == null
                 ? null
@@ -199,8 +196,12 @@ namespace Nnrp.Server
 
         public TransportPolicy TransportPolicy { get; }
 
-        public NnrpServerSessionOptions SessionDefaults { get; }
+        public IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
 
-        internal IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
+        public ulong ServerId { get; }
+
+        public uint ServerGeneration { get; }
+
+        public NnrpServerSessionOptions SessionDefaults { get; }
     }
 }

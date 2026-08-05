@@ -68,9 +68,9 @@ namespace Nnrp.Client
                 EnsureOpen();
                 var configured = options ?? sessionDefaults ?? new NnrpClientSessionOptions();
                 var nativeSession = connection.OpenSession(
-                    configured.RequestedSessionId,
+                    configured.SessionId,
                     NnrpRuntimeHandleIdAllocator.Allocate(),
-                    generation: 1,
+                    configured.SessionGeneration,
                     configured.ProfileId,
                     configured.PriorityClass,
                     configured.SchemaId,
@@ -104,7 +104,8 @@ namespace Nnrp.Client
                     configured.ResumeTokenBytes,
                     checked((uint)ticket.ResumeToken.Length));
                 var resolved = new NnrpClientSessionOptions(
-                    requestedSessionId: ticket.SessionId,
+                    sessionId: ticket.SessionId,
+                    sessionGeneration: configured.SessionGeneration,
                     profileId: configured.ProfileId,
                     schemaId: configured.SchemaId,
                     schemaVersion: configured.SchemaVersion,
@@ -116,9 +117,9 @@ namespace Nnrp.Client
                     resumeTokenBytes: resumeTokenBytes,
                     cacheHints: configured.CacheHints);
                 var nativeSession = connection.ResumeSession(
-                    resolved.RequestedSessionId,
+                    resolved.SessionId,
                     NnrpRuntimeHandleIdAllocator.Allocate(),
-                    generation: 1,
+                    resolved.SessionGeneration,
                     resolved.ProfileId,
                     resolved.PriorityClass,
                     resolved.SchemaId,

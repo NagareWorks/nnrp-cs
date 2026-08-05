@@ -11,6 +11,7 @@ namespace Nnrp.Server
         private readonly object gate = new object();
         private readonly NnrpServerTransportListenerSet listeners;
         private readonly List<NnrpServerSession> sessions = new List<NnrpServerSession>();
+        private bool isClosed;
 
         internal NnrpServer(NnrpServerOptions options, NnrpServerTransportListenerSet listeners)
         {
@@ -23,7 +24,7 @@ namespace Nnrp.Server
         public IReadOnlyDictionary<TransportId, NnrpProviderEndpoint> BoundProviderEndpoints =>
             listeners.BoundProviderEndpoints;
 
-        public bool IsClosed { get; private set; }
+        public bool IsClosed => Volatile.Read(ref isClosed) || listeners.IsClosed;
 
         public static async ValueTask<NnrpServer> ListenAsync(
             NnrpServerOptions options,
@@ -67,12 +68,12 @@ namespace Nnrp.Server
             NnrpServerSession[] ownedSessions;
             lock (gate)
             {
-                if (IsClosed)
+                if (isClosed)
                 {
                     return;
                 }
 
-                IsClosed = true;
+                isClosed = true;
                 ownedSessions = sessions.ToArray();
                 sessions.Clear();
             }

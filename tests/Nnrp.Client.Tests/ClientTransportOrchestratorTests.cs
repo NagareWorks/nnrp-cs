@@ -33,7 +33,8 @@ namespace Nnrp.Client.Tests
             Assert.Single(options.Transports!);
             Assert.Same(defaults, options.SessionDefaults);
             Assert.Equal(TransportPolicy.PreferTcp, options.TransportPolicy);
-            Assert.Equal((uint)0, defaults.RequestedSessionId);
+            Assert.Equal((uint)0, defaults.SessionId);
+            Assert.Equal((uint)1, defaults.SessionGeneration);
             Assert.Equal(TypedPayloadProfileId.Token.Value, defaults.ProfileId);
             Assert.Equal((uint)7, defaults.SchemaId);
             Assert.Equal((uint)2, defaults.SchemaVersion);
@@ -51,6 +52,8 @@ namespace Nnrp.Client.Tests
             Assert.Throws<ArgumentException>(() => new NnrpClientOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 transports: new INnrpNativeTransportProvider[] { null! }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientSessionOptions(
+                sessionGeneration: 0));
 
             var protocolDefaults = new NnrpClientSessionOptions();
             Assert.Equal(TypedPayloadProfileId.Token.Value, protocolDefaults.ProfileId);

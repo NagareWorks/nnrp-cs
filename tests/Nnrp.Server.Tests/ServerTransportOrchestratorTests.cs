@@ -21,7 +21,9 @@ namespace Nnrp.Server.Tests
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 routes,
                 TransportPolicy.PreferTcp,
-                providers);
+                providers,
+                serverId: 91,
+                serverGeneration: 7);
 
             routes[TransportId.WebSocket] = new NnrpServerProviderRoute();
             providers.Clear();
@@ -29,7 +31,14 @@ namespace Nnrp.Server.Tests
             Assert.Empty(options.ProviderRoutes);
             Assert.Single(options.Transports!);
             Assert.Equal(TransportPolicy.PreferTcp, options.TransportPolicy);
-            var accept = new NnrpServerAcceptOptions(25);
+            Assert.Equal((ulong)91, options.ServerId);
+            Assert.Equal((uint)7, options.ServerGeneration);
+            var accept = new NnrpServerAcceptOptions(
+                sessionId: 92,
+                sessionGeneration: 8,
+                timeoutMilliseconds: 25);
+            Assert.Equal((ulong)92, accept.SessionId);
+            Assert.Equal((uint)8, accept.SessionGeneration);
             Assert.Equal((uint)25, accept.TimeoutMilliseconds);
 
             Assert.Throws<ArgumentNullException>(() => new NnrpServerOptions(null!));
@@ -39,6 +48,11 @@ namespace Nnrp.Server.Tests
             Assert.Throws<ArgumentException>(() => new NnrpServerOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 transports: new INnrpNativeTransportProvider[] { null! }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerOptions(
+                NnrpEndpoint.Parse("nnrp://localhost:7000"),
+                serverGeneration: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerAcceptOptions(
+                sessionGeneration: 0));
         }
 
         [Fact]
@@ -366,13 +380,19 @@ namespace Nnrp.Server.Tests
             websocket.EnqueueAccepted();
             await using var listeners = new NnrpServerTransportListenerSet(new[] { tcp, websocket });
 
-            using var accepted = await listeners.AcceptAsync(new NnrpServerAcceptOptions(100));
+            using var accepted = await listeners.AcceptAsync(
+                new NnrpServerAcceptOptions(
+                    sessionId: 41,
+                    sessionGeneration: 3,
+                    timeoutMilliseconds: 100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
             Assert.Equal(1, tcp.ReleaseCount);
             Assert.Equal(0, websocket.ReleaseCount);
             Assert.Equal(1, tcp.AcceptCount);
             Assert.Equal(1, websocket.AcceptCount);
+            Assert.Equal((ulong)41, websocket.LastAcceptOptions!.SessionId);
+            Assert.Equal((uint)3, websocket.LastAcceptOptions.SessionGeneration);
         }
 
         [Fact]
@@ -694,6 +714,8 @@ namespace Nnrp.Server.Tests
 
             internal int SessionCloseCount { get; private set; }
 
+            internal NnrpServerAcceptOptions? LastAcceptOptions { get; private set; }
+
             internal TransportId? AcceptedTransportOverride { get; set; }
 
             internal Exception? DisposeFailure { get; set; }
@@ -746,6 +768,7 @@ namespace Nnrp.Server.Tests
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 AcceptCount++;
+                LastAcceptOptions = options;
                 var accept = accepts.Count == 0
                     ? (Func<NnrpAcceptedServerTransportSession>)(() => throw new NnrpNativeWouldBlockException(
                         new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock)))
