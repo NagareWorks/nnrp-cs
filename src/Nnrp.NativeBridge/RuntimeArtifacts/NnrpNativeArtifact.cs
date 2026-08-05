@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -855,36 +856,16 @@ namespace Nnrp.NativeBridge
     public readonly struct NnrpSessionResumeRequest
     {
         public NnrpSessionResumeRequest(
-            NnrpHandle connection,
-            uint requestedSessionId,
-            uint generation,
-            ushort profileId,
-            uint schemaId,
-            uint schemaVersion,
-            uint resumeTokenBytes)
+            NnrpSessionOpenRequest open,
+            NnrpBufferView recoveryTicket)
         {
-            Connection = connection;
-            RequestedSessionId = requestedSessionId;
-            Generation = generation;
-            ProfileId = profileId;
-            SchemaId = schemaId;
-            SchemaVersion = schemaVersion;
-            ResumeTokenBytes = resumeTokenBytes;
+            Open = open;
+            RecoveryTicket = recoveryTicket;
         }
 
-        public readonly NnrpHandle Connection;
+        public readonly NnrpSessionOpenRequest Open;
 
-        public readonly uint RequestedSessionId;
-
-        public readonly uint Generation;
-
-        public readonly ushort ProfileId;
-
-        public readonly uint SchemaId;
-
-        public readonly uint SchemaVersion;
-
-        public readonly uint ResumeTokenBytes;
+        public readonly NnrpBufferView RecoveryTicket;
     }
 
     public enum NnrpSchemaRegistryAction : uint
@@ -1669,15 +1650,139 @@ namespace Nnrp.NativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpU16Slice
+    {
+        public NnrpU16Slice(IntPtr pointer, UIntPtr length)
+        {
+            Pointer = pointer;
+            Length = length;
+        }
+
+        public readonly IntPtr Pointer;
+
+        public readonly UIntPtr Length;
+
+        public static NnrpU16Slice Empty => new NnrpU16Slice(IntPtr.Zero, UIntPtr.Zero);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpU32Slice
+    {
+        public NnrpU32Slice(IntPtr pointer, UIntPtr length)
+        {
+            Pointer = pointer;
+            Length = length;
+        }
+
+        public readonly IntPtr Pointer;
+
+        public readonly UIntPtr Length;
+
+        public static NnrpU32Slice Empty => new NnrpU32Slice(IntPtr.Zero, UIntPtr.Zero);
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate uint NnrpServerPolicyBeginCallback(
+        IntPtr userData,
+        ulong requestId,
+        NnrpBufferView metadata);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerPolicySink
+    {
+        public NnrpServerPolicySink(IntPtr userData, NnrpServerPolicyBeginCallback? begin)
+        {
+            UserData = userData;
+            Begin = begin;
+        }
+
+        public readonly IntPtr UserData;
+
+        public readonly NnrpServerPolicyBeginCallback? Begin;
+
+        public static NnrpServerPolicySink AllowAll => new NnrpServerPolicySink(IntPtr.Zero, null);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerPolicyDecision
+    {
+        public NnrpServerPolicyDecision(byte accepted, uint sessionErrorCode, NnrpBufferView diagnostic)
+        {
+            Accepted = accepted;
+            Reserved0 = 0;
+            Reserved1 = 0;
+            Reserved2 = 0;
+            SessionErrorCode = sessionErrorCode;
+            Diagnostic = diagnostic;
+        }
+
+        public readonly byte Accepted;
+
+        public readonly byte Reserved0;
+
+        public readonly byte Reserved1;
+
+        public readonly byte Reserved2;
+
+        public readonly uint SessionErrorCode;
+
+        public readonly NnrpBufferView Diagnostic;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public readonly struct NnrpServerPolicyCompleteRequest
+    {
+        public NnrpServerPolicyCompleteRequest(ulong requestId, NnrpServerPolicyDecision decision)
+        {
+            RequestId = requestId;
+            Decision = decision;
+        }
+
+        public readonly ulong RequestId;
+
+        public readonly NnrpServerPolicyDecision Decision;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public readonly struct NnrpServerBindRequest
     {
-        public NnrpServerBindRequest(ulong serverId, uint generation, NnrpHandle transportListener)
+        public NnrpServerBindRequest(
+            ulong serverId,
+            uint generation,
+            NnrpHandle transportListener,
+            NnrpU16Slice supportedProfiles,
+            NnrpU32Slice supportedCacheObjects,
+            ulong maxCacheObjects,
+            uint maxCacheObjectBytes,
+            uint resumeTokenBytes,
+            ushort maxInFlightOperations,
+            ushort grantedOperationCredit,
+            uint leaseTtlMilliseconds,
+            uint resumeWindowMilliseconds,
+            NnrpHandle schemaRegistry,
+            NnrpServerPolicySink applicationPolicy)
         {
             transportListener.RequireKind(NnrpHandleKind.TransportListener);
+            if (schemaRegistry.IsValid)
+            {
+                schemaRegistry.RequireKind(NnrpHandleKind.SchemaRegistry);
+            }
+
             ServerId = serverId;
             Generation = generation;
             Reserved0 = 0;
             TransportListener = transportListener;
+            SupportedProfiles = supportedProfiles;
+            SupportedCacheObjects = supportedCacheObjects;
+            MaxCacheObjects = maxCacheObjects;
+            MaxCacheObjectBytes = maxCacheObjectBytes;
+            ResumeTokenBytes = resumeTokenBytes;
+            MaxInFlightOperations = maxInFlightOperations;
+            GrantedOperationCredit = grantedOperationCredit;
+            LeaseTtlMilliseconds = leaseTtlMilliseconds;
+            ResumeWindowMilliseconds = resumeWindowMilliseconds;
+            SchemaRegistry = schemaRegistry;
+            ApplicationPolicy = applicationPolicy;
         }
 
         public readonly ulong ServerId;
@@ -1687,6 +1792,28 @@ namespace Nnrp.NativeBridge
         public readonly uint Reserved0;
 
         public readonly NnrpHandle TransportListener;
+
+        public readonly NnrpU16Slice SupportedProfiles;
+
+        public readonly NnrpU32Slice SupportedCacheObjects;
+
+        public readonly ulong MaxCacheObjects;
+
+        public readonly uint MaxCacheObjectBytes;
+
+        public readonly uint ResumeTokenBytes;
+
+        public readonly ushort MaxInFlightOperations;
+
+        public readonly ushort GrantedOperationCredit;
+
+        public readonly uint LeaseTtlMilliseconds;
+
+        public readonly uint ResumeWindowMilliseconds;
+
+        public readonly NnrpHandle SchemaRegistry;
+
+        public readonly NnrpServerPolicySink ApplicationPolicy;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1863,30 +1990,65 @@ namespace Nnrp.NativeBridge
         public NnrpSessionOpenRequest(
             NnrpHandle connection,
             uint requestedSessionId,
+            ulong sessionHandleId,
             uint generation,
             ushort profileId,
+            SessionPriorityClass priorityClass,
+            bool allowResume,
             uint schemaId,
-            uint schemaVersion)
+            uint schemaVersion,
+            uint defaultDeadlineMilliseconds,
+            ushort maxInFlightOperations,
+            uint leaseTtlHintMilliseconds,
+            uint resumeTokenBytes,
+            NnrpU32Slice cacheHints)
         {
             Connection = connection;
             RequestedSessionId = requestedSessionId;
+            SessionHandleId = sessionHandleId;
             Generation = generation;
             ProfileId = profileId;
+            PriorityClass = (byte)priorityClass;
+            AllowResume = allowResume ? (byte)1 : (byte)0;
             SchemaId = schemaId;
             SchemaVersion = schemaVersion;
+            DefaultDeadlineMilliseconds = defaultDeadlineMilliseconds;
+            MaxInFlightOperations = maxInFlightOperations;
+            Reserved0 = 0;
+            LeaseTtlHintMilliseconds = leaseTtlHintMilliseconds;
+            ResumeTokenBytes = resumeTokenBytes;
+            CacheHints = cacheHints;
         }
 
         public readonly NnrpHandle Connection;
 
         public readonly uint RequestedSessionId;
 
+        public readonly ulong SessionHandleId;
+
         public readonly uint Generation;
 
         public readonly ushort ProfileId;
 
+        public readonly byte PriorityClass;
+
+        public readonly byte AllowResume;
+
         public readonly uint SchemaId;
 
         public readonly uint SchemaVersion;
+
+        public readonly uint DefaultDeadlineMilliseconds;
+
+        public readonly ushort MaxInFlightOperations;
+
+        public readonly ushort Reserved0;
+
+        public readonly uint LeaseTtlHintMilliseconds;
+
+        public readonly uint ResumeTokenBytes;
+
+        public readonly NnrpU32Slice CacheHints;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -2361,7 +2523,10 @@ namespace Nnrp.NativeBridge
             HandleStatusInvoker? transportClose = null,
             RoleAwaitEventsInvoker? serverAwaitEvents = null,
             ServerDropStaleResultInvoker? serverDropStaleResult = null,
-            RoleAwaitEventsInvoker? clientAwaitEvents = null)
+            RoleAwaitEventsInvoker? clientAwaitEvents = null,
+            ClientSessionRecoveryTicketInvoker? clientSessionRecoveryTicket = null,
+            SessionIdInvoker? sessionId = null,
+            ServerPolicyCompleteInvoker? serverPolicyComplete = null)
             : this(
                 IntPtr.Zero,
                 currentProtocolVersion,
@@ -2435,7 +2600,10 @@ namespace Nnrp.NativeBridge
                 transportClose,
                 serverAwaitEvents,
                 serverDropStaleResult,
-                clientAwaitEvents)
+                clientAwaitEvents,
+                clientSessionRecoveryTicket,
+                sessionId,
+                serverPolicyComplete)
         {
         }
 
@@ -2512,7 +2680,10 @@ namespace Nnrp.NativeBridge
             HandleStatusInvoker? transportClose,
             RoleAwaitEventsInvoker? serverAwaitEvents,
             ServerDropStaleResultInvoker? serverDropStaleResult,
-            RoleAwaitEventsInvoker? clientAwaitEvents)
+            RoleAwaitEventsInvoker? clientAwaitEvents,
+            ClientSessionRecoveryTicketInvoker? clientSessionRecoveryTicket,
+            SessionIdInvoker? sessionId,
+            ServerPolicyCompleteInvoker? serverPolicyComplete)
         {
             _libraryHandle = libraryHandle;
             CurrentProtocolVersion = currentProtocolVersion ?? throw new ArgumentNullException(nameof(currentProtocolVersion));
@@ -2548,6 +2719,9 @@ namespace Nnrp.NativeBridge
             SchemaRegistryValidateBinding = schemaRegistryValidateBinding ?? MissingSchemaRegistryValidateBinding;
             SchemaRegistryRelease = schemaRegistryRelease ?? MissingHandleStatus;
             ClientResumeSession = clientResumeSession ?? MissingClientResumeSession;
+            ClientSessionRecoveryTicket = clientSessionRecoveryTicket ?? MissingClientSessionRecoveryTicket;
+            SessionId = sessionId ?? MissingSessionId;
+            ServerPolicyComplete = serverPolicyComplete ?? MissingServerPolicyComplete;
             SchemaDescriptorParse = schemaDescriptorParse ?? MissingSchemaDescriptorParse;
             SchemaDescriptorWrite = schemaDescriptorWrite ?? MissingSchemaDescriptorWrite;
             TokenDeltaSchemaDescriptor = tokenDeltaSchemaDescriptor ?? MissingTokenDeltaSchemaDescriptor;
@@ -2700,7 +2874,10 @@ namespace Nnrp.NativeBridge
                         Bind<HandleStatusInvoker>(handle, "nnrp_transport_close"),
                         Bind<RoleAwaitEventsInvoker>(handle, "nnrp_server_await_events"),
                         Bind<ServerDropStaleResultInvoker>(handle, "nnrp_server_drop_stale_result"),
-                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_client_await_events"));
+                        Bind<RoleAwaitEventsInvoker>(handle, "nnrp_client_await_events"),
+                        Bind<ClientSessionRecoveryTicketInvoker>(handle, "nnrp_client_session_recovery_ticket"),
+                        Bind<SessionIdInvoker>(handle, "nnrp_session_id"),
+                        Bind<ServerPolicyCompleteInvoker>(handle, "nnrp_server_policy_complete"));
                 }
                 catch (Exception error) when (error is DllNotFoundException || error is EntryPointNotFoundException || error is BadImageFormatException)
                 {
@@ -2796,6 +2973,18 @@ namespace Nnrp.NativeBridge
             NnrpSessionResumeRequest request,
             out NnrpHandle session,
             out NnrpSessionRecoveryOutcome outcome);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ClientSessionRecoveryTicketInvoker(
+            NnrpHandle session,
+            out NnrpHandle buffer,
+            out NnrpBufferView ticket);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus SessionIdInvoker(NnrpHandle session, out uint sessionId);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate NnrpFfiStatus ServerPolicyCompleteInvoker(NnrpServerPolicyCompleteRequest request);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate NnrpFfiStatus SubmitInvoker(NnrpFfiSubmitRequest request, out NnrpHandle operation);
@@ -3010,6 +3199,12 @@ namespace Nnrp.NativeBridge
 
         public ClientResumeSessionInvoker ClientResumeSession { get; }
 
+        public ClientSessionRecoveryTicketInvoker ClientSessionRecoveryTicket { get; }
+
+        public SessionIdInvoker SessionId { get; }
+
+        public ServerPolicyCompleteInvoker ServerPolicyComplete { get; }
+
         public SubmitInvoker Submit { get; }
 
         public SubmitInvoker ClientSubmit { get; }
@@ -3221,6 +3416,27 @@ namespace Nnrp.NativeBridge
         {
             session = NnrpHandle.Invalid;
             outcome = default(NnrpSessionRecoveryOutcome);
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingClientSessionRecoveryTicket(
+            NnrpHandle session,
+            out NnrpHandle buffer,
+            out NnrpBufferView ticket)
+        {
+            buffer = NnrpHandle.Invalid;
+            ticket = NnrpBufferView.Empty;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingSessionId(NnrpHandle session, out uint sessionId)
+        {
+            sessionId = 0;
+            return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
+        }
+
+        private static NnrpFfiStatus MissingServerPolicyComplete(NnrpServerPolicyCompleteRequest request)
+        {
             return new NnrpFfiStatus(NnrpFfiStatusCode.InternalError);
         }
 
@@ -3748,15 +3964,21 @@ namespace Nnrp.NativeBridge
     public sealed class NnrpNativeRuntimeServer : IDisposable
     {
         private NnrpHandle pendingAccept = NnrpHandle.Invalid;
+        private readonly NnrpNativeServerPolicyDispatcher? policyDispatcher;
+        private readonly NnrpNativeSchemaRegistry? schemaRegistry;
         private readonly IDisposable? nativeOwnership;
 
-        public NnrpNativeRuntimeServer(
+        internal NnrpNativeRuntimeServer(
             NnrpNativeRuntimeEntrypoints entrypoints,
             NnrpConnectionHandle handle,
+            NnrpNativeServerPolicyDispatcher? policyDispatcher = null,
+            NnrpNativeSchemaRegistry? schemaRegistry = null,
             IDisposable? nativeOwnership = null)
         {
             Entrypoints = entrypoints ?? throw new ArgumentNullException(nameof(entrypoints));
             Handle = handle;
+            this.policyDispatcher = policyDispatcher;
+            this.schemaRegistry = schemaRegistry;
             this.nativeOwnership = nativeOwnership;
         }
 
@@ -3766,17 +3988,44 @@ namespace Nnrp.NativeBridge
 
         public bool IsClosed { get; private set; }
 
-        public static NnrpNativeRuntimeServer Bind(
+        internal static NnrpNativeRuntimeServer Bind(
             NnrpTransportListener transportListener,
-            ulong serverId,
-            uint generation)
+            NnrpNativeServerBindOptions options)
         {
             if (transportListener == null)
             {
                 throw new ArgumentNullException(nameof(transportListener));
             }
 
-            return transportListener.AdoptServer(serverId, generation);
+            return transportListener.AdoptServer(options);
+        }
+
+        public static NnrpNativeRuntimeServer Bind(
+            NnrpTransportListener transportListener,
+            NnrpNativeRuntimeServerHostOptions options)
+        {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            return Bind(
+                transportListener,
+                new NnrpNativeServerBindOptions(
+                    options.ServerId,
+                    options.ServerGeneration,
+                    new[] { TypedPayloadProfileId.TokenValue },
+                    Array.Empty<CacheObjectKind>(),
+                    maxCacheObjects: 0,
+                    maxCacheObjectBytes: 0,
+                    resumeTokenBytes: 24,
+                    maxInFlightOperations: 4,
+                    grantedOperationCredit: 2,
+                    leaseTtlMilliseconds: 30_000,
+                    resumeWindowMilliseconds: 120_000,
+                    SchemaRegistry.WithStandardProfiles(),
+                    _ => new System.Threading.Tasks.ValueTask<NnrpNativeServerPolicyDecision>(
+                        NnrpNativeServerPolicyDecision.Accept())));
         }
 
         public NnrpNativeRuntimeServerSession AcceptSession(
@@ -3853,6 +4102,15 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             Exception? firstError = null;
+            try
+            {
+                policyDispatcher?.Dispose();
+            }
+            catch (Exception error)
+            {
+                firstError = error;
+            }
+
             if (pendingAccept.IsValid)
             {
                 try
@@ -3861,7 +4119,7 @@ namespace Nnrp.NativeBridge
                 }
                 catch (Exception error)
                 {
-                    firstError = error;
+                    firstError ??= error;
                 }
             }
 
@@ -3876,7 +4134,23 @@ namespace Nnrp.NativeBridge
             finally
             {
                 IsClosed = true;
-                nativeOwnership?.Dispose();
+                try
+                {
+                    schemaRegistry?.Dispose();
+                }
+                catch (Exception error)
+                {
+                    firstError ??= error;
+                }
+
+                try
+                {
+                    nativeOwnership?.Dispose();
+                }
+                catch (Exception error)
+                {
+                    firstError ??= error;
+                }
             }
 
             if (firstError != null)
@@ -4343,60 +4617,103 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeSession OpenSession(
             uint requestedSessionId,
+            ulong sessionHandleId,
             uint generation,
             ushort profileId,
+            SessionPriorityClass priorityClass,
             uint schemaId,
-            uint schemaVersion)
+            uint schemaVersion,
+            uint defaultDeadlineMilliseconds,
+            ushort maxInFlightOperations,
+            uint leaseTtlHintMilliseconds,
+            bool allowResume,
+            uint resumeTokenBytes,
+            IReadOnlyList<CacheObjectKind> cacheHints)
         {
             EnsureOpen();
-            NnrpHandle session;
-            var status = Entrypoints.ClientOpenSession(
-                new NnrpSessionOpenRequest(
-                    Handle.Handle,
-                    requestedSessionId,
-                    generation,
-                    profileId,
-                    schemaId,
-                    schemaVersion),
-                out session);
-            status.ThrowIfError();
-            return new NnrpNativeRuntimeSession(
-                Entrypoints,
-                Handle,
-                new NnrpSessionHandle(session),
-                () => IsClosed,
-                this);
+            return WithPinnedCacheHints(
+                cacheHints,
+                cacheHintSlice =>
+                {
+                    Entrypoints.ClientOpenSession(
+                        new NnrpSessionOpenRequest(
+                            Handle.Handle,
+                            requestedSessionId,
+                            sessionHandleId,
+                            generation,
+                            profileId,
+                            priorityClass,
+                            allowResume,
+                            schemaId,
+                            schemaVersion,
+                            defaultDeadlineMilliseconds,
+                            maxInFlightOperations,
+                            leaseTtlHintMilliseconds,
+                            resumeTokenBytes,
+                            cacheHintSlice),
+                        out var session).ThrowIfError();
+                    return new NnrpNativeRuntimeSession(
+                        Entrypoints,
+                        Handle,
+                        new NnrpSessionHandle(session),
+                        () => IsClosed,
+                        this);
+                });
         }
 
         public NnrpNativeRuntimeSession ResumeSession(
             uint requestedSessionId,
+            ulong sessionHandleId,
             uint generation,
             ushort profileId,
+            SessionPriorityClass priorityClass,
             uint schemaId,
             uint schemaVersion,
+            uint defaultDeadlineMilliseconds,
+            ushort maxInFlightOperations,
+            uint leaseTtlHintMilliseconds,
             uint resumeTokenBytes,
+            IReadOnlyList<CacheObjectKind> cacheHints,
+            ReadOnlyMemory<byte> recoveryTicket,
             out NnrpSessionRecoveryOutcome recoveryOutcome)
         {
             EnsureOpen();
-            NnrpHandle session;
-            var status = Entrypoints.ClientResumeSession(
-                new NnrpSessionResumeRequest(
-                    Handle.Handle,
-                    requestedSessionId,
-                    generation,
-                    profileId,
-                    schemaId,
-                    schemaVersion,
-                    resumeTokenBytes),
-                out session,
-                out recoveryOutcome);
-            status.ThrowIfError();
-            return new NnrpNativeRuntimeSession(
-                Entrypoints,
-                Handle,
-                new NnrpSessionHandle(session),
-                () => IsClosed,
-                this);
+            NnrpSessionRecoveryOutcome outcome = default;
+            var resumed = WithPinnedCacheHints(
+                cacheHints,
+                cacheHintSlice => NnrpNativeRuntimeSession.WithBorrowedView(
+                    recoveryTicket,
+                    ticketView =>
+                    {
+                        Entrypoints.ClientResumeSession(
+                            new NnrpSessionResumeRequest(
+                                new NnrpSessionOpenRequest(
+                                    Handle.Handle,
+                                    requestedSessionId,
+                                    sessionHandleId,
+                                    generation,
+                                    profileId,
+                                    priorityClass,
+                                    allowResume: true,
+                                    schemaId,
+                                    schemaVersion,
+                                    defaultDeadlineMilliseconds,
+                                    maxInFlightOperations,
+                                    leaseTtlHintMilliseconds,
+                                    resumeTokenBytes,
+                                    cacheHintSlice),
+                                ticketView),
+                            out var session,
+                            out outcome).ThrowIfError();
+                        return new NnrpNativeRuntimeSession(
+                            Entrypoints,
+                            Handle,
+                            new NnrpSessionHandle(session),
+                            () => IsClosed,
+                            this);
+                    }));
+            recoveryOutcome = outcome;
+            return resumed;
         }
 
         public NnrpNativeRuntimePollResult AwaitEvent()
@@ -4501,6 +4818,32 @@ namespace Nnrp.NativeBridge
             }
         }
 
+        private static T WithPinnedCacheHints<T>(
+            IReadOnlyList<CacheObjectKind> cacheHints,
+            Func<NnrpU32Slice, T> action)
+        {
+            if (cacheHints == null)
+            {
+                throw new ArgumentNullException(nameof(cacheHints));
+            }
+
+            var values = cacheHints.Select(value => (uint)value).ToArray();
+            if (values.Length == 0)
+            {
+                return action(NnrpU32Slice.Empty);
+            }
+
+            var owner = GCHandle.Alloc(values, GCHandleType.Pinned);
+            try
+            {
+                return action(new NnrpU32Slice(owner.AddrOfPinnedObject(), new UIntPtr((uint)values.Length)));
+            }
+            finally
+            {
+                owner.Free();
+            }
+        }
+
         internal NnrpNativeRuntimeEvent? PollEvent(
             Predicate<NnrpNativeRuntimeEvent> predicate,
             int maxEvents)
@@ -4597,6 +4940,48 @@ namespace Nnrp.NativeBridge
         private Func<bool> IsConnectionClosed { get; }
 
         private NnrpNativeRuntimeConnection? RuntimeConnection { get; }
+
+        internal byte[]? GetRecoveryTicketBytes()
+        {
+            EnsureOpen();
+            var status = Entrypoints.ClientSessionRecoveryTicket(
+                Handle.Handle,
+                out var owner,
+                out var ticket);
+            if (status.StatusCode == NnrpFfiStatusCode.InvalidArgument && status.DetailCode == 104)
+            {
+                return null;
+            }
+
+            status.ThrowIfError();
+            try
+            {
+                if (ticket.Length.ToUInt64() > int.MaxValue)
+                {
+                    throw new NnrpNativeArtifactException("Native recovery ticket exceeds managed buffer limits.");
+                }
+
+                var encoded = new byte[(int)ticket.Length.ToUInt64()];
+                if (encoded.Length != 0)
+                {
+                    if (ticket.Pointer == IntPtr.Zero)
+                    {
+                        throw new NnrpNativeArtifactException("Native recovery ticket returned a null data pointer.");
+                    }
+
+                    Marshal.Copy(ticket.Pointer, encoded, 0, encoded.Length);
+                }
+
+                return encoded;
+            }
+            finally
+            {
+                if (owner.IsValid)
+                {
+                    Entrypoints.BufferRelease(owner).ThrowIfError();
+                }
+            }
+        }
 
         public NnrpOperationHandle Submit(ulong operationId, RuntimeFrameHeader header, byte[]? payload = null)
         {
@@ -5338,7 +5723,7 @@ namespace Nnrp.NativeBridge
     {
         public const string ArtifactRootEnvironmentVariable = "NNRP_NATIVE_ARTIFACT_ROOT";
         public const ushort ExpectedAbiMajor = 4;
-        public const ushort ExpectedAbiMinor = 3;
+        public const ushort ExpectedAbiMinor = 4;
         public const ushort ExpectedAbiPatch = 0;
         public const byte ExpectedProtocolMajor = 1;
         public const byte ExpectedProtocolWireFormat = 0;

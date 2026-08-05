@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -725,7 +728,18 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpServerBindRequest(
                     4,
                     1,
-                    new NnrpHandle(NnrpHandleKind.TransportListener, 21, 1)),
+                    new NnrpHandle(NnrpHandleKind.TransportListener, 21, 1),
+                    NnrpU16Slice.Empty,
+                    NnrpU32Slice.Empty,
+                    0,
+                    0,
+                    24,
+                    4,
+                    2,
+                    30_000,
+                    120_000,
+                    NnrpHandle.Invalid,
+                    NnrpServerPolicySink.AllowAll),
                 out handle).Succeeded);
             Assert.True(entrypoints.ServerAcceptBegin(MatchingServerAcceptBeginRequest(), out handle).Succeeded);
             Assert.Equal(NnrpHandleKind.ServerAccept, handle.Kind);
@@ -900,7 +914,10 @@ namespace Nnrp.NativeBridge.Tests
 
             Assert.Equal(40, Marshal.SizeOf<NnrpClientConnectRequest>());
             Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpClientConnectRequest>(nameof(NnrpClientConnectRequest.TransportConnection)));
-            Assert.Equal(40, Marshal.SizeOf<NnrpServerBindRequest>());
+            var alignsUInt64ToEightBytes = Marshal.OffsetOf<NnrpHandle>(nameof(NnrpHandle.Id)) == new IntPtr(8);
+            Assert.Equal(
+                is64Bit ? 144 : alignsUInt64ToEightBytes ? 120 : 108,
+                Marshal.SizeOf<NnrpServerBindRequest>());
             Assert.Equal(new IntPtr(16), Marshal.OffsetOf<NnrpServerBindRequest>(nameof(NnrpServerBindRequest.TransportListener)));
             Assert.Equal(is64Bit ? 64 : 56, Marshal.SizeOf<NnrpTransportOpenRequest>());
             Assert.Equal(
@@ -912,9 +929,17 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(
                 new IntPtr(is64Bit ? 60 : 52),
                 Marshal.OffsetOf<NnrpTransportOpenRequest>(nameof(NnrpTransportOpenRequest.Reserved0)));
-            Assert.Equal(48, Marshal.SizeOf<NnrpSessionOpenRequest>());
-            Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.ProfileId)));
-            Assert.Equal(new IntPtr(36), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.SchemaId)));
+            Assert.Equal(
+                is64Bit ? 88 : alignsUInt64ToEightBytes ? 80 : 72,
+                Marshal.SizeOf<NnrpSessionOpenRequest>());
+            Assert.Equal(new IntPtr(is64Bit ? 44 : alignsUInt64ToEightBytes ? 44 : 32), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.ProfileId)));
+            Assert.Equal(new IntPtr(is64Bit ? 48 : alignsUInt64ToEightBytes ? 48 : 36), Marshal.OffsetOf<NnrpSessionOpenRequest>(nameof(NnrpSessionOpenRequest.SchemaId)));
+            Assert.Equal(
+                is64Bit ? 104 : alignsUInt64ToEightBytes ? 88 : 80,
+                Marshal.SizeOf<NnrpSessionResumeRequest>());
+            Assert.Equal(
+                new IntPtr(is64Bit ? 88 : alignsUInt64ToEightBytes ? 80 : 72),
+                Marshal.OffsetOf<NnrpSessionResumeRequest>(nameof(NnrpSessionResumeRequest.RecoveryTicket)));
             Assert.Equal(is64Bit ? 72 : 64, Marshal.SizeOf<NnrpFfiSubmitRequest>());
             Assert.Equal(new IntPtr(24), Marshal.OffsetOf<NnrpFfiSubmitRequest>(nameof(NnrpFfiSubmitRequest.OperationId)));
             Assert.Equal(new IntPtr(32), Marshal.OffsetOf<NnrpFfiSubmitRequest>(nameof(NnrpFfiSubmitRequest.FrameId)));
@@ -934,7 +959,18 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Throws<ArgumentException>(() => new NnrpServerBindRequest(
                 1,
                 1,
-                new NnrpHandle(NnrpHandleKind.TransportConnection, 1, 1)));
+                new NnrpHandle(NnrpHandleKind.TransportConnection, 1, 1),
+                NnrpU16Slice.Empty,
+                NnrpU32Slice.Empty,
+                0,
+                0,
+                24,
+                4,
+                2,
+                30_000,
+                120_000,
+                NnrpHandle.Invalid,
+                NnrpServerPolicySink.AllowAll));
         }
 
         [Fact]
@@ -1414,7 +1450,10 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 CaptureControl,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus);
             using var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2);
             using var host = NnrpNativeRuntimeSessionHost.Open(
                 carrier,
@@ -1522,7 +1561,10 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 CaptureControl,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus);
             var payload = new byte[] { 1, 2, 3 };
             var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
 
@@ -1700,6 +1742,9 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
@@ -1804,6 +1849,9 @@ namespace Nnrp.NativeBridge.Tests
                     Control,
                     PollEmpty,
                     DispatchEvent,
+                    schemaRegistryCreate: SchemaRegistryCreate,
+                    schemaRegistryInstall: SchemaRegistryInstall,
+                    schemaRegistryRelease: HandleStatus,
                     bufferAcquireCopy: CaptureBufferAcquireCopy,
                     bufferView: BufferView,
                     bufferRelease: HandleStatus);
@@ -2239,6 +2287,9 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus,
@@ -2308,6 +2359,47 @@ namespace Nnrp.NativeBridge.Tests
             using (var host = NnrpNativeRuntimeSessionHost.Open(carrier, options))
             {
                 Assert.Equal((ulong)12, host.Connection.Handle.Handle.Id);
+            }
+        }
+
+        [Fact]
+        public void NativeRuntimeHostsAllocateOpaqueSessionHandlesIndependentlyOfRequestedIds()
+        {
+            var requests = new List<NnrpSessionOpenRequest>();
+
+            NnrpFfiStatus CaptureSessionOpen(NnrpSessionOpenRequest request, out NnrpHandle session)
+            {
+                requests.Add(request);
+                session = new NnrpHandle(
+                    NnrpHandleKind.Session,
+                    request.SessionHandleId,
+                    request.Generation);
+                return NnrpFfiStatus.Ok;
+            }
+
+            using var entrypoints = CreateEntrypoints(clientOpenSession: CaptureSessionOpen);
+            using (var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 11, 2))
+            using (var host = NnrpNativeRuntimeSessionHost.Open(
+                carrier,
+                new NnrpNativeRuntimeSessionHostOptions(11, 2, 0, 3, 4, 5, 6)))
+            {
+                var request = Assert.Single(requests);
+                Assert.Equal((uint)0, request.RequestedSessionId);
+                Assert.NotEqual((ulong)0, request.SessionHandleId);
+                Assert.Equal(request.SessionHandleId, host.Session.Handle.Handle.Id);
+            }
+
+            requests.Clear();
+            using (var carrier = CreateTransportCarrier(entrypoints, TransportId.Tcp, 12, 2))
+            using (var host = NnrpNativeRuntimeConnectionHost.Open(
+                carrier,
+                new NnrpNativeRuntimeConnectionHostOptions(12, 2)))
+            {
+                var session = host.OpenSession(new NnrpNativeRuntimeSessionOptions(0, 3, 4, 5, 6));
+                var request = Assert.Single(requests);
+                Assert.Equal((uint)0, request.RequestedSessionId);
+                Assert.NotEqual((ulong)0, request.SessionHandleId);
+                Assert.Equal(request.SessionHandleId, session.Handle.Handle.Id);
             }
         }
 
@@ -2424,6 +2516,9 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
@@ -2780,6 +2875,9 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
@@ -3231,6 +3329,9 @@ namespace Nnrp.NativeBridge.Tests
                 CaptureControl,
                 PollEmpty,
                 DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus,
                 bufferAcquireCopy: BufferAcquireCopy,
                 bufferView: BufferView,
                 bufferRelease: HandleStatus);
@@ -3326,7 +3427,10 @@ namespace Nnrp.NativeBridge.Tests
                 HandleStatus,
                 CaptureControl,
                 PollEmpty,
-                DispatchEvent);
+                DispatchEvent,
+                schemaRegistryCreate: SchemaRegistryCreate,
+                schemaRegistryInstall: SchemaRegistryInstall,
+                schemaRegistryRelease: HandleStatus);
             using var listener = CreateTransportListener(entrypoints, TransportId.Tcp, 50, 2);
             using var host = NnrpNativeRuntimeServerHost.Open(
                 listener,
@@ -3428,6 +3532,215 @@ namespace Nnrp.NativeBridge.Tests
                     host.SubmitResultCompactBatch(5, 7, 1, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty, -1, 1));
                 Assert.Throws<ArgumentOutOfRangeException>(() =>
                     host.SubmitResultCompactBatch(5, 7, 1, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty, 1, 0));
+            }
+        }
+
+        [Fact]
+        public void ServerPolicyDispatcherRejectsInvalidOrLateCallbacks()
+        {
+            using var entrypoints = CreateEntrypoints();
+            var dispatcher = new NnrpNativeServerPolicyDispatcher(
+                entrypoints,
+                _ => new ValueTask<NnrpNativeServerPolicyDecision>(NnrpNativeServerPolicyDecision.Accept()));
+
+            var accepted = NnrpNativeServerPolicyDecision.Accept();
+            Assert.True(accepted.Accepted);
+            Assert.Equal(SessionErrorCode.None, accepted.SessionErrorCode);
+            Assert.Null(accepted.Diagnostic);
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                NnrpNativeServerPolicyDecision.Reject(SessionErrorCode.None, null));
+            Assert.Equal(
+                (uint)NnrpFfiStatusCode.CallbackRejected,
+                dispatcher.BeginCallback(IntPtr.Zero, 0, NnrpBufferView.Empty));
+
+            dispatcher.Dispose();
+
+            Assert.Equal(
+                (uint)NnrpFfiStatusCode.CallbackRejected,
+                dispatcher.BeginCallback(IntPtr.Zero, 2, NnrpBufferView.Empty));
+            dispatcher.Dispose();
+        }
+
+        [Fact]
+        public async Task ServerPolicyDispatcherBoundsShutdownAndRetainsNativeOwnership()
+        {
+            var policyEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releasePolicy = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var ownership = new DisposableProbe();
+            using var entrypoints = CreateEntrypoints();
+            var dispatcher = new NnrpNativeServerPolicyDispatcher(
+                entrypoints,
+                async _ =>
+                {
+                    policyEntered.TrySetResult(true);
+                    await releasePolicy.Task.ConfigureAwait(false);
+                    return NnrpNativeServerPolicyDecision.Accept();
+                },
+                ownership,
+                TimeSpan.FromMilliseconds(50));
+
+            var metadata = PolicyMetadata(42).ToArray();
+            var owner = GCHandle.Alloc(metadata, GCHandleType.Pinned);
+            try
+            {
+                Assert.Equal(
+                    (uint)NnrpFfiStatusCode.Ok,
+                    dispatcher.BeginCallback(
+                        IntPtr.Zero,
+                        7,
+                        new NnrpBufferView(owner.AddrOfPinnedObject(), new UIntPtr((uint)metadata.Length))));
+            }
+            finally
+            {
+                owner.Free();
+            }
+
+            await policyEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var stopwatch = Stopwatch.StartNew();
+            Assert.Throws<TimeoutException>(() => dispatcher.Dispose());
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1));
+            Assert.False(ownership.IsDisposed);
+
+            releasePolicy.TrySetResult(true);
+            await ownership.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(ownership.IsDisposed);
+        }
+
+        [Fact]
+        public async Task ServerPolicyDispatcherCopiesMetadataAndCompletesEachDecisionExactlyOnce()
+        {
+            var completions = new List<(ulong RequestId, byte Accepted, uint ErrorCode, string Diagnostic)>();
+            var completionSignal = new SemaphoreSlim(0, 2);
+            var firstPolicyEntered = new TaskCompletionSource<SessionOpenMetadata>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseFirstPolicy = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            NnrpFfiStatus Complete(NnrpServerPolicyCompleteRequest request)
+            {
+                lock (completions)
+                {
+                    completions.Add((
+                        request.RequestId,
+                        request.Decision.Accepted,
+                        request.Decision.SessionErrorCode,
+                        Encoding.UTF8.GetString(CopyBufferView(request.Decision.Diagnostic))));
+                }
+
+                completionSignal.Release();
+                return NnrpFfiStatus.Ok;
+            }
+
+            using var entrypoints = CreateEntrypoints(serverPolicyComplete: Complete);
+            using var dispatcher = new NnrpNativeServerPolicyDispatcher(
+                entrypoints,
+                async open =>
+                {
+                    if (open.RequestedSessionId == 43)
+                    {
+                        throw new InvalidOperationException("policy failed");
+                    }
+
+                    firstPolicyEntered.TrySetResult(open);
+                    await releaseFirstPolicy.Task.ConfigureAwait(false);
+                    return NnrpNativeServerPolicyDecision.Reject(
+                        SessionErrorCode.PriorityRejected,
+                        "priority rejected");
+                });
+
+            var firstMetadata = PolicyMetadata(42).ToArray();
+            var firstOwner = GCHandle.Alloc(firstMetadata, GCHandleType.Pinned);
+            try
+            {
+                Assert.Equal(
+                    (uint)NnrpFfiStatusCode.Ok,
+                    dispatcher.BeginCallback(
+                        IntPtr.Zero,
+                        7,
+                        new NnrpBufferView(firstOwner.AddrOfPinnedObject(), new UIntPtr((uint)firstMetadata.Length))));
+                firstMetadata[0] = 0;
+            }
+            finally
+            {
+                firstOwner.Free();
+            }
+
+            var copied = await firstPolicyEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal((uint)42, copied.RequestedSessionId);
+
+            var secondMetadata = PolicyMetadata(43).ToArray();
+            var secondOwner = GCHandle.Alloc(secondMetadata, GCHandleType.Pinned);
+            try
+            {
+                Assert.Equal(
+                    (uint)NnrpFfiStatusCode.Ok,
+                    dispatcher.BeginCallback(
+                        IntPtr.Zero,
+                        8,
+                        new NnrpBufferView(secondOwner.AddrOfPinnedObject(), new UIntPtr((uint)secondMetadata.Length))));
+            }
+            finally
+            {
+                secondOwner.Free();
+            }
+
+            Assert.True(await completionSignal.WaitAsync(TimeSpan.FromSeconds(5)));
+            releaseFirstPolicy.SetResult(true);
+            Assert.True(await completionSignal.WaitAsync(TimeSpan.FromSeconds(5)));
+
+            (ulong RequestId, byte Accepted, uint ErrorCode, string Diagnostic)[] snapshot;
+            lock (completions)
+            {
+                snapshot = completions.OrderBy(value => value.RequestId).ToArray();
+            }
+
+            Assert.Collection(
+                snapshot,
+                first =>
+                {
+                    Assert.Equal((ulong)7, first.RequestId);
+                    Assert.Equal((byte)0, first.Accepted);
+                    Assert.Equal((uint)SessionErrorCode.PriorityRejected, first.ErrorCode);
+                    Assert.Equal("priority rejected", first.Diagnostic);
+                },
+                second =>
+                {
+                    Assert.Equal((ulong)8, second.RequestId);
+                    Assert.Equal((byte)0, second.Accepted);
+                    Assert.Equal((uint)SessionErrorCode.SessionLimitReached, second.ErrorCode);
+                    Assert.Equal("application policy evaluation failed", second.Diagnostic);
+                });
+        }
+
+        private static SessionOpenMetadata PolicyMetadata(uint sessionId) =>
+            new SessionOpenMetadata(
+                sessionId,
+                TypedPayloadProfileId.TokenValue,
+                SessionPriorityClass.Balanced,
+                SessionFlags.AllowResume,
+                TypedPayloadDescriptor.TokenDeltaSchemaId,
+                TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                500,
+                4,
+                30_000,
+                24,
+                0,
+                0,
+                99);
+
+        private sealed class DisposableProbe : IDisposable
+        {
+            private int disposed;
+
+            internal TaskCompletionSource<bool> Disposed { get; } =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            internal bool IsDisposed => Volatile.Read(ref disposed) != 0;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) == 0)
+                {
+                    Disposed.TrySetResult(true);
+                }
             }
         }
 
@@ -3587,7 +3900,9 @@ namespace Nnrp.NativeBridge.Tests
                 transportId == NnrpNativeArtifact.TransportSlotQuic ? TransportId.Quic : TransportId.Tcp,
                 transportId,
                 generation == 0 ? 1u : generation);
-            return NnrpNativeRuntimeServer.Bind(listener, serverId, generation);
+            return NnrpNativeRuntimeServer.Bind(
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(serverId, generation));
         }
 
         private static NnrpTransportListener CreateTransportListener(
@@ -3637,7 +3952,9 @@ namespace Nnrp.NativeBridge.Tests
             NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportConnect = null,
             NnrpNativeRuntimeEntrypoints.TransportOpenInvoker? transportListen = null,
             NnrpNativeRuntimeEntrypoints.TransportListenerEndpointInvoker? transportListenerEndpoint = null,
-            NnrpNativeRuntimeEntrypoints.TransportProbeInvoker? transportProbe = null)
+            NnrpNativeRuntimeEntrypoints.TransportProbeInvoker? transportProbe = null,
+            NnrpNativeRuntimeEntrypoints.ServerPolicyCompleteInvoker? serverPolicyComplete = null,
+            NnrpNativeRuntimeEntrypoints.SessionOpenInvoker? clientOpenSession = null)
         {
             return new NnrpNativeRuntimeEntrypoints(
                 CurrentProtocolVersion,
@@ -3645,7 +3962,7 @@ namespace Nnrp.NativeBridge.Tests
                 ConnectionBootstrap,
                 ClientConnect,
                 SessionOpen,
-                SessionOpen,
+                clientOpenSession ?? SessionOpen,
                 Submit,
                 Submit,
                 sessionClose ?? HandleStatus,
@@ -3709,7 +4026,8 @@ namespace Nnrp.NativeBridge.Tests
                 transportProbe: transportProbe ?? TransportProbe,
                 transportClose: transportClose ?? HandleStatus,
                 clientAwaitEvents: clientAwaitEvents,
-                serverAwaitEvents: serverAwaitEvents);
+                serverAwaitEvents: serverAwaitEvents,
+                serverPolicyComplete: serverPolicyComplete);
         }
 
         internal static NnrpNativeRuntimeEntrypoints CreateTransportEntrypointsForTests(
@@ -3871,7 +4189,21 @@ namespace Nnrp.NativeBridge.Tests
 
         private static NnrpSessionOpenRequest MatchingSessionOpenRequest()
         {
-            return new NnrpSessionOpenRequest(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), 3, 1, 1, 10, 1);
+            return new NnrpSessionOpenRequest(
+                new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                requestedSessionId: 3,
+                sessionHandleId: 3,
+                generation: 1,
+                profileId: 1,
+                SessionPriorityClass.Balanced,
+                allowResume: true,
+                schemaId: 10,
+                schemaVersion: 1,
+                defaultDeadlineMilliseconds: 500,
+                maxInFlightOperations: 4,
+                leaseTtlHintMilliseconds: 30_000,
+                resumeTokenBytes: 16,
+                NnrpU32Slice.Empty);
         }
 
         private static NnrpFfiStatus SessionOpen(NnrpSessionOpenRequest request, out NnrpHandle session)
@@ -3882,7 +4214,9 @@ namespace Nnrp.NativeBridge.Tests
 
         private static NnrpSessionResumeRequest MatchingSessionResumeRequest()
         {
-            return new NnrpSessionResumeRequest(new NnrpHandle(NnrpHandleKind.Connection, 1, 1), 3, 1, 1, 10, 1, 16);
+            return new NnrpSessionResumeRequest(
+                MatchingSessionOpenRequest(),
+                new NnrpBufferView(new IntPtr(1), new UIntPtr(16)));
         }
 
         private static NnrpFfiStatus ClientResumeSession(
@@ -3890,9 +4224,12 @@ namespace Nnrp.NativeBridge.Tests
             out NnrpHandle session,
             out NnrpSessionRecoveryOutcome outcome)
         {
-            session = new NnrpHandle(NnrpHandleKind.Session, request.RequestedSessionId, request.Generation);
+            session = new NnrpHandle(
+                NnrpHandleKind.Session,
+                request.Open.SessionHandleId,
+                request.Open.Generation);
             outcome = new NnrpSessionRecoveryOutcome(1, 2);
-            return request.Connection.Kind == NnrpHandleKind.Connection && request.ResumeTokenBytes > 0
+            return request.Open.Connection.Kind == NnrpHandleKind.Connection && request.RecoveryTicket.Length != UIntPtr.Zero
                 ? NnrpFfiStatus.Ok
                 : new NnrpFfiStatus(NnrpFfiStatusCode.InvalidArgument);
         }

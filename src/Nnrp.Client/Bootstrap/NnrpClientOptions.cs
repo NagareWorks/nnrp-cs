@@ -10,17 +10,18 @@ namespace Nnrp.Client
     public sealed class NnrpClientSessionOptions
     {
         public NnrpClientSessionOptions(
-            uint sessionId = 0,
-            uint sessionGeneration = 1,
+            uint requestedSessionId = 0,
             ushort profileId = TypedPayloadProfileId.TokenValue,
             uint schemaId = TypedPayloadDescriptor.TokenDeltaSchemaId,
-            uint schemaVersion = TypedPayloadDescriptor.TokenDeltaSchemaVersion)
+            uint schemaVersion = TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+            SessionPriorityClass priorityClass = SessionPriorityClass.Balanced,
+            uint defaultDeadlineMilliseconds = 500,
+            ushort maxInFlightOperations = 4,
+            uint leaseTtlHintMilliseconds = 30_000,
+            bool allowResume = false,
+            uint resumeTokenBytes = 0,
+            IReadOnlyList<CacheObjectKind>? cacheHints = null)
         {
-            if (sessionGeneration == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sessionGeneration));
-            }
-
             if (schemaId != 0 && schemaVersion == 0)
             {
                 throw new ArgumentException(
@@ -28,22 +29,63 @@ namespace Nnrp.Client
                     nameof(schemaVersion));
             }
 
-            SessionId = sessionId;
-            SessionGeneration = sessionGeneration;
+            if (!Enum.IsDefined(typeof(SessionPriorityClass), priorityClass))
+            {
+                throw new ArgumentOutOfRangeException(nameof(priorityClass));
+            }
+
+            if (maxInFlightOperations == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxInFlightOperations));
+            }
+
+            if (!allowResume && resumeTokenBytes != 0)
+            {
+                throw new ArgumentException(
+                    "Resume token capacity requires session recovery to be enabled.",
+                    nameof(resumeTokenBytes));
+            }
+
+            var copiedHints = (cacheHints ?? Array.Empty<CacheObjectKind>()).ToArray();
+            if (copiedHints.Any(value => !Enum.IsDefined(typeof(CacheObjectKind), value)))
+            {
+                throw new ArgumentException("Cache hints contain an unknown object kind.", nameof(cacheHints));
+            }
+
+            RequestedSessionId = requestedSessionId;
             ProfileId = profileId;
             SchemaId = schemaId;
             SchemaVersion = schemaVersion;
+            PriorityClass = priorityClass;
+            DefaultDeadlineMilliseconds = defaultDeadlineMilliseconds;
+            MaxInFlightOperations = maxInFlightOperations;
+            LeaseTtlHintMilliseconds = leaseTtlHintMilliseconds;
+            AllowResume = allowResume;
+            ResumeTokenBytes = resumeTokenBytes;
+            CacheHints = new ReadOnlyCollection<CacheObjectKind>(copiedHints);
         }
 
-        public uint SessionId { get; }
-
-        public uint SessionGeneration { get; }
+        public uint RequestedSessionId { get; }
 
         public ushort ProfileId { get; }
 
         public uint SchemaId { get; }
 
         public uint SchemaVersion { get; }
+
+        public SessionPriorityClass PriorityClass { get; }
+
+        public uint DefaultDeadlineMilliseconds { get; }
+
+        public ushort MaxInFlightOperations { get; }
+
+        public uint LeaseTtlHintMilliseconds { get; }
+
+        public bool AllowResume { get; }
+
+        public uint ResumeTokenBytes { get; }
+
+        public IReadOnlyList<CacheObjectKind> CacheHints { get; }
     }
 
     public sealed class NnrpClientOptions
@@ -52,8 +94,34 @@ namespace Nnrp.Client
             NnrpEndpoint endpoint,
             IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes = null,
             TransportPolicy transportPolicy = TransportPolicy.Auto,
-            IReadOnlyList<INnrpNativeTransportProvider>? transports = null,
             NnrpClientSessionOptions? sessionDefaults = null)
+            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, null)
+        {
+        }
+
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyList<INnrpNativeTransportProvider> transports)
+            : this(endpoint, null, TransportPolicy.Auto, null, transports)
+        {
+        }
+
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            IReadOnlyList<INnrpNativeTransportProvider> transports,
+            NnrpClientSessionOptions? sessionDefaults = null)
+            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, transports)
+        {
+        }
+
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            NnrpClientSessionOptions? sessionDefaults,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports)
         {
             if (!Enum.IsDefined(typeof(TransportPolicy), transportPolicy))
             {
@@ -63,6 +131,7 @@ namespace Nnrp.Client
             Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
             ProviderRoutes = NnrpTransportRouteSet.CopyClient(providerRoutes);
             TransportPolicy = transportPolicy;
+            SessionDefaults = sessionDefaults ?? new NnrpClientSessionOptions();
             Transports = transports == null
                 ? null
                 : new ReadOnlyCollection<INnrpNativeTransportProvider>(transports.ToArray());
@@ -70,8 +139,6 @@ namespace Nnrp.Client
             {
                 throw new ArgumentException("Transport providers must not contain null values.", nameof(transports));
             }
-
-            SessionDefaults = sessionDefaults;
         }
 
         public NnrpEndpoint Endpoint { get; }
@@ -80,8 +147,8 @@ namespace Nnrp.Client
 
         public TransportPolicy TransportPolicy { get; }
 
-        public IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
+        public NnrpClientSessionOptions SessionDefaults { get; }
 
-        public NnrpClientSessionOptions? SessionDefaults { get; }
+        internal IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
     }
 }

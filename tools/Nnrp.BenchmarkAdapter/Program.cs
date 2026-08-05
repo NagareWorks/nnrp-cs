@@ -14,6 +14,7 @@ public static class Program
     private const string DefaultSkipMessage = "This benchmark scenario is not implemented in the current C# baseline runner.";
     private const string NativeArtifactPathEnvironmentVariable = "NNRP_BENCHMARK_NATIVE_ARTIFACT_PATH";
     private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+    private static long nextNativeSessionHandleId;
 
     private static int Main(string[] args)
     {
@@ -743,7 +744,20 @@ public static class Program
                 new NnrpConnectionHandle(connectionHandle));
             try
             {
-                var session = connection.OpenSession(sessionId, 1, 0, 0, 0);
+                var session = connection.OpenSession(
+                    sessionId,
+                    AllocateNativeSessionHandleId(),
+                    generation: 1,
+                    profileId: 0,
+                    SessionPriorityClass.Balanced,
+                    schemaId: 0,
+                    schemaVersion: 0,
+                    defaultDeadlineMilliseconds: 500,
+                    maxInFlightOperations: 4,
+                    leaseTtlHintMilliseconds: 30_000,
+                    allowResume: false,
+                    resumeTokenBytes: 0,
+                    Array.Empty<CacheObjectKind>());
                 return new NativeBenchmarkSessionHost(entrypoints, connection, session);
             }
             catch
@@ -757,6 +771,17 @@ public static class Program
             entrypoints.Dispose();
             throw;
         }
+    }
+
+    private static ulong AllocateNativeSessionHandleId()
+    {
+        var allocated = Interlocked.Increment(ref nextNativeSessionHandleId);
+        if (allocated <= 0)
+        {
+            throw new InvalidOperationException("The benchmark native session handle allocator is exhausted.");
+        }
+
+        return checked((ulong)allocated);
     }
 
     private sealed class NativeBenchmarkSessionHost : IDisposable

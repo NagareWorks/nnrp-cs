@@ -34,7 +34,7 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             "nnrp_ffi.dll",
         )
 
-    def write_archive(self, path: Path, *, abi_version: str = "4.3.0") -> None:
+    def write_archive(self, path: Path, *, abi_version: str = "4.4.0") -> None:
         manifest = {
             "transport_scope": "tcp",
             "abi_version": abi_version,
@@ -55,13 +55,13 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
                 self.artifact,
                 output,
                 False,
-                "4.3.0",
+                "4.4.0",
             )
 
             self.assertEqual(library.read_bytes(), b"native")
             manifest = json.loads((library.parent / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["transport_scope"], "tcp")
-            self.assertEqual(manifest["abi_version"], "4.3.0")
+            self.assertEqual(manifest["abi_version"], "4.4.0")
 
     def test_rejects_a_release_asset_with_the_wrong_abi(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -69,13 +69,13 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             archive = root / "artifact.zip"
             self.write_archive(archive, abi_version="4.1.0")
 
-            with self.assertRaisesRegex(ValueError, "expected ABI 4.3.0"):
+            with self.assertRaisesRegex(ValueError, "expected ABI 4.4.0"):
                 self.downloader.extract_library(
                     archive,
                     self.artifact,
                     root / "output",
                     False,
-                    "4.3.0",
+                    "4.4.0",
                 )
 
     def test_workflow_artifact_requires_exact_successful_commit(self):
@@ -85,7 +85,7 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             {
                 "stdout": json.dumps(
                     {
-                        "headSha": "bcebd1b309326a787f68c5b196dd733527fc1d81",
+                        "headSha": "784a4a354f4e6a73798248f93cf574bd7a5af829",
                         "status": "completed",
                         "conclusion": "success",
                     }
@@ -99,9 +99,9 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
         ) as run:
             self.downloader.download_workflow_artifact(
                 "NagareWorks/nnrp-rs",
-                "1.0.0-preview.4.21",
-                "30580835592",
-                "bcebd1b309326a787f68c5b196dd733527fc1d81",
+                "1.0.0-preview.4.22",
+                "30862254352",
+                "784a4a354f4e6a73798248f93cf574bd7a5af829",
                 Path(temp_dir),
             )
 

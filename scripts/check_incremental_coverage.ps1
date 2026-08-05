@@ -159,7 +159,7 @@ foreach ($coverageFile in $coverageFiles) {
             $relativePath = Get-NormalizedRepoPath $resolvedPath
             $coverageEntry = Get-OrCreateCoverageEntry -CoverageByFile $coverageByFile -RelativePath $relativePath
 
-            foreach ($lineNode in @($class.lines.line)) {
+            foreach ($lineNode in @($class.SelectNodes("lines/line"))) {
                 $lineNumber = [int]$lineNode.number
                 $hits = [int]$lineNode.hits
                 $null = $coverageEntry.Executable.Add($lineNumber)

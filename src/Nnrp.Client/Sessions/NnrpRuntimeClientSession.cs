@@ -265,6 +265,13 @@ namespace Nnrp.Client
         public ValueTask InvalidateCacheAsync(CacheInvalidateMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendCacheInvalidate(metadata));
 
+        public NnrpSessionRecoveryTicket? GetRecoveryTicket()
+        {
+            EnsureOpen();
+            var encoded = session.GetRecoveryTicketBytes();
+            return encoded == null ? null : NnrpSessionRecoveryTicket.FromBytes(encoded);
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (IsClosed)

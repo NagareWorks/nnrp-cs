@@ -106,7 +106,7 @@ namespace Nnrp.Server
             try
             {
                 EnsureOpen();
-                options = ResolveAcceptOptions(options);
+                options ??= new NnrpServerAcceptOptions();
                 var elapsed = Stopwatch.StartNew();
                 while (true)
                 {
@@ -238,28 +238,6 @@ namespace Nnrp.Server
             return Math.Min(PollTimeoutMilliseconds, remaining);
         }
 
-        private NnrpServerAcceptOptions ResolveAcceptOptions(NnrpServerAcceptOptions? options)
-        {
-            var configured = options ?? new NnrpServerAcceptOptions();
-            if (configured.SessionId != 0)
-            {
-                return configured;
-            }
-
-            while (true)
-            {
-                var allocated = NnrpRuntimeHandleIdAllocator.AllocateSession();
-                if (!acceptedSessions.Exists(session =>
-                    session.NativeSession?.Handle.Handle.Id == allocated))
-                {
-                    return new NnrpServerAcceptOptions(
-                        allocated,
-                        configured.SessionGeneration,
-                        configured.TimeoutMilliseconds);
-                }
-            }
-        }
-
         private void ReleasePendingAccepts(INnrpServerTransportListener? except = null)
         {
             foreach (var listener in listeners)
@@ -347,7 +325,6 @@ namespace Nnrp.Server
 
             cancellationToken.ThrowIfCancellationRequested();
             var plans = ResolvePlans(options);
-            var bindingOptions = ResolveBindingOptions(options);
             var listeners = new List<INnrpServerTransportListener>();
             try
             {
@@ -357,7 +334,7 @@ namespace Nnrp.Server
                     var listener = await (binder ?? BindNativeAsync)(
                         plan.Provider,
                         plan.ListenOptions,
-                        bindingOptions,
+                        options,
                         cancellationToken).ConfigureAwait(false);
                     if (listener == null)
                     {
@@ -385,22 +362,6 @@ namespace Nnrp.Server
 
                 throw;
             }
-        }
-
-        private static NnrpServerOptions ResolveBindingOptions(NnrpServerOptions options)
-        {
-            if (options.ServerId != 0)
-            {
-                return options;
-            }
-
-            return new NnrpServerOptions(
-                options.Endpoint,
-                options.ProviderRoutes,
-                options.TransportPolicy,
-                options.Transports,
-                NnrpRuntimeHandleIdAllocator.Allocate(),
-                options.ServerGeneration);
         }
 
         private static IReadOnlyList<ListenerPlan> ResolvePlans(NnrpServerOptions options)
@@ -525,13 +486,36 @@ namespace Nnrp.Server
                 }
 
                 var boundEndpoint = listener.BoundEndpoint;
-                var host = NnrpNativeRuntimeServerHost.Open(
-                    listener,
-                    new NnrpNativeRuntimeServerHostOptions(
-                        serverOptions.ServerId,
-                        serverOptions.ServerGeneration));
+                var defaults = serverOptions.SessionDefaults;
+                var server = listener.AdoptServer(new NnrpNativeServerBindOptions(
+                    NnrpRuntimeHandleIdAllocator.Allocate(),
+                    generation: 1,
+                    defaults.SupportedProfiles,
+                    defaults.SupportedCacheObjects,
+                    defaults.MaxCacheObjects,
+                    defaults.MaxCacheObjectBytes,
+                    defaults.ResumeTokenBytes,
+                    defaults.MaxInFlightOperations,
+                    defaults.GrantedOperationCredit,
+                    defaults.LeaseTtlMilliseconds,
+                    defaults.ResumeWindowMilliseconds,
+                    defaults.SchemaRegistry,
+                    async open =>
+                    {
+                        var decision = await defaults.ApplicationPolicy.EvaluateAsync(open).ConfigureAwait(false);
+                        if (decision == null)
+                        {
+                            throw new InvalidOperationException("The server application policy returned a null decision.");
+                        }
+
+                        return decision.Accepted
+                            ? NnrpNativeServerPolicyDecision.Accept()
+                            : NnrpNativeServerPolicyDecision.Reject(
+                                decision.SessionErrorCode,
+                                decision.Diagnostic);
+                    }));
                 listener = null;
-                return new NativeListener(provider.Descriptor.TransportId, boundEndpoint, host);
+                return new NativeListener(provider.Descriptor.TransportId, boundEndpoint, server);
             }
             catch
             {
@@ -589,16 +573,16 @@ namespace Nnrp.Server
         [ExcludeFromCodeCoverage]
         private sealed class NativeListener : INnrpServerTransportListener
         {
-            private NnrpNativeRuntimeServerHost? host;
+            private NnrpNativeRuntimeServer? server;
 
             internal NativeListener(
                 TransportId transportId,
                 NnrpProviderEndpoint boundEndpoint,
-                NnrpNativeRuntimeServerHost host)
+                NnrpNativeRuntimeServer server)
             {
                 TransportId = transportId;
                 BoundEndpoint = boundEndpoint;
-                this.host = host;
+                this.server = server;
             }
 
             public TransportId TransportId { get; }
@@ -611,10 +595,10 @@ namespace Nnrp.Server
                 CancellationToken cancellationToken)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var current = host ?? throw new ObjectDisposedException(nameof(NativeListener));
-                var session = current.Server.AcceptSession(
-                    options.SessionId,
-                    options.SessionGeneration,
+                var current = server ?? throw new ObjectDisposedException(nameof(NativeListener));
+                var session = current.AcceptSession(
+                    NnrpRuntimeHandleIdAllocator.Allocate(),
+                    generation: 1,
                     pollTimeoutMilliseconds);
                 return new ValueTask<NnrpAcceptedServerTransportSession>(
                     new NnrpAcceptedServerTransportSession(
@@ -631,15 +615,15 @@ namespace Nnrp.Server
 
             public bool ReleasePendingAccept()
             {
-                var current = host;
+                var current = server;
                 return current != null
                     && !current.IsClosed
-                    && current.Server.ReleasePendingAccept();
+                    && current.ReleasePendingAccept();
             }
 
             public ValueTask DisposeAsync()
             {
-                Interlocked.Exchange(ref host, null)?.Dispose();
+                Interlocked.Exchange(ref server, null)?.Dispose();
                 return default;
             }
         }

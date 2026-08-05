@@ -67,20 +67,69 @@ namespace Nnrp.Client
             {
                 EnsureOpen();
                 var configured = options ?? sessionDefaults ?? new NnrpClientSessionOptions();
-                var resolved = configured.SessionId == 0
-                    ? new NnrpClientSessionOptions(
-                        AllocateSessionId(),
-                        configured.SessionGeneration,
-                        configured.ProfileId,
-                        configured.SchemaId,
-                        configured.SchemaVersion)
-                    : configured;
                 var nativeSession = connection.OpenSession(
-                    resolved.SessionId,
-                    resolved.SessionGeneration,
+                    configured.RequestedSessionId,
+                    NnrpRuntimeHandleIdAllocator.Allocate(),
+                    generation: 1,
+                    configured.ProfileId,
+                    configured.PriorityClass,
+                    configured.SchemaId,
+                    configured.SchemaVersion,
+                    configured.DefaultDeadlineMilliseconds,
+                    configured.MaxInFlightOperations,
+                    configured.LeaseTtlHintMilliseconds,
+                    configured.AllowResume,
+                    configured.ResumeTokenBytes,
+                    configured.CacheHints);
+                var session = new NnrpClientSession(this, nativeSession, configured);
+                sessions.Add(session);
+                return session;
+            }
+        }
+
+        public NnrpClientSession ResumeSession(
+            NnrpSessionRecoveryTicket ticket,
+            NnrpClientSessionOptions? options = null)
+        {
+            if (ticket == null)
+            {
+                throw new ArgumentNullException(nameof(ticket));
+            }
+
+            lock (gate)
+            {
+                EnsureOpen();
+                var configured = options ?? sessionDefaults ?? new NnrpClientSessionOptions();
+                var resumeTokenBytes = Math.Max(
+                    configured.ResumeTokenBytes,
+                    checked((uint)ticket.ResumeToken.Length));
+                var resolved = new NnrpClientSessionOptions(
+                    requestedSessionId: ticket.SessionId,
+                    profileId: configured.ProfileId,
+                    schemaId: configured.SchemaId,
+                    schemaVersion: configured.SchemaVersion,
+                    priorityClass: configured.PriorityClass,
+                    defaultDeadlineMilliseconds: configured.DefaultDeadlineMilliseconds,
+                    maxInFlightOperations: configured.MaxInFlightOperations,
+                    leaseTtlHintMilliseconds: configured.LeaseTtlHintMilliseconds,
+                    allowResume: true,
+                    resumeTokenBytes: resumeTokenBytes,
+                    cacheHints: configured.CacheHints);
+                var nativeSession = connection.ResumeSession(
+                    resolved.RequestedSessionId,
+                    NnrpRuntimeHandleIdAllocator.Allocate(),
+                    generation: 1,
                     resolved.ProfileId,
+                    resolved.PriorityClass,
                     resolved.SchemaId,
-                    resolved.SchemaVersion);
+                    resolved.SchemaVersion,
+                    resolved.DefaultDeadlineMilliseconds,
+                    resolved.MaxInFlightOperations,
+                    resolved.LeaseTtlHintMilliseconds,
+                    resolved.ResumeTokenBytes,
+                    resolved.CacheHints,
+                    ticket.ToBytes(),
+                    out _);
                 var session = new NnrpClientSession(this, nativeSession, resolved);
                 sessions.Add(session);
                 return session;
@@ -209,16 +258,5 @@ namespace Nnrp.Client
             }
         }
 
-        private uint AllocateSessionId()
-        {
-            while (true)
-            {
-                var allocated = NnrpRuntimeHandleIdAllocator.AllocateSession();
-                if (!sessions.Exists(session => session.Options.SessionId == allocated))
-                {
-                    return allocated;
-                }
-            }
-        }
     }
 }

@@ -33,13 +33,17 @@ namespace Nnrp.Client.Tests
             Assert.Single(options.Transports!);
             Assert.Same(defaults, options.SessionDefaults);
             Assert.Equal(TransportPolicy.PreferTcp, options.TransportPolicy);
-            Assert.Equal((uint)0, defaults.SessionId);
-            Assert.Equal((uint)1, defaults.SessionGeneration);
+            Assert.Equal((uint)0, defaults.RequestedSessionId);
             Assert.Equal(TypedPayloadProfileId.Token.Value, defaults.ProfileId);
             Assert.Equal((uint)7, defaults.SchemaId);
             Assert.Equal((uint)2, defaults.SchemaVersion);
-            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientSessionOptions(sessionGeneration: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientSessionOptions(maxInFlightOperations: 0));
             Assert.Throws<ArgumentException>(() => new NnrpClientSessionOptions(schemaId: 7, schemaVersion: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientSessionOptions(
+                priorityClass: (SessionPriorityClass)byte.MaxValue));
+            Assert.Throws<ArgumentException>(() => new NnrpClientSessionOptions(resumeTokenBytes: 1));
+            Assert.Throws<ArgumentException>(() => new NnrpClientSessionOptions(
+                cacheHints: new[] { (CacheObjectKind)uint.MaxValue }));
             Assert.Throws<ArgumentNullException>(() => new NnrpClientOptions(null!));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpClientOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
@@ -119,7 +123,8 @@ namespace Nnrp.Client.Tests
                 new NnrpClientOptions(
                     NnrpEndpoint.Parse("nnrp://localhost:7000"),
                     routes,
-                    transports: new[] { tcp }));
+                    TransportPolicy.Auto,
+                    new[] { tcp }));
 
             Assert.Same(tcp, plan.Provider);
             Assert.Contains(

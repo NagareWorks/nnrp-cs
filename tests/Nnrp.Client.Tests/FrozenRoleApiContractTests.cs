@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -29,11 +30,19 @@ namespace Nnrp.Client.Tests
                 typeof(NnrpClientSession),
                 isStatic: false,
                 typeof(NnrpClientSessionOptions));
+            AssertMethod(
+                typeof(NnrpClient),
+                nameof(NnrpClient.ResumeSession),
+                typeof(NnrpClientSession),
+                isStatic: false,
+                typeof(NnrpSessionRecoveryTicket),
+                typeof(NnrpClientSessionOptions));
 
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitAsync), typeof(ValueTask<NnrpResult>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitNoWaitAsync), typeof(ValueTask<ulong>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.NextResultAsync), typeof(ValueTask<NnrpResult>), false, typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.NextEventAsync), typeof(ValueTask<NnrpRuntimeEvent>), false, typeof(CancellationToken));
+            AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.GetRecoveryTicket), typeof(NnrpSessionRecoveryTicket), false);
 
             AssertTailMethod<ControlRequestMetadata>(nameof(NnrpClientSession.CancelAsync));
             AssertTailMethod<ControlRequestMetadata>(nameof(NnrpClientSession.AbortAsync));
@@ -58,6 +67,69 @@ namespace Nnrp.Client.Tests
                 typeof(CancellationToken));
 
             AssertClientObjectAndCacheMethods();
+        }
+
+        [Fact]
+        public void ConfigurationAndRecoveryTypesMatchTheFrozenPreview4Properties()
+        {
+            AssertProperties(
+                typeof(NnrpClientOptions),
+                (nameof(NnrpClientOptions.Endpoint), typeof(NnrpEndpoint)),
+                (nameof(NnrpClientOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>)),
+                (nameof(NnrpClientOptions.TransportPolicy), typeof(TransportPolicy)),
+                (nameof(NnrpClientOptions.SessionDefaults), typeof(NnrpClientSessionOptions)));
+            AssertProperties(
+                typeof(NnrpClientSessionOptions),
+                (nameof(NnrpClientSessionOptions.RequestedSessionId), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.ProfileId), typeof(ushort)),
+                (nameof(NnrpClientSessionOptions.SchemaId), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.SchemaVersion), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.PriorityClass), typeof(SessionPriorityClass)),
+                (nameof(NnrpClientSessionOptions.DefaultDeadlineMilliseconds), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.MaxInFlightOperations), typeof(ushort)),
+                (nameof(NnrpClientSessionOptions.LeaseTtlHintMilliseconds), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.AllowResume), typeof(bool)),
+                (nameof(NnrpClientSessionOptions.ResumeTokenBytes), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.CacheHints), typeof(IReadOnlyList<CacheObjectKind>)));
+            AssertProperties(
+                typeof(NnrpSessionRecoveryTicket),
+                (nameof(NnrpSessionRecoveryTicket.SessionId), typeof(uint)),
+                (nameof(NnrpSessionRecoveryTicket.ResumeToken), typeof(ReadOnlyMemory<byte>)),
+                (nameof(NnrpSessionRecoveryTicket.ResumeFromOperationId), typeof(ulong?)),
+                (nameof(NnrpSessionRecoveryTicket.ResumeWindowMilliseconds), typeof(uint)));
+            AssertProperties(
+                typeof(NnrpServerOptions),
+                (nameof(NnrpServerOptions.Endpoint), typeof(NnrpEndpoint)),
+                (nameof(NnrpServerOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>)),
+                (nameof(NnrpServerOptions.TransportPolicy), typeof(TransportPolicy)),
+                (nameof(NnrpServerOptions.SessionDefaults), typeof(NnrpServerSessionOptions)));
+            AssertProperties(
+                typeof(NnrpServerAcceptOptions),
+                (nameof(NnrpServerAcceptOptions.TimeoutMilliseconds), typeof(uint)));
+            AssertProperties(
+                typeof(NnrpServerSessionOptions),
+                (nameof(NnrpServerSessionOptions.SupportedProfiles), typeof(IReadOnlyList<ushort>)),
+                (nameof(NnrpServerSessionOptions.SupportedCacheObjects), typeof(IReadOnlyList<CacheObjectKind>)),
+                (nameof(NnrpServerSessionOptions.MaxCacheObjects), typeof(ulong)),
+                (nameof(NnrpServerSessionOptions.MaxCacheObjectBytes), typeof(uint)),
+                (nameof(NnrpServerSessionOptions.SchemaRegistry), typeof(SchemaRegistry)),
+                (nameof(NnrpServerSessionOptions.ResumeTokenBytes), typeof(uint)),
+                (nameof(NnrpServerSessionOptions.MaxInFlightOperations), typeof(ushort)),
+                (nameof(NnrpServerSessionOptions.GrantedOperationCredit), typeof(ushort)),
+                (nameof(NnrpServerSessionOptions.LeaseTtlMilliseconds), typeof(uint)),
+                (nameof(NnrpServerSessionOptions.ResumeWindowMilliseconds), typeof(uint)),
+                (nameof(NnrpServerSessionOptions.ApplicationPolicy), typeof(INnrpServerSessionPolicy)));
+            AssertMethod(
+                typeof(INnrpServerSessionPolicy),
+                nameof(INnrpServerSessionPolicy.EvaluateAsync),
+                typeof(ValueTask<NnrpServerSessionPolicyDecision>),
+                false,
+                typeof(SessionOpenMetadata));
+            AssertProperties(
+                typeof(NnrpServerSessionPolicyDecision),
+                (nameof(NnrpServerSessionPolicyDecision.Accepted), typeof(bool)),
+                (nameof(NnrpServerSessionPolicyDecision.SessionErrorCode), typeof(SessionErrorCode)),
+                (nameof(NnrpServerSessionPolicyDecision.Diagnostic), typeof(string)));
         }
 
         [Fact]

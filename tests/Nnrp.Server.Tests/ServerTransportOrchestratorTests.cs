@@ -21,9 +21,7 @@ namespace Nnrp.Server.Tests
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 routes,
                 TransportPolicy.PreferTcp,
-                providers,
-                serverId: 17,
-                serverGeneration: 3);
+                providers);
 
             routes[TransportId.WebSocket] = new NnrpServerProviderRoute();
             providers.Clear();
@@ -31,25 +29,85 @@ namespace Nnrp.Server.Tests
             Assert.Empty(options.ProviderRoutes);
             Assert.Single(options.Transports!);
             Assert.Equal(TransportPolicy.PreferTcp, options.TransportPolicy);
-            Assert.Equal((ulong)17, options.ServerId);
-            Assert.Equal((uint)3, options.ServerGeneration);
-
-            var accept = new NnrpServerAcceptOptions(19, 4, 25);
-            Assert.Equal((uint)19, accept.SessionId);
-            Assert.Equal((uint)4, accept.SessionGeneration);
+            var accept = new NnrpServerAcceptOptions(25);
             Assert.Equal((uint)25, accept.TimeoutMilliseconds);
 
             Assert.Throws<ArgumentNullException>(() => new NnrpServerOptions(null!));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 transportPolicy: (TransportPolicy)255));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerOptions(
-                NnrpEndpoint.Parse("nnrp://localhost:7000"),
-                serverGeneration: 0));
             Assert.Throws<ArgumentException>(() => new NnrpServerOptions(
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 transports: new INnrpNativeTransportProvider[] { null! }));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerAcceptOptions(sessionGeneration: 0));
+        }
+
+        [Fact]
+        public async Task SessionOptionsAndPolicyDecisionsPreserveTheFrozenContract()
+        {
+            var profiles = new List<ushort> { TypedPayloadProfileId.TokenValue, TypedPayloadProfileId.TensorValue };
+            var cacheObjects = new List<CacheObjectKind> { CacheObjectKind.PromptSegment };
+            var registry = SchemaRegistry.WithStandardProfiles();
+            var policy = new RejectingPolicy();
+            var options = new NnrpServerSessionOptions(
+                profiles,
+                cacheObjects,
+                maxCacheObjects: 11,
+                maxCacheObjectBytes: 12,
+                registry,
+                resumeTokenBytes: 13,
+                maxInFlightOperations: 14,
+                grantedOperationCredit: 7,
+                leaseTtlMilliseconds: 15,
+                resumeWindowMilliseconds: 16,
+                policy);
+
+            profiles.Clear();
+            cacheObjects.Clear();
+
+            Assert.Equal(new[] { TypedPayloadProfileId.TokenValue, TypedPayloadProfileId.TensorValue }, options.SupportedProfiles);
+            Assert.Equal(new[] { CacheObjectKind.PromptSegment }, options.SupportedCacheObjects);
+            Assert.Equal((ulong)11, options.MaxCacheObjects);
+            Assert.Equal((uint)12, options.MaxCacheObjectBytes);
+            Assert.Same(registry, options.SchemaRegistry);
+            Assert.Equal((uint)13, options.ResumeTokenBytes);
+            Assert.Equal((ushort)14, options.MaxInFlightOperations);
+            Assert.Equal((ushort)7, options.GrantedOperationCredit);
+            Assert.Equal((uint)15, options.LeaseTtlMilliseconds);
+            Assert.Equal((uint)16, options.ResumeWindowMilliseconds);
+            Assert.Same(policy, options.ApplicationPolicy);
+
+            var open = new SessionOpenMetadata(
+                1,
+                TypedPayloadProfileId.TokenValue,
+                SessionPriorityClass.Balanced,
+                SessionFlags.None,
+                TypedPayloadDescriptor.TokenDeltaSchemaId,
+                TypedPayloadDescriptor.TokenDeltaSchemaVersion,
+                500,
+                4,
+                30_000,
+                0,
+                0,
+                0,
+                2);
+            var rejection = await options.ApplicationPolicy.EvaluateAsync(open);
+            Assert.False(rejection.Accepted);
+            Assert.Equal(SessionErrorCode.ProfileUnsupported, rejection.SessionErrorCode);
+            Assert.Equal("profile", rejection.Diagnostic);
+
+            var defaults = new NnrpServerSessionOptions();
+            var acceptance = await defaults.ApplicationPolicy.EvaluateAsync(open);
+            Assert.True(acceptance.Accepted);
+            Assert.Equal(SessionErrorCode.None, acceptance.SessionErrorCode);
+            Assert.Null(acceptance.Diagnostic);
+            Assert.Throws<ArgumentException>(() => NnrpServerSessionPolicyDecision.Reject(SessionErrorCode.None));
+            Assert.Throws<ArgumentException>(() => new NnrpServerSessionOptions(supportedProfiles: Array.Empty<ushort>()));
+            Assert.Throws<ArgumentException>(() => new NnrpServerSessionOptions(
+                supportedCacheObjects: new[] { (CacheObjectKind)uint.MaxValue }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerSessionOptions(maxInFlightOperations: 0));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerSessionOptions(
+                maxInFlightOperations: 2,
+                grantedOperationCredit: 3));
         }
 
         [Fact]
@@ -76,25 +134,23 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
-        public async Task ZeroServerIdAllocatesOneNonZeroIdentityForTheLogicalListenerSet()
+        public async Task SessionDefaultsAreSharedAcrossTheLogicalListenerSet()
         {
             var options = Options(
                 new[] { Provider(TransportId.Tcp, "tcp"), Provider(TransportId.WebSocket, "websocket") },
                 TransportPolicy.Auto);
-            var observedIds = new List<ulong>();
+            var observedDefaults = new List<NnrpServerSessionOptions>();
 
             await using var listeners = await NnrpServerTransportOrchestrator.ListenAsync(
                 options,
                 binder: (provider, listen, server, cancellation) =>
                 {
-                    observedIds.Add(server.ServerId);
+                    observedDefaults.Add(server.SessionDefaults);
                     return new ValueTask<INnrpServerTransportListener>(Listener(provider.Descriptor.TransportId));
                 });
 
-            Assert.Equal((ulong)0, options.ServerId);
-            Assert.Equal(2, observedIds.Count);
-            Assert.NotEqual((ulong)0, observedIds[0]);
-            Assert.All(observedIds, value => Assert.Equal(observedIds[0], value));
+            Assert.Equal(2, observedDefaults.Count);
+            Assert.All(observedDefaults, value => Assert.Same(options.SessionDefaults, value));
         }
 
         [Theory]
@@ -146,8 +202,9 @@ namespace Nnrp.Server.Tests
             var error = await Assert.ThrowsAsync<NnrpTransportSelectionException>(async () =>
                 await NnrpServerTransportOrchestrator.ListenAsync(new NnrpServerOptions(
                     NnrpEndpoint.Parse("nnrp://localhost:7000"),
-                    transportPolicy: TransportPolicy.ForceQuic,
-                    transports: new[] { Provider(TransportId.Tcp, "tcp") })));
+                    null,
+                    TransportPolicy.ForceQuic,
+                    new[] { Provider(TransportId.Tcp, "tcp") })));
 
             Assert.Equal(NnrpTransportSelectionErrorCode.ForcedTransportUnavailable, error.Code);
         }
@@ -166,7 +223,8 @@ namespace Nnrp.Server.Tests
                         ProviderEndpoint = NnrpProviderEndpoint.Parse("ws://localhost:7200/nnrp"),
                     },
                 },
-                transports: new[] { tcp });
+                TransportPolicy.Auto,
+                new[] { tcp });
 
             var error = await Assert.ThrowsAsync<NnrpTransportSelectionException>(async () =>
                 await NnrpServerTransportOrchestrator.ListenAsync(
@@ -308,7 +366,7 @@ namespace Nnrp.Server.Tests
             websocket.EnqueueAccepted();
             await using var listeners = new NnrpServerTransportListenerSet(new[] { tcp, websocket });
 
-            using var accepted = await listeners.AcceptAsync(new NnrpServerAcceptOptions(7, 2, 100));
+            using var accepted = await listeners.AcceptAsync(new NnrpServerAcceptOptions(100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
             Assert.Equal(1, tcp.ReleaseCount);
@@ -559,6 +617,13 @@ namespace Nnrp.Server.Tests
                     preferenceRank: 0,
                     new NnrpTransportProviderLimits(maxFrameBytes),
                     Array.Empty<NnrpTransportProviderLimitation>())));
+        }
+
+        private sealed class RejectingPolicy : INnrpServerSessionPolicy
+        {
+            public ValueTask<NnrpServerSessionPolicyDecision> EvaluateAsync(SessionOpenMetadata open) =>
+                new ValueTask<NnrpServerSessionPolicyDecision>(
+                    NnrpServerSessionPolicyDecision.Reject(SessionErrorCode.ProfileUnsupported, "profile"));
         }
 
         private static FakeListener Listener(TransportId transportId)

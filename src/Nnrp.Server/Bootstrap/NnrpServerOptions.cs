@@ -2,31 +2,140 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
 
 namespace Nnrp.Server
 {
-    public sealed class NnrpServerAcceptOptions
+    public sealed class NnrpServerSessionPolicyDecision
     {
-        public NnrpServerAcceptOptions(
-            uint sessionId = 0,
-            uint sessionGeneration = 1,
-            uint timeoutMilliseconds = 0)
+        private NnrpServerSessionPolicyDecision(bool accepted, SessionErrorCode sessionErrorCode, string? diagnostic)
         {
-            if (sessionGeneration == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sessionGeneration));
-            }
-
-            SessionId = sessionId;
-            SessionGeneration = sessionGeneration;
-            TimeoutMilliseconds = timeoutMilliseconds;
+            Accepted = accepted;
+            SessionErrorCode = sessionErrorCode;
+            Diagnostic = diagnostic;
         }
 
-        public uint SessionId { get; }
+        public bool Accepted { get; }
 
-        public uint SessionGeneration { get; }
+        public SessionErrorCode SessionErrorCode { get; }
+
+        public string? Diagnostic { get; }
+
+        public static NnrpServerSessionPolicyDecision Accept() =>
+            new NnrpServerSessionPolicyDecision(true, SessionErrorCode.None, null);
+
+        public static NnrpServerSessionPolicyDecision Reject(
+            SessionErrorCode sessionErrorCode,
+            string? diagnostic = null)
+        {
+            if (sessionErrorCode == SessionErrorCode.None)
+            {
+                throw new ArgumentException("A rejected session requires a session error.", nameof(sessionErrorCode));
+            }
+
+            return new NnrpServerSessionPolicyDecision(false, sessionErrorCode, diagnostic);
+        }
+    }
+
+    public interface INnrpServerSessionPolicy
+    {
+        ValueTask<NnrpServerSessionPolicyDecision> EvaluateAsync(SessionOpenMetadata open);
+    }
+
+    internal sealed class NnrpAcceptValidServerSessionPolicy : INnrpServerSessionPolicy
+    {
+        internal static NnrpAcceptValidServerSessionPolicy Instance { get; } =
+            new NnrpAcceptValidServerSessionPolicy();
+
+        private NnrpAcceptValidServerSessionPolicy()
+        {
+        }
+
+        public ValueTask<NnrpServerSessionPolicyDecision> EvaluateAsync(SessionOpenMetadata open) =>
+            new ValueTask<NnrpServerSessionPolicyDecision>(NnrpServerSessionPolicyDecision.Accept());
+    }
+
+    public sealed class NnrpServerSessionOptions
+    {
+        public NnrpServerSessionOptions(
+            IReadOnlyList<ushort>? supportedProfiles = null,
+            IReadOnlyList<CacheObjectKind>? supportedCacheObjects = null,
+            ulong maxCacheObjects = 0,
+            uint maxCacheObjectBytes = 0,
+            SchemaRegistry? schemaRegistry = null,
+            uint resumeTokenBytes = 24,
+            ushort maxInFlightOperations = 4,
+            ushort grantedOperationCredit = 2,
+            uint leaseTtlMilliseconds = 30_000,
+            uint resumeWindowMilliseconds = 120_000,
+            INnrpServerSessionPolicy? applicationPolicy = null)
+        {
+            var profiles = (supportedProfiles ?? new[] { TypedPayloadProfileId.TokenValue }).ToArray();
+            if (profiles.Length == 0)
+            {
+                throw new ArgumentException("At least one supported profile is required.", nameof(supportedProfiles));
+            }
+
+            var cacheObjects = (supportedCacheObjects ?? Array.Empty<CacheObjectKind>()).ToArray();
+            if (cacheObjects.Any(value => !Enum.IsDefined(typeof(CacheObjectKind), value)))
+            {
+                throw new ArgumentException("Supported cache objects contain an unknown object kind.", nameof(supportedCacheObjects));
+            }
+
+            if (maxInFlightOperations == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxInFlightOperations));
+            }
+
+            if (grantedOperationCredit > maxInFlightOperations)
+            {
+                throw new ArgumentOutOfRangeException(nameof(grantedOperationCredit));
+            }
+
+            SupportedProfiles = new ReadOnlyCollection<ushort>(profiles);
+            SupportedCacheObjects = new ReadOnlyCollection<CacheObjectKind>(cacheObjects);
+            MaxCacheObjects = maxCacheObjects;
+            MaxCacheObjectBytes = maxCacheObjectBytes;
+            SchemaRegistry = schemaRegistry ?? SchemaRegistry.WithStandardProfiles();
+            ResumeTokenBytes = resumeTokenBytes;
+            MaxInFlightOperations = maxInFlightOperations;
+            GrantedOperationCredit = grantedOperationCredit;
+            LeaseTtlMilliseconds = leaseTtlMilliseconds;
+            ResumeWindowMilliseconds = resumeWindowMilliseconds;
+            ApplicationPolicy = applicationPolicy ?? NnrpAcceptValidServerSessionPolicy.Instance;
+        }
+
+        public IReadOnlyList<ushort> SupportedProfiles { get; }
+
+        public IReadOnlyList<CacheObjectKind> SupportedCacheObjects { get; }
+
+        public ulong MaxCacheObjects { get; }
+
+        public uint MaxCacheObjectBytes { get; }
+
+        public SchemaRegistry SchemaRegistry { get; }
+
+        public uint ResumeTokenBytes { get; }
+
+        public ushort MaxInFlightOperations { get; }
+
+        public ushort GrantedOperationCredit { get; }
+
+        public uint LeaseTtlMilliseconds { get; }
+
+        public uint ResumeWindowMilliseconds { get; }
+
+        public INnrpServerSessionPolicy ApplicationPolicy { get; }
+    }
+
+    public sealed class NnrpServerAcceptOptions
+    {
+        public NnrpServerAcceptOptions(uint timeoutMilliseconds = 0)
+        {
+            TimeoutMilliseconds = timeoutMilliseconds;
+        }
 
         public uint TimeoutMilliseconds { get; }
     }
@@ -37,23 +146,44 @@ namespace Nnrp.Server
             NnrpEndpoint endpoint,
             IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes = null,
             TransportPolicy transportPolicy = TransportPolicy.Auto,
-            IReadOnlyList<INnrpNativeTransportProvider>? transports = null,
-            ulong serverId = 0,
-            uint serverGeneration = 1)
+            NnrpServerSessionOptions? sessionDefaults = null)
+            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, null)
+        {
+        }
+
+        internal NnrpServerOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyList<INnrpNativeTransportProvider> transports)
+            : this(endpoint, null, TransportPolicy.Auto, null, transports)
+        {
+        }
+
+        internal NnrpServerOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            IReadOnlyList<INnrpNativeTransportProvider> transports,
+            NnrpServerSessionOptions? sessionDefaults = null)
+            : this(endpoint, providerRoutes, transportPolicy, sessionDefaults, transports)
+        {
+        }
+
+        internal NnrpServerOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            NnrpServerSessionOptions? sessionDefaults,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports)
         {
             if (!Enum.IsDefined(typeof(TransportPolicy), transportPolicy))
             {
                 throw new ArgumentOutOfRangeException(nameof(transportPolicy));
             }
 
-            if (serverGeneration == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(serverGeneration));
-            }
-
             Endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
             ProviderRoutes = NnrpTransportRouteSet.CopyServer(providerRoutes);
             TransportPolicy = transportPolicy;
+            SessionDefaults = sessionDefaults ?? new NnrpServerSessionOptions();
             Transports = transports == null
                 ? null
                 : new ReadOnlyCollection<INnrpNativeTransportProvider>(transports.ToArray());
@@ -61,9 +191,6 @@ namespace Nnrp.Server
             {
                 throw new ArgumentException("Transport providers must not contain null values.", nameof(transports));
             }
-
-            ServerId = serverId;
-            ServerGeneration = serverGeneration;
         }
 
         public NnrpEndpoint Endpoint { get; }
@@ -72,10 +199,8 @@ namespace Nnrp.Server
 
         public TransportPolicy TransportPolicy { get; }
 
-        public IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
+        public NnrpServerSessionOptions SessionDefaults { get; }
 
-        public ulong ServerId { get; }
-
-        public uint ServerGeneration { get; }
+        internal IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
     }
 }

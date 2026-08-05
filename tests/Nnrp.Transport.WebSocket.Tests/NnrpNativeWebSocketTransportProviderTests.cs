@@ -82,7 +82,9 @@ namespace Nnrp.Transport.WebSocket.Tests
                 new NnrpTransportListenOptions(
                     endpoint,
                     NnrpProviderEndpoint.Parse("ws://127.0.0.1:0/nnrp")));
-            using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+            using var server = NnrpNativeRuntimeServer.Bind(
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(50, 1));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var acceptTask = Task.Factory.StartNew(
                 () => server.AcceptSession(71, 1, timeoutMilliseconds: 5_000),
@@ -134,7 +136,9 @@ namespace Nnrp.Transport.WebSocket.Tests
                 ? NnrpProviderEndpoint.Parse($"wss://localhost:{boundUri.Port}{boundUri.PathAndQuery}")
                 : listener.BoundEndpoint;
 
-            using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+            using var server = NnrpNativeRuntimeServer.Bind(
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(50, 1));
             using var acceptCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var acceptTask = Task.Factory.StartNew(
                 () => server.AcceptSession(71, 1, timeoutMilliseconds: 10_000),

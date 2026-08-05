@@ -25,6 +25,11 @@ namespace Nnrp.Core
 
         public int Count => _entries.Count;
 
+        internal IReadOnlyCollection<SchemaDescriptorHeader> SnapshotDescriptors()
+        {
+            return new List<SchemaDescriptorHeader>(_entries.Values);
+        }
+
         public static SchemaRegistry WithStandardProfiles()
         {
             var registry = new SchemaRegistry();

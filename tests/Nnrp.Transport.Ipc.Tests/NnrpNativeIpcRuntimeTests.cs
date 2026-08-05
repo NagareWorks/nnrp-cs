@@ -63,7 +63,9 @@ namespace Nnrp.Transport.Ipc.Tests
                     Assert.Equal(providerEndpoint, listener.BoundEndpoint);
                 }
 
-                using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+                using var server = NnrpNativeRuntimeServer.Bind(
+                    listener,
+                    new NnrpNativeRuntimeServerHostOptions(50, 1));
                 using var acceptCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var acceptTask = Task.Factory.StartNew(
                     () => server.AcceptSession(71, 1, timeoutMilliseconds: 10_000),

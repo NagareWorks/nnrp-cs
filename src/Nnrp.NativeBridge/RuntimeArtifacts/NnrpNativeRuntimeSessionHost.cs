@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Nnrp.Core;
 using Nnrp.Runtime;
 
 namespace Nnrp.NativeBridge
@@ -79,10 +80,18 @@ namespace Nnrp.NativeBridge
                 options.ConnectionGeneration);
             var session = connection.OpenSession(
                 options.SessionId,
+                NnrpRuntimeHandleIdAllocator.Allocate(),
                 options.SessionGeneration,
                 options.ProfileId,
+                SessionPriorityClass.Balanced,
                 options.SchemaId,
-                options.SchemaVersion);
+                options.SchemaVersion,
+                defaultDeadlineMilliseconds: 500,
+                maxInFlightOperations: 4,
+                leaseTtlHintMilliseconds: 30_000,
+                allowResume: false,
+                resumeTokenBytes: 0,
+                Array.Empty<CacheObjectKind>());
             return new NnrpNativeRuntimeSessionHost(options, connection, session);
         }
 
@@ -422,10 +431,18 @@ namespace Nnrp.NativeBridge
 
             var session = Connection.OpenSession(
                 options.SessionId,
+                NnrpRuntimeHandleIdAllocator.Allocate(),
                 options.SessionGeneration,
                 options.ProfileId,
+                SessionPriorityClass.Balanced,
                 options.SchemaId,
-                options.SchemaVersion);
+                options.SchemaVersion,
+                defaultDeadlineMilliseconds: 500,
+                maxInFlightOperations: 4,
+                leaseTtlHintMilliseconds: 30_000,
+                allowResume: false,
+                resumeTokenBytes: 0,
+                Array.Empty<CacheObjectKind>());
             sessions.Add(options.SessionId, session);
             return session;
         }
@@ -746,8 +763,21 @@ namespace Nnrp.NativeBridge
 
             var server = NnrpNativeRuntimeServer.Bind(
                 transportListener,
-                options.ServerId,
-                options.ServerGeneration);
+                new NnrpNativeServerBindOptions(
+                    options.ServerId,
+                    options.ServerGeneration,
+                    new[] { TypedPayloadProfileId.TokenValue },
+                    Array.Empty<CacheObjectKind>(),
+                    maxCacheObjects: 0,
+                    maxCacheObjectBytes: 0,
+                    resumeTokenBytes: 24,
+                    maxInFlightOperations: 4,
+                    grantedOperationCredit: 2,
+                    leaseTtlMilliseconds: 30_000,
+                    resumeWindowMilliseconds: 120_000,
+                    SchemaRegistry.WithStandardProfiles(),
+                    _ => new System.Threading.Tasks.ValueTask<NnrpNativeServerPolicyDecision>(
+                        NnrpNativeServerPolicyDecision.Accept())));
             return new NnrpNativeRuntimeServerHost(options, server);
         }
 

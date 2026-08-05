@@ -648,21 +648,103 @@ namespace Nnrp.NativeBridge
             }
         }
 
-        internal NnrpNativeRuntimeServer AdoptServer(ulong serverId, uint generation)
+        internal NnrpNativeRuntimeServer AdoptServer(NnrpNativeServerBindOptions options)
         {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
             lock (gate)
             {
                 EnsureOpen();
-                Entrypoints.ServerBind(
-                    new NnrpServerBindRequest(serverId, generation, handle),
-                    out var server).ThrowIfError();
-                handle = NnrpHandle.Invalid;
-                var ownership = lease!;
-                lease = null;
-                return new NnrpNativeRuntimeServer(
-                    ownership.Entrypoints,
-                    new NnrpConnectionHandle(server),
-                    ownership);
+                NnrpNativeServerPolicyDispatcher? dispatcher = null;
+                NnrpNativeSchemaRegistry? schemaRegistry = null;
+                GCHandle profilesOwner = default;
+                GCHandle cacheObjectsOwner = default;
+                try
+                {
+                    dispatcher = new NnrpNativeServerPolicyDispatcher(
+                        Entrypoints,
+                        options.ApplicationPolicy,
+                        lease!.Retain());
+                    schemaRegistry = NnrpNativeSchemaRegistry.Create(Entrypoints);
+                    foreach (var descriptor in options.SchemaRegistry.SnapshotDescriptors())
+                    {
+                        schemaRegistry.Install(new NnrpSchemaDescriptorHeader(
+                            descriptor.SchemaId,
+                            descriptor.SchemaVersion,
+                            descriptor.ProfileId,
+                            descriptor.SchemaFlags,
+                            descriptor.MinVersionMajor,
+                            descriptor.MaxVersionMajor,
+                            descriptor.BodyBytes,
+                            descriptor.DependencyCount,
+                            descriptor.DefaultStreamSemantics,
+                            descriptor.SchemaHash));
+                    }
+
+                    var profiles = options.SupportedProfiles.ToArray();
+                    var cacheObjects = options.SupportedCacheObjects.Select(value => (uint)value).ToArray();
+                    profilesOwner = GCHandle.Alloc(profiles, GCHandleType.Pinned);
+                    if (cacheObjects.Length != 0)
+                    {
+                        cacheObjectsOwner = GCHandle.Alloc(cacheObjects, GCHandleType.Pinned);
+                    }
+
+                    var profileSlice = new NnrpU16Slice(
+                        profilesOwner.AddrOfPinnedObject(),
+                        new UIntPtr((uint)profiles.Length));
+                    var cacheObjectSlice = cacheObjects.Length == 0
+                        ? NnrpU32Slice.Empty
+                        : new NnrpU32Slice(
+                            cacheObjectsOwner.AddrOfPinnedObject(),
+                            new UIntPtr((uint)cacheObjects.Length));
+                    Entrypoints.ServerBind(
+                        new NnrpServerBindRequest(
+                            options.ServerId,
+                            options.Generation,
+                            handle,
+                            profileSlice,
+                            cacheObjectSlice,
+                            options.MaxCacheObjects,
+                            options.MaxCacheObjectBytes,
+                            options.ResumeTokenBytes,
+                            options.MaxInFlightOperations,
+                            options.GrantedOperationCredit,
+                            options.LeaseTtlMilliseconds,
+                            options.ResumeWindowMilliseconds,
+                            schemaRegistry.Handle.Handle,
+                            dispatcher.Sink),
+                        out var server).ThrowIfError();
+                    handle = NnrpHandle.Invalid;
+                    var ownership = lease!;
+                    lease = null;
+                    var result = new NnrpNativeRuntimeServer(
+                        ownership.Entrypoints,
+                        new NnrpConnectionHandle(server),
+                        dispatcher,
+                        schemaRegistry,
+                        ownership);
+                    dispatcher = null;
+                    schemaRegistry = null;
+                    return result;
+                }
+                finally
+                {
+                    if (profilesOwner.IsAllocated)
+                    {
+                        profilesOwner.Free();
+                    }
+
+                    if (cacheObjectsOwner.IsAllocated)
+                    {
+                        cacheObjectsOwner.Free();
+                    }
+
+                    dispatcher?.Dispose();
+                    schemaRegistry?.Dispose();
+                }
             }
         }
 

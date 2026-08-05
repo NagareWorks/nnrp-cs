@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -45,11 +46,78 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
+        public async Task RecoveryUsesTheOpaqueTicketAndReturnsRuntimeIssuedTickets()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            var encoded = TicketBytes(
+                sessionId: 42,
+                token: new byte[] { 7, 8, 9 },
+                resumeFromOperationId: 101,
+                resumeWindowMilliseconds: 120_000);
+            var ticket = NnrpSessionRecoveryTicket.FromBytes(encoded);
+            var options = new NnrpClientSessionOptions(
+                requestedSessionId: 99,
+                profileId: 3,
+                schemaId: 0x2001,
+                schemaVersion: 4,
+                priorityClass: SessionPriorityClass.Interactive,
+                defaultDeadlineMilliseconds: 250,
+                maxInFlightOperations: 8,
+                leaseTtlHintMilliseconds: 45_000,
+                allowResume: true,
+                resumeTokenBytes: 2,
+                cacheHints: new[] { CacheObjectKind.TensorSectionTable, CacheObjectKind.PromptSegment });
+
+            await using var session = client.ResumeSession(ticket, options);
+
+            var request = Assert.Single(harness.SessionResumeRequests);
+            Assert.Equal((uint)42, request.Open.RequestedSessionId);
+            Assert.NotEqual((ulong)0, request.Open.SessionHandleId);
+            Assert.Equal((ushort)3, request.Open.ProfileId);
+            Assert.Equal((byte)SessionPriorityClass.Interactive, request.Open.PriorityClass);
+            Assert.Equal((byte)1, request.Open.AllowResume);
+            Assert.Equal((uint)0x2001, request.Open.SchemaId);
+            Assert.Equal((uint)4, request.Open.SchemaVersion);
+            Assert.Equal((uint)250, request.Open.DefaultDeadlineMilliseconds);
+            Assert.Equal((ushort)8, request.Open.MaxInFlightOperations);
+            Assert.Equal((uint)45_000, request.Open.LeaseTtlHintMilliseconds);
+            Assert.Equal((uint)3, request.Open.ResumeTokenBytes);
+            Assert.Equal(new UIntPtr(2), request.Open.CacheHints.Length);
+            Assert.Equal(encoded, Assert.Single(harness.SubmittedRecoveryTickets));
+            Assert.NotSame(options, session.Options);
+            Assert.Equal((uint)42, session.Options.RequestedSessionId);
+            Assert.Equal((ushort)3, session.Options.ProfileId);
+            Assert.Equal(SessionPriorityClass.Interactive, session.Options.PriorityClass);
+            Assert.True(session.Options.AllowResume);
+            Assert.Equal((uint)3, session.Options.ResumeTokenBytes);
+            Assert.Equal(options.CacheHints, session.Options.CacheHints);
+
+            Assert.Null(session.GetRecoveryTicket());
+            harness.IssuedRecoveryTicket = encoded;
+            var invalidStatus = harness.Entrypoints.ClientSessionRecoveryTicket(
+                new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                out var invalidOwner,
+                out var invalidTicket);
+            Assert.Equal(NnrpFfiStatusCode.InvalidHandle, invalidStatus.StatusCode);
+            Assert.Equal(NnrpHandle.Invalid, invalidOwner);
+            Assert.Equal(NnrpBufferView.Empty, invalidTicket);
+            var issued = session.GetRecoveryTicket();
+            Assert.NotNull(issued);
+            Assert.Equal((uint)42, issued!.SessionId);
+            Assert.Equal(new byte[] { 7, 8, 9 }, issued.ResumeToken.ToArray());
+            Assert.Single(harness.ReleasedBuffers);
+            Assert.Equal((ulong)900, harness.ReleasedBuffers[0].Id);
+
+            Assert.Throws<ArgumentNullException>(() => client.ResumeSession(null!));
+        }
+
+        [Fact]
         public async Task SubmitRoutesDeferredResultsAndPreservesWireOrder()
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var progress = new ProgressMetadata(201, 1, 2, 5000, 1, 1);
             harness.QueueClientEvent(
                 MessageType.Progress,
@@ -69,7 +137,7 @@ namespace Nnrp.Client.Tests
             Assert.Equal(MessageType.ResultPush, resultEvent.Header.MessageType);
             Assert.Equal(NnrpRuntimeEventMetadataKind.ResultPush, resultEvent.Metadata.Kind);
             Assert.Empty(BodyOf(resultEvent).ToArray());
-            Assert.Equal((uint)41, session.Options.SessionId);
+            Assert.Equal((uint)41, session.Options.RequestedSessionId);
             Assert.False(session.IsClosed);
             Assert.Equal(TransportId.Tcp, client.ActiveTransportId);
             Assert.Equal(
@@ -92,7 +160,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var cancel = new ControlRequestMetadata(301, 1, 2, RuntimeRole.Client, 0, 2);
             await session.CancelAsync(cancel, new byte[] { 1, 2 });
             harness.QueueClientEvent(MessageType.ResultPush, 31, 301, SuccessPayload());
@@ -144,7 +212,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientEvent(MessageType.ResultPush, 11, 201, ResultPayload(statusCode));
 
             var result = await session.NextResultAsync();
@@ -157,7 +225,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientEvent(MessageType.ResultDrop, 11, 201, Array.Empty<byte>());
 
             var result = await session.NextResultAsync();
@@ -178,7 +246,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientLifecycleEvent(eventKind, 201);
 
             var result = await session.NextResultAsync();
@@ -195,7 +263,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientLifecycleEvent(
                 6,
                 201,
@@ -271,7 +339,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
 
@@ -346,7 +414,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var tail = new byte[] { 1, 2 };
 
             await session.SendControlAsync(MessageType.Cancel, new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), tail);
@@ -363,6 +431,27 @@ namespace Nnrp.Client.Tests
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);
 
             Assert.Equal(12, harness.RuntimeFrames.Count);
+        }
+
+        private static byte[] TicketBytes(
+            uint sessionId,
+            byte[] token,
+            ulong? resumeFromOperationId,
+            uint resumeWindowMilliseconds)
+        {
+            var encoded = new byte[checked(28 + token.Length)];
+            encoded[0] = (byte)'N';
+            encoded[1] = (byte)'R';
+            encoded[2] = (byte)'T';
+            encoded[3] = (byte)'K';
+            BinaryPrimitives.WriteUInt16LittleEndian(encoded.AsSpan(4), 1);
+            BinaryPrimitives.WriteUInt16LittleEndian(encoded.AsSpan(6), resumeFromOperationId.HasValue ? (ushort)1 : (ushort)0);
+            BinaryPrimitives.WriteUInt32LittleEndian(encoded.AsSpan(8), sessionId);
+            BinaryPrimitives.WriteUInt32LittleEndian(encoded.AsSpan(12), checked((uint)token.Length));
+            BinaryPrimitives.WriteUInt32LittleEndian(encoded.AsSpan(16), resumeWindowMilliseconds);
+            BinaryPrimitives.WriteUInt64LittleEndian(encoded.AsSpan(20), resumeFromOperationId.GetValueOrDefault());
+            token.CopyTo(encoded, 28);
+            return encoded;
         }
 
         private static NnrpClient CreateClient(RuntimeEntrypointHarness harness)

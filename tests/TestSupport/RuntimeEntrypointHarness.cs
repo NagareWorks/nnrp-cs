@@ -41,16 +41,28 @@ namespace Nnrp.TestSupport
                 DispatchEvent,
                 connectionClose: HandleStatus,
                 clientCloseConnection: HandleStatus,
-                bufferRelease: HandleStatus,
+                clientResumeSession: ClientResumeSession,
+                bufferRelease: ReleaseBuffer,
                 runtimeFrameSend: SendRuntimeFrame,
                 clientAwaitEvents: AwaitClientEvents,
                 serverAwaitEvents: AwaitServerEvents,
-                serverDropStaleResult: DropStaleResult);
+                serverDropStaleResult: DropStaleResult,
+                clientSessionRecoveryTicket: ClientSessionRecoveryTicket);
         }
 
         internal NnrpNativeRuntimeEntrypoints Entrypoints { get; }
 
         internal List<NnrpFfiSubmitRequest> SubmitRequests { get; } = new List<NnrpFfiSubmitRequest>();
+
+        internal List<NnrpSessionOpenRequest> SessionOpenRequests { get; } = new List<NnrpSessionOpenRequest>();
+
+        internal List<NnrpSessionResumeRequest> SessionResumeRequests { get; } = new List<NnrpSessionResumeRequest>();
+
+        internal List<byte[]> SubmittedRecoveryTickets { get; } = new List<byte[]>();
+
+        internal List<NnrpHandle> ReleasedBuffers { get; } = new List<NnrpHandle>();
+
+        internal byte[]? IssuedRecoveryTicket { get; set; }
 
         internal List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)> RuntimeFrames { get; } =
             new List<(NnrpRuntimeFrameSendRequest, byte[])>();
@@ -177,11 +189,60 @@ namespace Nnrp.TestSupport
             return NnrpFfiStatus.Ok;
         }
 
-        private static NnrpFfiStatus SessionOpen(NnrpSessionOpenRequest request, out NnrpHandle session)
+        private NnrpFfiStatus SessionOpen(NnrpSessionOpenRequest request, out NnrpHandle session)
         {
-            var sessionId = request.RequestedSessionId == 0 ? 41u : request.RequestedSessionId;
-            session = new NnrpHandle(NnrpHandleKind.Session, sessionId, request.Generation);
+            SessionOpenRequests.Add(request);
+            session = new NnrpHandle(NnrpHandleKind.Session, request.SessionHandleId, request.Generation);
             return NnrpFfiStatus.Ok;
+        }
+
+        private NnrpFfiStatus ClientResumeSession(
+            NnrpSessionResumeRequest request,
+            out NnrpHandle session,
+            out NnrpSessionRecoveryOutcome outcome)
+        {
+            SessionResumeRequests.Add(request);
+            SubmittedRecoveryTickets.Add(Copy(request.RecoveryTicket));
+            session = new NnrpHandle(
+                NnrpHandleKind.Session,
+                request.Open.SessionHandleId,
+                request.Open.Generation);
+            outcome = new NnrpSessionRecoveryOutcome(1, 120_000);
+            return NnrpFfiStatus.Ok;
+        }
+
+        private NnrpFfiStatus ClientSessionRecoveryTicket(
+            NnrpHandle session,
+            out NnrpHandle owner,
+            out NnrpBufferView ticket)
+        {
+            owner = NnrpHandle.Invalid;
+            ticket = NnrpBufferView.Empty;
+            if (IssuedRecoveryTicket == null)
+            {
+                return new NnrpFfiStatus(
+                    NnrpFfiStatusCode.InvalidArgument,
+                    detailCode: 104);
+            }
+
+            if (session.Kind != NnrpHandleKind.Session)
+            {
+                return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidHandle);
+            }
+
+            var pin = GCHandle.Alloc(IssuedRecoveryTicket, GCHandleType.Pinned);
+            payloadPins.Add(pin);
+            owner = new NnrpHandle(NnrpHandleKind.Buffer, 900, 1);
+            ticket = new NnrpBufferView(
+                pin.AddrOfPinnedObject(),
+                new UIntPtr((uint)IssuedRecoveryTicket.Length));
+            return NnrpFfiStatus.Ok;
+        }
+
+        private NnrpFfiStatus ReleaseBuffer(NnrpHandle handle)
+        {
+            ReleasedBuffers.Add(handle);
+            return HandleStatus(handle);
         }
 
         private NnrpFfiStatus Submit(NnrpFfiSubmitRequest request, out NnrpHandle operation)

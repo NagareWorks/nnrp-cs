@@ -89,6 +89,9 @@ class IncrementalCoverageTests(unittest.TestCase):
   <packages>
     <package name="Sample">
       <classes>
+        <class name="Sample.Marker" filename="src/Sample.cs">
+          <lines />
+        </class>
         <class name="Sample.Value" filename="src/Sample.cs">
           <lines><line number="{line_number}" hits="{hits}" /></lines>
         </class>

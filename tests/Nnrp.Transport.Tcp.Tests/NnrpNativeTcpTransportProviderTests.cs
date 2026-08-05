@@ -54,7 +54,9 @@ namespace Nnrp.Transport.Tcp.Tests
                 new NnrpTransportListenOptions(
                     endpoint,
                     NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
-            using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+            using var server = NnrpNativeRuntimeServer.Bind(
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(50, 1));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var acceptStarted = new ManualResetEventSlim();
             var acceptTask = Task.Factory.StartNew(

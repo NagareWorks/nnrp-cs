@@ -65,7 +65,9 @@ namespace Nnrp.Transport.Quic.Tests
             Assert.Equal(TransportId.Quic, listener.TransportId);
             Assert.NotEqual(0, new Uri(listener.BoundEndpoint.ToString()).Port);
 
-            using var server = NnrpNativeRuntimeServer.Bind(listener, 50, 1);
+            using var server = NnrpNativeRuntimeServer.Bind(
+                listener,
+                new NnrpNativeRuntimeServerHostOptions(50, 1));
             using var acceptCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var acceptStarted = new ManualResetEventSlim();
             var acceptTask = Task.Factory.StartNew(

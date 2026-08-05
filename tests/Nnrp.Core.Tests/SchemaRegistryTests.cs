@@ -29,6 +29,7 @@ namespace Nnrp.Core.Tests
             Assert.Equal(1, registry.Count);
             Assert.True(registry.TryGet(0x20, 1, out var installed));
             Assert.Equal(descriptor, installed);
+            Assert.Contains(descriptor, registry.SnapshotDescriptors());
 
             Assert.True(registry.TryInstall(descriptor, out action, out errorCode));
             Assert.Equal(SchemaRegistryAction.AlreadyInstalled, action);
