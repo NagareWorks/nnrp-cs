@@ -65,7 +65,7 @@ namespace Nnrp.Server
 
     internal sealed class NnrpServerTransportListenerSet : IDisposable, IAsyncDisposable
     {
-        private const uint PollTimeoutMilliseconds = 10;
+        private const uint PollTimeoutMilliseconds = 100;
 
         private readonly SemaphoreSlim acceptGate = new SemaphoreSlim(1, 1);
         private readonly List<NnrpAcceptedServerTransportSession> acceptedSessions =
@@ -378,6 +378,9 @@ namespace Nnrp.Server
             var forced = ForcedTransport(options.TransportPolicy);
             var allowed = snapshot
                 .Where(provider => !forced.HasValue || provider.Descriptor.TransportId == forced.Value)
+                .OrderBy(provider => PreferredBindRank(options.TransportPolicy, provider.Descriptor.TransportId))
+                .ThenBy(provider => (uint)provider.Descriptor.TransportId)
+                .ThenBy(provider => provider.Descriptor.Metadata.Id, StringComparer.Ordinal)
                 .ToArray();
             if (allowed.Length == 0)
             {
@@ -555,6 +558,19 @@ namespace Nnrp.Server
                 TransportPolicy.ForceWebSocket => TransportId.WebSocket,
                 _ => null,
             };
+        }
+
+        private static int PreferredBindRank(TransportPolicy policy, TransportId transportId)
+        {
+            var preferred = policy switch
+            {
+                TransportPolicy.PreferTcp => TransportId.Tcp,
+                TransportPolicy.PreferQuic => TransportId.Quic,
+                TransportPolicy.PreferIpc => TransportId.Ipc,
+                TransportPolicy.PreferWebSocket => TransportId.WebSocket,
+                _ => TransportId.Unspecified,
+            };
+            return transportId == preferred ? 0 : 1;
         }
 
         private sealed class ListenerPlan

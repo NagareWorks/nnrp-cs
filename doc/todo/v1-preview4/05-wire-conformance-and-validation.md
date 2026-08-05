@@ -43,15 +43,15 @@
 - [x] Pass `wire.control.cancel-abort.ipc-client` on IPC.
 - [x] Pass `wire.control.progress-backpressure.websocket-server` on WebSocket.
 - [ ] Pass host-route cardinality scenarios.
-  - [ ] Select one carrier from at least two suite-owned client routes.
-  - [ ] Reject forced unresolved and security-incompatible routes without fallback.
-  - [ ] Bind at least two server listeners and accept one session through each.
-  - [ ] Report every actual bound provider endpoint.
-  - [ ] Report active transport identity per accepted session.
-  - [ ] Roll back all listeners after an injected bind failure.
-  - [ ] Close the logical set after an injected terminal listener failure.
+  - [x] Select one carrier from at least two suite-owned client routes.
+  - [x] Reject forced unresolved and security-incompatible routes without fallback.
+  - [x] Bind at least two server listeners and accept one session through each.
+  - [x] Report every actual bound provider endpoint.
+  - [x] Report active transport identity per accepted session.
+  - [x] Roll back all listeners after an injected bind failure.
+  - [x] Close the logical set after an injected terminal listener failure.
   - [ ] Pass the route-local security matrix for TCP, QUIC, IPC, WS, and WSS.
-  - [ ] Pass known-but-uninstalled route and exact rejection-precedence cases.
+  - [x] Pass known-but-uninstalled route and exact rejection-precedence cases.
 
 ## Negative Coverage
 
@@ -67,9 +67,9 @@
 ## CI Gates
 
 - [x] Run adapter conformance as an independent job.
-- [ ] Run wire plan generation and dry-run as an independent job.
+- [x] Run wire plan generation and live host-route execution as an independent job.
 - [ ] Run the complete three-mode, four-transport live matrix against Preview4 artifacts.
-- [ ] Validate every result report through `nnrp-conformance-runner`.
-- [ ] Upload target manifests, execution plans, case results, frame evidence, and process logs.
-- [ ] Fail CI when the target process exits early or remains alive after the suite completes.
-- [ ] Fail CI when any selected case is skipped, missing, or not passed.
+- [x] Validate every host-route result report through `nnrp-conformance-runner`.
+- [x] Upload host-route target manifests, execution plans, case results, evidence, and process logs.
+- [x] Fail host-route CI when the target process exits early or remains alive after the suite completes.
+- [x] Fail host-route CI when any selected case is skipped, missing, or not passed.

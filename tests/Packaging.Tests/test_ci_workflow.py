@@ -62,6 +62,21 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("- package-validation", workflow)
         self.assertIn("NuGet package boundary or clean-install validation failed.", workflow)
 
+    def test_host_route_wire_e2e_is_cross_platform_and_required(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        harness = (ROOT / "scripts" / "run_wire_host_route_e2e.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("wire-host-route-e2e:", workflow)
+        self.assertIn("os: [ubuntu-latest, macos-latest, windows-latest]", workflow)
+        self.assertIn("Checkout nnrp-conformance wire suite", workflow)
+        self.assertIn("scripts/run_wire_host_route_e2e.ps1", workflow)
+        self.assertIn("Upload host-route wire evidence", workflow)
+        self.assertIn("wire-host-route-e2e-${{ runner.os }}", workflow)
+        self.assertIn("- wire-host-route-e2e", workflow)
+        self.assertIn("Cross-platform host-route wire E2E validation failed.", workflow)
+        self.assertIn("$repositoryPrefix", harness)
+        self.assertIn("[System.IO.Path]::DirectorySeparatorChar", harness)
+
 
 if __name__ == "__main__":
     unittest.main()

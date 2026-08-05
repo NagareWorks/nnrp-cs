@@ -127,24 +127,27 @@ namespace Nnrp.Server.Tests
         [Fact]
         public async Task AutoAndPreferBindEveryAllowedProviderAndOwnActualEndpoints()
         {
-            var tcp = Provider(TransportId.Tcp, "tcp");
-            var websocket = Provider(TransportId.WebSocket, "websocket");
+            var providers = AllProviders();
             var created = new List<FakeListener>();
 
-            async ValueTask AssertPolicy(TransportPolicy policy)
+            async ValueTask AssertPolicy(TransportPolicy policy, TransportId first)
             {
                 created.Clear();
                 await using var listeners = await NnrpServerTransportOrchestrator.ListenAsync(
-                    Options(new[] { tcp, websocket }, policy),
+                    Options(providers, policy),
                     binder: Bind(created));
 
-                Assert.Equal(2, created.Count);
+                Assert.Equal(4, created.Count);
+                Assert.Equal(first, created[0].TransportId);
                 Assert.Equal("tcp://127.0.0.1:7100", listeners.BoundProviderEndpoints[TransportId.Tcp].ToString());
                 Assert.Equal("ws://127.0.0.1:7200/nnrp", listeners.BoundProviderEndpoints[TransportId.WebSocket].ToString());
             }
 
-            await AssertPolicy(TransportPolicy.Auto);
-            await AssertPolicy(TransportPolicy.PreferWebSocket);
+            await AssertPolicy(TransportPolicy.Auto, TransportId.Quic);
+            await AssertPolicy(TransportPolicy.PreferTcp, TransportId.Tcp);
+            await AssertPolicy(TransportPolicy.PreferQuic, TransportId.Quic);
+            await AssertPolicy(TransportPolicy.PreferIpc, TransportId.Ipc);
+            await AssertPolicy(TransportPolicy.PreferWebSocket, TransportId.WebSocket);
         }
 
         [Fact]
@@ -391,6 +394,8 @@ namespace Nnrp.Server.Tests
             Assert.Equal(0, websocket.ReleaseCount);
             Assert.Equal(1, tcp.AcceptCount);
             Assert.Equal(1, websocket.AcceptCount);
+            Assert.Equal((uint)100, tcp.LastPollTimeoutMilliseconds);
+            Assert.Equal((uint)100, websocket.LastPollTimeoutMilliseconds);
             Assert.Equal((ulong)41, websocket.LastAcceptOptions!.SessionId);
             Assert.Equal((uint)3, websocket.LastAcceptOptions.SessionGeneration);
         }
@@ -716,6 +721,8 @@ namespace Nnrp.Server.Tests
 
             internal NnrpServerAcceptOptions? LastAcceptOptions { get; private set; }
 
+            internal uint LastPollTimeoutMilliseconds { get; private set; }
+
             internal TransportId? AcceptedTransportOverride { get; set; }
 
             internal Exception? DisposeFailure { get; set; }
@@ -769,6 +776,7 @@ namespace Nnrp.Server.Tests
                 cancellationToken.ThrowIfCancellationRequested();
                 AcceptCount++;
                 LastAcceptOptions = options;
+                LastPollTimeoutMilliseconds = pollTimeoutMilliseconds;
                 var accept = accepts.Count == 0
                     ? (Func<NnrpAcceptedServerTransportSession>)(() => throw new NnrpNativeWouldBlockException(
                         new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock)))
