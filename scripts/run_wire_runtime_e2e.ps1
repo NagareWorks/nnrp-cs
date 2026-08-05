@@ -38,6 +38,87 @@ function Invoke-Checked {
     }
 }
 
+function Invoke-ExpectedCommandFailure {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Command,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedText
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $Command
+    foreach ($argument in $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Failed to start expected-failure command: $Command"
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(30000)) {
+            if (-not $process.HasExited) {
+                try {
+                    $process.Kill($true)
+                }
+                catch [System.InvalidOperationException] {
+                    if (-not $process.HasExited) {
+                        throw
+                    }
+                }
+            }
+            $process.WaitForExit()
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            throw "Expected-failure command timed out after 30 seconds: $Command $($Arguments -join ' ')`n$stdout`n$stderr"
+        }
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $combined = "$stdout`n$stderr"
+        if ($process.ExitCode -eq 0) {
+            throw "Expected command to fail but it exited successfully: $Command $($Arguments -join ' ')"
+        }
+        if ($combined.IndexOf($ExpectedText, [System.StringComparison]::Ordinal) -lt 0) {
+            throw "Expected command failure to contain '$ExpectedText', got: $combined"
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Copy-JsonDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document
+    )
+
+    return $Document | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+}
+
+function Write-JsonDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $Document | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $Path -Encoding utf8NoBOM
+}
+
 function Assert-NoLinkTraversal {
     param(
         [Parameter(Mandatory = $true)]
@@ -154,6 +235,39 @@ function Assert-CompleteWireReport {
     }
 }
 
+function Assert-ReportValidationFailure {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PlanPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ResultsPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$EvidenceRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedText
+    )
+
+    $rejected = $false
+    try {
+        Assert-CompleteWireReport `
+            -PlanPath $PlanPath `
+            -ResultsPath $ResultsPath `
+            -EvidenceRoot $EvidenceRoot
+    } catch {
+        if ($_.Exception.Message.IndexOf($ExpectedText, [System.StringComparison]::Ordinal) -lt 0) {
+            throw
+        }
+        $rejected = $true
+    }
+
+    if (-not $rejected) {
+        throw "Expected report validation to fail with: $ExpectedText"
+    }
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $conformancePath = (Resolve-Path -LiteralPath $ConformanceRoot).Path
 $nativePath = (Resolve-Path -LiteralPath $NativeRoot).Path
@@ -243,6 +357,7 @@ $targetManifest = Join-Path $outputPath "target.json"
 $executionPlan = Join-Path $outputPath "plan.json"
 $resultReport = Join-Path $outputPath "results.json"
 $evidenceDirectory = Join-Path $outputPath "evidence"
+$negativeDirectory = Join-Path $outputPath "negative"
 $targetStdout = Join-Path $outputPath "target.stdout.log"
 $targetStderr = Join-Path $outputPath "target.stderr.log"
 
@@ -323,6 +438,60 @@ try {
         -ResultsPath $resultReport `
         -EvidenceRoot $evidenceDirectory
 
+    New-Item -ItemType Directory -Force -Path $negativeDirectory | Out-Null
+    $baselineReport = Get-Content -Raw -LiteralPath $resultReport | ConvertFrom-Json
+
+    $missingFrames = Copy-JsonDocument $baselineReport
+    $missingFrames.results[0].observed_frames = @()
+    $missingFramesPath = Join-Path $negativeDirectory "missing-frames.json"
+    Write-JsonDocument -Document $missingFrames -Path $missingFramesPath
+    Invoke-ExpectedCommandFailure `
+        -Command $runner `
+        -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $missingFramesPath) `
+        -ExpectedText "missing expected frame"
+
+    $terminalMismatch = Copy-JsonDocument $baselineReport
+    $terminalMismatch.results[0].terminal = if ($terminalMismatch.results[0].terminal -eq "error") {
+        "success"
+    } else {
+        "error"
+    }
+    $terminalMismatchPath = Join-Path $negativeDirectory "terminal-mismatch.json"
+    Write-JsonDocument -Document $terminalMismatch -Path $terminalMismatchPath
+    Invoke-ExpectedCommandFailure `
+        -Command $runner `
+        -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $terminalMismatchPath) `
+        -ExpectedText "terminal mismatch"
+
+    $duplicateScenario = Copy-JsonDocument $baselineReport
+    $duplicateScenario.results = @($duplicateScenario.results) + @($duplicateScenario.results[0])
+    $duplicateScenarioPath = Join-Path $negativeDirectory "duplicate-scenario.json"
+    Write-JsonDocument -Document $duplicateScenario -Path $duplicateScenarioPath
+    Invoke-ExpectedCommandFailure `
+        -Command $runner `
+        -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $duplicateScenarioPath) `
+        -ExpectedText "duplicate scenario id"
+
+    $missingEvidence = Copy-JsonDocument $baselineReport
+    $missingEvidence.results[0].evidence_paths = @()
+    $missingEvidencePath = Join-Path $negativeDirectory "missing-evidence.json"
+    Write-JsonDocument -Document $missingEvidence -Path $missingEvidencePath
+    Assert-ReportValidationFailure `
+        -PlanPath $executionPlan `
+        -ResultsPath $missingEvidencePath `
+        -EvidenceRoot $evidenceDirectory `
+        -ExpectedText "exactly one suite-owned evidence path"
+
+    $missingTiming = Copy-JsonDocument $baselineReport
+    $missingTiming.results[0].observed_frames[0].PSObject.Properties.Remove("timestamp_us")
+    $missingTimingPath = Join-Path $negativeDirectory "missing-timing.json"
+    Write-JsonDocument -Document $missingTiming -Path $missingTimingPath
+    Assert-ReportValidationFailure `
+        -PlanPath $executionPlan `
+        -ResultsPath $missingTimingPath `
+        -EvidenceRoot $evidenceDirectory `
+        -ExpectedText "frame without timing evidence"
+
     if (-not $targetProcess.WaitForExit(15000)) {
         throw "C# wire target remained alive after all selected scenarios completed."
     }
@@ -359,3 +528,4 @@ try {
 }
 
 Get-Content -LiteralPath $resultReport
+Write-Host "Wire runtime negative validation passed: missing frames, terminal mismatch, duplicate IDs, evidence, and timing."

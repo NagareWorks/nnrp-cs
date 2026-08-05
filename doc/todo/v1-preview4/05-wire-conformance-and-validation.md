@@ -57,11 +57,11 @@
 
 - [x] Reject target manifests that declare unsupported transports.
 - [x] Reject target manifests that declare unsupported modes.
-- [ ] Reject missing expected frames.
+- [x] Reject missing expected frames.
 - [ ] Reject unexpected or reordered frames.
-- [ ] Reject terminal state mismatches.
-- [ ] Reject duplicate scenario result IDs.
-- [ ] Reject malformed evidence entries and missing timing evidence.
+- [x] Reject terminal state mismatches.
+- [x] Reject duplicate scenario result IDs.
+- [x] Reject malformed evidence entries and missing timing evidence.
 - [x] Treat a missing required transport artifact as a release failure, not a skipped outcome.
 
 ## CI Gates
