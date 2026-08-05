@@ -31,8 +31,8 @@
   - [x] Accept the suite proxy request on the declared QUIC upstream endpoint.
   - [x] Observe priority and expiration frames without changing frame order.
   - [x] Close the upstream session deterministically after terminal state.
-- [ ] Record terminal state, timing evidence, and typed diagnostics for every selected case.
-- [ ] Write case results that validate against `wire-conformance-case-results.schema.json`.
+- [x] Record terminal state, timing evidence, and typed diagnostics for every selected case.
+- [x] Write case results that validate against `wire-conformance-case-results.schema.json`.
 
 ## Frozen Scenario Coverage
 
@@ -68,7 +68,7 @@
 
 - [x] Run adapter conformance as an independent job.
 - [x] Run wire plan generation and live host-route execution as an independent job.
-- [ ] Run the complete three-mode, four-transport live matrix against Preview4 artifacts.
+- [x] Run the complete three-mode, four-transport live matrix against Preview4 artifacts.
 - [x] Validate every host-route result report through `nnrp-conformance-runner`.
 - [x] Upload host-route target manifests, execution plans, case results, evidence, and process logs.
 - [x] Fail host-route CI when the target process exits early or remains alive after the suite completes.

@@ -586,6 +586,60 @@ jobs:
           path: artifacts/wire-host-route-e2e/
           if-no-files-found: error
 
+  wire-runtime-e2e:
+    needs:
+      - changes
+      - native-artifacts
+    if: needs.changes.outputs.docs_only != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Checkout nnrp-conformance wire suite
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository_owner }}/nnrp-conformance
+          path: nnrp-conformance-wire
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download coordinated native artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: coordinated-native-artifacts
+          path: artifacts/native
+
+      - name: Run independent runtime-frame wire E2E
+        shell: pwsh
+        run: >-
+          ./scripts/run_wire_runtime_e2e.ps1
+          -ConformanceRoot (Join-Path $PWD 'nnrp-conformance-wire')
+          -NativeRoot (Join-Path $PWD 'artifacts/native')
+          -OutputRoot 'artifacts/wire-runtime-e2e'
+
+      - name: Upload runtime-frame wire evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: wire-runtime-e2e-${{ runner.os }}
+          path: artifacts/wire-runtime-e2e/
+          if-no-files-found: error
+
   package-validation:
     needs:
       - changes
@@ -715,6 +769,7 @@ jobs:
       - native-e2e
       - native-e2e-windows-x86
       - wire-host-route-e2e
+      - wire-runtime-e2e
       - package-validation
       - conformance
       - docs-only
@@ -760,6 +815,11 @@ jobs:
 
           if [ "${{ needs.wire-host-route-e2e.result }}" != "success" ]; then
             echo "Cross-platform host-route wire E2E validation failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.wire-runtime-e2e.result }}" != "success" ]; then
+            echo "Cross-platform runtime-frame wire E2E validation failed."
             exit 1
           fi
 

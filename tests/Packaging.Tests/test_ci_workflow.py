@@ -77,6 +77,37 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("$repositoryPrefix", harness)
         self.assertIn("[System.IO.Path]::DirectorySeparatorChar", harness)
 
+    def test_runtime_frame_wire_e2e_is_cross_platform_and_required(self) -> None:
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        harness = (ROOT / "scripts" / "run_wire_runtime_e2e.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("wire-runtime-e2e:", workflow)
+        self.assertIn("os: [ubuntu-latest, macos-latest, windows-latest]", workflow)
+        self.assertIn("- wire-runtime-e2e", workflow)
+        self.assertIn("scripts/run_wire_runtime_e2e.ps1", workflow)
+        self.assertIn("wire-plan", harness)
+        self.assertIn("wire-run", harness)
+        self.assertIn("validate-wire-results", harness)
+        self.assertIn("Assert-CompleteWireReport", harness)
+        self.assertIn("timestamp_us", harness)
+        self.assertIn("evidence_paths", harness)
+        self.assertIn("EvidenceRoot", harness)
+        self.assertIn("Assert-NoLinkTraversal", harness)
+        self.assertIn("FileAttributes]::ReparsePoint", harness)
+        self.assertIn('Properties.Name -contains "LinkType"', harness)
+        self.assertIn("$evidencePrefix", harness)
+        self.assertIn("$pathComparison", harness)
+        self.assertIn("StringComparison]::Ordinal", harness)
+        self.assertIn("StandardOutput.ReadToEndAsync", harness)
+        self.assertIn("StandardError.ReadToEndAsync", harness)
+        self.assertIn("$targetProcessStarted", harness)
+        self.assertIn("$null -eq $targetStdoutTask", harness)
+        self.assertIn("$null -eq $targetStderrTask", harness)
+        self.assertIn("Cross-platform runtime-frame wire E2E validation failed.", workflow)
+        self.assertIn("$repositoryPrefix", harness)
+        self.assertIn("[System.IO.Path]::DirectorySeparatorChar", harness)
+        self.assertIn("$isRepositoryRoot", harness)
+
 
 if __name__ == "__main__":
     unittest.main()
