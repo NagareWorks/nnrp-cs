@@ -16,7 +16,7 @@
   - [x] IPC.
   - [x] WebSocket.
 - [x] Include capabilities and limits.
-- [ ] Reject a release target manifest unless it declares all three modes and all four transports.
+- [x] Reject a release target manifest unless it declares all three modes and all four transports.
 
 ## Live Target Harness
 
@@ -60,7 +60,7 @@
 ## Negative Coverage
 
 - [x] Reject target manifests that declare unsupported transports.
-- [ ] Reject target manifests that declare unsupported modes.
+- [x] Reject target manifests that declare unsupported modes.
 - [ ] Reject missing expected frames.
 - [ ] Reject unexpected or reordered frames.
 - [ ] Reject terminal state mismatches.

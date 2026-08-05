@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -125,6 +126,92 @@ public sealed class WireTargetManifestTests
             [WireTargetModes.SuiteAsClient],
             [new WireTargetTransport("tcp", "127.0.0.1:1")],
             ["control.not-implemented"]));
+    }
+
+    [Fact]
+    public void ReleaseValidationRequiresEveryPreview4ModeAndTransport()
+    {
+        WireTargetManifestBuilder builder = new(FullSupport());
+        WireTargetManifest complete = builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
+            [
+                new WireTargetTransport("tcp", "127.0.0.1:1"),
+                new WireTargetTransport("quic", "127.0.0.1:2", true, Security),
+                new WireTargetTransport("ipc", "npipe://nnrp"),
+                new WireTargetTransport("websocket", "ws://127.0.0.1:3"),
+            ],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort]);
+
+        WireTargetManifestBuilder.ValidateReleaseTarget(complete);
+
+        WireTargetManifest missingMode = complete with
+        {
+            WireConformance = complete.WireConformance with
+            {
+                Modes = [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer],
+            },
+        };
+        InvalidOperationException modeError = Assert.Throws<InvalidOperationException>(
+            () => WireTargetManifestBuilder.ValidateReleaseTarget(missingMode));
+        Assert.Contains(WireTargetModes.SuiteAsProxy, modeError.Message, StringComparison.Ordinal);
+
+        WireTargetManifest missingTransport = complete with
+        {
+            WireConformance = complete.WireConformance with
+            {
+                Transports = complete.WireConformance.Transports
+                    .Where(transport => transport.Name != "websocket")
+                    .ToArray(),
+            },
+        };
+        InvalidOperationException transportError = Assert.Throws<InvalidOperationException>(
+            () => WireTargetManifestBuilder.ValidateReleaseTarget(missingTransport));
+        Assert.Contains("websocket", transportError.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReleaseValidationReportsMissingValuesInOrdinalOrderAcrossCultures()
+    {
+        WireTargetManifestBuilder builder = new(FullSupport());
+        WireTargetManifest manifest = builder.Build(
+            "target",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
+            [new WireTargetTransport("tcp", "127.0.0.1:1")],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort]);
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("sv-SE");
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                () => WireTargetManifestBuilder.ValidateReleaseTarget(manifest));
+
+            Assert.Equal(
+                "Release wire target must declare all preview4 transports; missing: ipc, quic, websocket",
+                error.Message);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public void BuildRejectsUnsupportedModes()
+    {
+        WireTargetManifestBuilder builder = new(FullSupport());
+
+        ArgumentException error = Assert.Throws<ArgumentException>(() => builder.Build(
+            "target",
+            "0.1.0",
+            ["suite_as_relay"],
+            [new WireTargetTransport("tcp", "127.0.0.1:1")],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort]));
+
+        Assert.Contains("Unsupported wire conformance mode", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -319,6 +406,29 @@ public sealed class WireTargetManifestTests
             .GetProperty("host_route_providers")[0];
         Assert.Equal("ipc", provider.GetProperty("transport").GetString());
         Assert.True(provider.GetProperty("installed").GetBoolean());
+    }
+
+    [Fact]
+    public void CommandRejectsIncompleteReleaseManifestBeforeWriting()
+    {
+        string outputPath = Path.Combine(CreateTemporaryDirectory(), "target.json");
+        StringWriter error = new();
+
+        int result = WireTargetManifestCommand.Run(
+            [
+                "manifest",
+                "--release",
+                "--mode", WireTargetModes.SuiteAsClient,
+                "--transport", "tcp=127.0.0.1:19091",
+                "--capability", NnrpPreview4CapabilityTokens.ControlCancelAbort,
+                "--output", outputPath,
+            ],
+            TextWriter.Null,
+            error);
+
+        Assert.Equal(2, result);
+        Assert.Contains("missing", error.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(outputPath));
     }
 
     [Theory]

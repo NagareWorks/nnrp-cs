@@ -135,6 +135,14 @@ public sealed class WireTargetManifestBuilder
 
     private readonly WireTargetSupport support;
 
+    private static readonly IReadOnlySet<string> RequiredReleaseModes = new HashSet<string>(
+        [WireTargetModes.SuiteAsClient, WireTargetModes.SuiteAsServer, WireTargetModes.SuiteAsProxy],
+        StringComparer.Ordinal);
+
+    private static readonly IReadOnlySet<string> RequiredReleaseTransports = new HashSet<string>(
+        NnrpPreview4CapabilityTokens.Transports,
+        StringComparer.Ordinal);
+
     public WireTargetManifestBuilder(WireTargetSupport support)
     {
         this.support = support ?? throw new ArgumentNullException(nameof(support));
@@ -196,6 +204,19 @@ public sealed class WireTargetManifestBuilder
                 normalizedHostRouteProviders.Count == 0 ? null : normalizedHostRouteProviders,
                 normalizedCapabilities,
                 new WireTargetLimits(maxFrameBytes, maxInFlight)));
+    }
+
+    public static void ValidateReleaseTarget(WireTargetManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        RequireCompleteReleaseSet(
+            manifest.WireConformance.Modes,
+            RequiredReleaseModes,
+            "modes");
+        RequireCompleteReleaseSet(
+            manifest.WireConformance.Transports.Select(transport => transport.Name),
+            RequiredReleaseTransports,
+            "transports");
     }
 
     public static void Write(string outputPath, WireTargetManifest manifest)
@@ -413,6 +434,23 @@ public sealed class WireTargetManifestBuilder
         }
 
         return new ReadOnlyCollection<string>(result);
+    }
+
+    private static void RequireCompleteReleaseSet(
+        IEnumerable<string> actualValues,
+        IReadOnlySet<string> requiredValues,
+        string fieldName)
+    {
+        HashSet<string> actual = new(actualValues, StringComparer.Ordinal);
+        string[] missing = requiredValues
+            .Where(value => !actual.Contains(value))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (missing.Length != 0)
+        {
+            throw new InvalidOperationException(
+                $"Release wire target must declare all preview4 {fieldName}; missing: {string.Join(", ", missing)}");
+        }
     }
 
     private static void RequireNonEmpty(string value, string parameterName)

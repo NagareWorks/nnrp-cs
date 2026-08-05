@@ -34,6 +34,11 @@ public static class WireTargetManifestCommand
                 options.MaxFrameBytes,
                 options.MaxInFlight,
                 options.HostRouteProviders);
+            if (options.ReleaseTarget)
+            {
+                WireTargetManifestBuilder.ValidateReleaseTarget(manifest);
+            }
+
             WireTargetManifestBuilder.Write(options.OutputPath, manifest);
             return 0;
         }
@@ -56,10 +61,17 @@ public static class WireTargetManifestCommand
         List<WireHostRouteProvider> hostRouteProviders = [];
         List<string> capabilities = [];
         Dictionary<string, WireTargetTransportSecurity> security = new(StringComparer.Ordinal);
+        bool releaseTarget = false;
 
         for (int index = 0; index < args.Length; index++)
         {
             string option = args[index];
+            if (option == "--release")
+            {
+                releaseTarget = true;
+                continue;
+            }
+
             string value = ReadValue(args, ref index, option);
             switch (option)
             {
@@ -118,7 +130,8 @@ public static class WireTargetManifestCommand
             capabilities,
             maxFrameBytes,
             maxInFlight,
-            outputPath);
+            outputPath,
+            releaseTarget);
     }
 
     private static string ReadValue(ReadOnlySpan<string> args, ref int index, string option)
@@ -319,6 +332,7 @@ public static class WireTargetManifestCommand
         output.WriteLine("  --capability TOKEN");
         output.WriteLine("  --max-frame-bytes COUNT");
         output.WriteLine("  --max-in-flight COUNT");
+        output.WriteLine("  --release");
         output.WriteLine("  --output PATH");
     }
 
@@ -332,5 +346,6 @@ public static class WireTargetManifestCommand
         IReadOnlyList<string> Capabilities,
         int MaxFrameBytes,
         int MaxInFlight,
-        string OutputPath);
+        string OutputPath,
+        bool ReleaseTarget);
 }
