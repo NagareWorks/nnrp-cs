@@ -58,7 +58,7 @@
 - [x] Reject target manifests that declare unsupported transports.
 - [x] Reject target manifests that declare unsupported modes.
 - [x] Reject missing expected frames.
-- [ ] Reject unexpected or reordered frames.
+- [x] Reject unexpected or reordered frames.
 - [x] Reject terminal state mismatches.
 - [x] Reject duplicate scenario result IDs.
 - [x] Reject malformed evidence entries and missing timing evidence.

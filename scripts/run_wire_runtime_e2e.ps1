@@ -448,7 +448,50 @@ try {
     Invoke-ExpectedCommandFailure `
         -Command $runner `
         -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $missingFramesPath) `
-        -ExpectedText "missing expected frame"
+        -ExpectedText "missing or reordered expected frame TRACE_CONTEXT"
+
+    $unexpectedFrame = Copy-JsonDocument $baselineReport
+    $unexpectedFrame.results[0].observed_frames[0].frame = "UNDECLARED_FRAME"
+    $unexpectedFramePath = Join-Path $negativeDirectory "unexpected-frame.json"
+    Write-JsonDocument -Document $unexpectedFrame -Path $unexpectedFramePath
+    Invoke-ExpectedCommandFailure `
+        -Command $runner `
+        -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $unexpectedFramePath) `
+        -ExpectedText "unexpected frame UNDECLARED_FRAME"
+
+    $reorderedFrames = Copy-JsonDocument $baselineReport
+    $reorderedResult = @(
+        $reorderedFrames.results | Where-Object { [string]$_.id -eq "wire.control.cancel-abort.client" }
+    )
+    if ($reorderedResult.Count -ne 1) {
+        throw "Expected exactly one wire.control.cancel-abort.client result when constructing reordered frame evidence."
+    }
+
+    $frames = @($reorderedResult[0].observed_frames)
+    $traceIndex = -1
+    $dropIndex = -1
+    for ($index = 0; $index -lt $frames.Count; $index++) {
+        if ([string]$frames[$index].frame -eq "TRACE_CONTEXT") {
+            $traceIndex = $index
+        }
+        if ([string]$frames[$index].frame -eq "RESULT_DROP_REASON") {
+            $dropIndex = $index
+        }
+    }
+    if ($traceIndex -lt 0 -or $dropIndex -lt 0 -or $traceIndex -ge $dropIndex) {
+        throw "Expected TRACE_CONTEXT before RESULT_DROP_REASON when constructing reordered frame evidence."
+    }
+
+    $temporaryFrame = $frames[$traceIndex]
+    $frames[$traceIndex] = $frames[$dropIndex]
+    $frames[$dropIndex] = $temporaryFrame
+    $reorderedResult[0].observed_frames = $frames
+    $reorderedFramesPath = Join-Path $negativeDirectory "reordered-frames.json"
+    Write-JsonDocument -Document $reorderedFrames -Path $reorderedFramesPath
+    Invoke-ExpectedCommandFailure `
+        -Command $runner `
+        -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $reorderedFramesPath) `
+        -ExpectedText "missing or reordered expected frame RESULT_DROP_REASON"
 
     $terminalMismatch = Copy-JsonDocument $baselineReport
     $terminalMismatch.results[0].terminal = if ($terminalMismatch.results[0].terminal -eq "error") {
@@ -528,4 +571,4 @@ try {
 }
 
 Get-Content -LiteralPath $resultReport
-Write-Host "Wire runtime negative validation passed: missing frames, terminal mismatch, duplicate IDs, evidence, and timing."
+Write-Host "Wire runtime negative validation passed: missing, unexpected, and reordered frames; terminal mismatch; duplicate IDs; evidence; and timing."

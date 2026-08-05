@@ -107,11 +107,19 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("System.InvalidOperationException", harness)
         self.assertIn("Kill($true)", harness)
         self.assertIn('"missing-frames.json"', harness)
+        self.assertIn('"unexpected-frame.json"', harness)
+        self.assertIn('"reordered-frames.json"', harness)
         self.assertIn('"terminal-mismatch.json"', harness)
         self.assertIn('"duplicate-scenario.json"', harness)
         self.assertIn('"missing-evidence.json"', harness)
         self.assertIn('"missing-timing.json"', harness)
-        self.assertIn('ExpectedText "missing expected frame"', harness)
+        self.assertIn(
+            'ExpectedText "missing or reordered expected frame TRACE_CONTEXT"', harness
+        )
+        self.assertIn('ExpectedText "unexpected frame UNDECLARED_FRAME"', harness)
+        self.assertIn(
+            'ExpectedText "missing or reordered expected frame RESULT_DROP_REASON"', harness
+        )
         self.assertIn('ExpectedText "terminal mismatch"', harness)
         self.assertIn('ExpectedText "duplicate scenario id"', harness)
         self.assertIn('ExpectedText "exactly one suite-owned evidence path"', harness)
