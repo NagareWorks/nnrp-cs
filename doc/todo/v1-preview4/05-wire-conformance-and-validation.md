@@ -42,7 +42,7 @@
 - [x] Pass `wire.control.capability-route-cache.client` on QUIC.
 - [x] Pass `wire.control.cancel-abort.ipc-client` on IPC.
 - [x] Pass `wire.control.progress-backpressure.websocket-server` on WebSocket.
-- [ ] Pass host-route cardinality scenarios.
+- [x] Pass host-route cardinality scenarios.
   - [x] Select one carrier from at least two suite-owned client routes.
   - [x] Reject forced unresolved and security-incompatible routes without fallback.
   - [x] Bind at least two server listeners and accept one session through each.
@@ -50,7 +50,7 @@
   - [x] Report active transport identity per accepted session.
   - [x] Roll back all listeners after an injected bind failure.
   - [x] Close the logical set after an injected terminal listener failure.
-  - [ ] Pass the route-local security matrix for TCP, QUIC, IPC, WS, and WSS.
+  - [x] Pass the route-local security matrix for TCP, QUIC, IPC, WS, and WSS.
   - [x] Pass known-but-uninstalled route and exact rejection-precedence cases.
 
 ## Negative Coverage

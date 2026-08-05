@@ -184,7 +184,7 @@ $installedProviders = @(
     (ProviderJson "tcp" "nnrp.transport.tcp.native" $true @("plain", "tls_server_auth")),
     (ProviderJson "quic" "nnrp.transport.quic.native" $true @("tls_server_auth")),
     (ProviderJson "ipc" "nnrp.transport.ipc.native" $true @("plain")),
-    (ProviderJson "websocket" "nnrp.transport.websocket.native" $true @("plain"))
+    (ProviderJson "websocket" "nnrp.transport.websocket.native" $true @("plain", "wss"))
 )
 $manifestArguments = @(
     $targetDll,
@@ -271,7 +271,7 @@ $uninstalledValidationArguments = @(
 )
 Invoke-Checked $runner @uninstalledValidationArguments
 
-Assert-AllCasesPassed $installedPlan $installedResults 9
+Assert-AllCasesPassed $installedPlan $installedResults 10
 Assert-AllCasesPassed $uninstalledPlan $uninstalledResults 1
 
-Write-Host "Wire host-route E2E passed: 9 installed scenarios and 1 known-uninstalled scenario."
+Write-Host "Wire host-route E2E passed: 10 installed scenarios and 1 known-uninstalled scenario."

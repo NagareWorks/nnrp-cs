@@ -76,6 +76,12 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("Cross-platform host-route wire E2E validation failed.", workflow)
         self.assertIn("$repositoryPrefix", harness)
         self.assertIn("[System.IO.Path]::DirectorySeparatorChar", harness)
+        self.assertIn(
+            '(ProviderJson "websocket" "nnrp.transport.websocket.native" $true @("plain", "wss"))',
+            harness,
+        )
+        self.assertIn("Assert-AllCasesPassed $installedPlan $installedResults 10", harness)
+        self.assertIn("10 installed scenarios and 1 known-uninstalled scenario", harness)
 
     def test_runtime_frame_wire_e2e_is_cross_platform_and_required(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
