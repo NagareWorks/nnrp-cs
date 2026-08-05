@@ -16,4 +16,8 @@
     <ProjectReference Include="..\..\src\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Transport.WebSocket\Nnrp.Transport.WebSocket.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nnrp.Core.Tests" />
+  </ItemGroup>
 </Project>

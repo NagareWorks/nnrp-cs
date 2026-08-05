@@ -1,3 +1,14 @@
 using Nnrp.WireConformance;
 
-return WireTargetManifestCommand.Run(args, Console.Out, Console.Error);
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellation.Cancel();
+};
+
+return await WireConformanceCommand.RunAsync(
+    args,
+    Console.Out,
+    Console.Error,
+    cancellation.Token);

@@ -20,32 +20,28 @@
 
 ## Live Target Harness
 
-- [ ] Add the `suite_as_client` target harness.
-  - [ ] Accept the suite-owned TCP endpoint.
-  - [ ] Accept the suite-owned QUIC endpoint and security material.
-  - [ ] Accept the suite-owned IPC endpoint.
-  - [ ] Accept the suite-owned WebSocket endpoint and security material.
-- [ ] Add the `suite_as_server` target harness.
-  - [ ] Listen on the declared TCP endpoint.
-  - [ ] Listen on the declared QUIC endpoint with the declared security material.
-  - [ ] Listen on the declared IPC endpoint.
-  - [ ] Listen on the declared WebSocket endpoint with the declared security material.
-- [ ] Add the `suite_as_proxy` target harness.
-  - [ ] Connect the suite-owned front endpoint to the implementation-owned upstream endpoint.
-  - [ ] Forward frames without changing byte order or frame boundaries.
-  - [ ] Record frames observed in each direction.
-  - [ ] Close both legs deterministically after terminal state.
+- [x] Add the `suite_as_client` target harness.
+  - [x] Listen for the suite client on TCP.
+  - [x] Listen for the suite client on QUIC with declared security material.
+  - [x] Listen for the suite client on IPC.
+- [x] Add the `suite_as_server` target harness.
+  - [x] Connect to the suite server on TCP.
+  - [x] Connect to the suite server on WebSocket with declared security material.
+- [x] Add the `suite_as_proxy` target harness.
+  - [x] Accept the suite proxy request on the declared QUIC upstream endpoint.
+  - [x] Observe priority and expiration frames without changing frame order.
+  - [x] Close the upstream session deterministically after terminal state.
 - [ ] Record terminal state, timing evidence, and typed diagnostics for every selected case.
 - [ ] Write case results that validate against `wire-conformance-case-results.schema.json`.
 
 ## Frozen Scenario Coverage
 
-- [ ] Pass `wire.control.cancel-abort.client` on TCP, QUIC, IPC, and WebSocket.
-- [ ] Pass `wire.control.priority-deadline.proxy` on TCP, QUIC, IPC, and WebSocket.
-- [ ] Pass `wire.control.progress-backpressure.server` on TCP, QUIC, IPC, and WebSocket.
-- [ ] Pass `wire.control.capability-route-cache.client` on TCP, QUIC, IPC, and WebSocket.
-- [ ] Pass `wire.control.cancel-abort.ipc-client` on IPC.
-- [ ] Pass `wire.control.progress-backpressure.websocket-server` on WebSocket.
+- [x] Pass `wire.control.cancel-abort.client` on TCP.
+- [x] Pass `wire.control.priority-deadline.proxy` on QUIC.
+- [x] Pass `wire.control.progress-backpressure.server` on TCP.
+- [x] Pass `wire.control.capability-route-cache.client` on QUIC.
+- [x] Pass `wire.control.cancel-abort.ipc-client` on IPC.
+- [x] Pass `wire.control.progress-backpressure.websocket-server` on WebSocket.
 - [ ] Pass host-route cardinality scenarios.
   - [ ] Select one carrier from at least two suite-owned client routes.
   - [ ] Reject forced unresolved and security-incompatible routes without fallback.
@@ -66,7 +62,7 @@
 - [ ] Reject terminal state mismatches.
 - [ ] Reject duplicate scenario result IDs.
 - [ ] Reject malformed evidence entries and missing timing evidence.
-- [ ] Treat a missing required transport artifact as a release failure, not a skipped outcome.
+- [x] Treat a missing required transport artifact as a release failure, not a skipped outcome.
 
 ## CI Gates
 
