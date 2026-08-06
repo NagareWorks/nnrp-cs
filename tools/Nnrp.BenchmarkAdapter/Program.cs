@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
+using Nnrp.Runtime;
 
 namespace Nnrp.BenchmarkAdapter;
 
@@ -135,6 +136,9 @@ public static class Program
         {
             "header_encode_decode" => RunHeaderEncodeDecode(id, workload),
             "metadata_encode_decode" => RunMetadataEncodeDecode(id, workload),
+            "runtime_control_encode_decode" => RunRuntimeControlEncodeDecode(id, workload),
+            "runtime_object_encode_decode" => RunRuntimeObjectEncodeDecode(id, workload),
+            "cache_reference_encode_decode" => RunCacheReferenceEncodeDecode(id, workload),
             "submit_result_metadata_encode_decode" => RunSubmitResultMetadataEncodeDecode(id, workload),
             "typed_payload_pack_unpack" => RunTypedPayloadPackUnpack(id, workload),
             "payload_snapshot_copy" => RunPayloadSnapshotCopy(id, workload),
@@ -275,6 +279,152 @@ public static class Program
 
         var samples = MeasureMicroseconds(Operation, iterations);
         return MeasuredLatencyResult(id, samples);
+    }
+
+    private static BenchmarkScenarioResult RunRuntimeControlEncodeDecode(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var diagnostic = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var metadata = new ControlRequestMetadata(
+            OperationId: 41,
+            ControlSequence: 7,
+            ReasonCode: 2,
+            SourceRole: RuntimeRole.Client,
+            Flags: 0,
+            DiagnosticBytes: (uint)diagnostic.Length);
+
+        void Operation()
+        {
+            var encoded = NnrpRuntimeControl.Encode(MessageType.Cancel, metadata, diagnostic);
+            var decoded = NnrpRuntimeControl.Decode(MessageType.Cancel, encoded);
+            if (decoded.GetMetadata<ControlRequestMetadata>() != metadata
+                || !decoded.Tail.Span.SequenceEqual(diagnostic))
+            {
+                throw new InvalidOperationException("Runtime-control benchmark roundtrip mismatch.");
+            }
+        }
+
+        WarmUp(Operation, warmupIterations);
+        return MeasuredLatencyResult(id, MeasureLatencyWithAllocations(Operation, iterations));
+    }
+
+    private static BenchmarkScenarioResult RunRuntimeObjectEncodeDecode(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var descriptorTail = new byte[] { 1, 2, 3, 4 };
+        var referenceTail = new byte[] { 5, 6, 7, 8 };
+        var releaseTail = new byte[] { 9, 10 };
+        var deltaTail = new byte[] { 11, 12, 13, 14, 15, 16 };
+        var descriptor = new ObjectDescriptorMetadata(
+            ObjectId: 81,
+            ObjectKind: RuntimeObjectKind.Tensor,
+            ProducerRole: RuntimeRole.Client,
+            ConsumerRole: RuntimeRole.Server,
+            SessionId: 41,
+            ByteSize: 4096,
+            ComputeCostUnits: 5,
+            MemoryLocationHint: MemoryLocationHint.HostMemory,
+            OwnershipHint: OwnershipHint.TransferOnRef,
+            LifetimeHintMs: 30_000,
+            MetadataBytes: (uint)descriptorTail.Length);
+        var reference = new ObjectReferenceMetadata(
+            ObjectId: 81,
+            OperationId: 42,
+            ObjectVersion: 3,
+            Offset: 0,
+            Length: 4096,
+            Flags: 0,
+            MetadataBytes: (uint)referenceTail.Length);
+        var release = new ObjectReleaseMetadata(
+            ObjectId: 81,
+            OperationId: 42,
+            ReleaseReason: ObjectReleaseReason.Completed,
+            SourceRole: RuntimeRole.Client,
+            Flags: 0,
+            DiagnosticBytes: (uint)releaseTail.Length);
+        var delta = new ObjectDeltaMetadata(
+            ObjectId: 81,
+            DeltaSequence: 4,
+            RegionOffset: 128,
+            RegionBytes: 2,
+            DeltaBytes: 4,
+            Flags: 0,
+            MetadataBytes: 2);
+
+        void Operation()
+        {
+            AssertRuntimeObjectRoundtrip(MessageType.ObjectDeclare, descriptor, descriptorTail);
+            AssertRuntimeObjectRoundtrip(MessageType.ObjectRef, reference, referenceTail);
+            AssertRuntimeObjectRoundtrip(MessageType.ObjectRelease, release, releaseTail);
+            AssertRuntimeObjectRoundtrip(MessageType.ObjectDelta, delta, deltaTail);
+        }
+
+        WarmUp(Operation, warmupIterations);
+        return MeasuredLatencyResult(id, MeasureLatencyWithAllocations(Operation, iterations));
+    }
+
+    private static void AssertRuntimeObjectRoundtrip<TMetadata>(
+        MessageType messageType,
+        TMetadata metadata,
+        ReadOnlySpan<byte> tail)
+        where TMetadata : struct, IRuntimeObjectMetadata
+    {
+        var encoded = NnrpRuntimeObject.Encode(messageType, metadata, tail);
+        var decoded = NnrpRuntimeObject.Decode(messageType, encoded);
+        if (!EqualityComparer<TMetadata>.Default.Equals(decoded.GetMetadata<TMetadata>(), metadata)
+            || !decoded.Tail.Span.SequenceEqual(tail))
+        {
+            throw new InvalidOperationException(messageType + " runtime-object benchmark roundtrip mismatch.");
+        }
+    }
+
+    private static BenchmarkScenarioResult RunCacheReferenceEncodeDecode(string id, JsonElement workload)
+    {
+        var iterations = GetPositiveInt(workload, "iterations", 100_000);
+        var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", Math.Min(10_000, iterations));
+        var referenceTail = new byte[] { 1, 2, 3, 4 };
+        var missTail = new byte[] { 5, 6 };
+        var reference = new CacheReferenceMetadata(
+            CacheNamespace: 7,
+            CacheKeyHi: 0x1122334455667788,
+            CacheKeyLo: 0x8877665544332211,
+            ProfileId: 1,
+            ReuseScope: CacheReuseScope.Session,
+            LeaseId: 9,
+            ProducerTraceId: 10,
+            ExpirationHintMs: 30_000,
+            MetadataBytes: (uint)referenceTail.Length,
+            Flags: 0);
+        var miss = new CacheMissMetadata(
+            CacheNamespace: 7,
+            CacheKeyHi: 0x1122334455667788,
+            CacheKeyLo: 0x8877665544332211,
+            MissReason: CacheMissReason.NotFound,
+            ProfileId: 1,
+            DiagnosticBytes: (uint)missTail.Length);
+        var invalidate = new CacheInvalidateMetadata(
+            CacheInvalidateScope.ObjectKey,
+            cacheNamespace: 7,
+            cacheKeyHigh: 0x1122334455667788,
+            cacheKeyLow: 0x8877665544332211,
+            reasonCode: 3);
+
+        void Operation()
+        {
+            AssertRuntimeObjectRoundtrip(MessageType.CacheReference, reference, referenceTail);
+            AssertRuntimeObjectRoundtrip(MessageType.CacheMiss, miss, missTail);
+            var encodedInvalidate = invalidate.ToArray();
+            if (!CacheInvalidateMetadata.TryParse(encodedInvalidate, out var decodedInvalidate)
+                || !decodedInvalidate.Equals(invalidate))
+            {
+                throw new InvalidOperationException("Cache-invalidate benchmark roundtrip mismatch.");
+            }
+        }
+
+        WarmUp(Operation, warmupIterations);
+        return MeasuredLatencyResult(id, MeasureLatencyWithAllocations(Operation, iterations));
     }
 
     private static BenchmarkScenarioResult RunSubmitResultMetadataEncodeDecode(string id, JsonElement workload)
@@ -643,6 +793,27 @@ public static class Program
         return samples;
     }
 
+    private static void WarmUp(Action operation, int iterations)
+    {
+        for (var index = 0; index < iterations; index += 1)
+        {
+            operation();
+        }
+    }
+
+    private static LatencyMeasurement MeasureLatencyWithAllocations(Action operation, int iterations)
+    {
+        var samples = MeasureMicroseconds(operation, iterations);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < iterations; index += 1)
+        {
+            operation();
+        }
+
+        var allocatedBytes = checked(GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+        return new LatencyMeasurement(samples, (double)allocatedBytes / iterations);
+    }
+
     private static double MeasureThroughputOpsPerSecond(Action operation, double durationSeconds)
     {
         var deadline = Stopwatch.GetTimestamp() + (long)(durationSeconds * Stopwatch.Frequency);
@@ -880,6 +1051,22 @@ public static class Program
         };
     }
 
+    private static BenchmarkScenarioResult MeasuredLatencyResult(string id, LatencyMeasurement measurement)
+    {
+        return new BenchmarkScenarioResult
+        {
+            Id = id,
+            Outcome = "measured",
+            Metrics = new BenchmarkMetrics
+            {
+                P50Microseconds = Percentile(measurement.Samples, 50),
+                P95Microseconds = Percentile(measurement.Samples, 95),
+                P99Microseconds = Percentile(measurement.Samples, 99),
+                GcAllocatedBytesPerOperation = measurement.AllocatedBytesPerOperation,
+            },
+        };
+    }
+
     private static BenchmarkScenarioResult MeasuredThroughputResult(string id, double throughputOpsPerSecond)
     {
         return new BenchmarkScenarioResult
@@ -1010,6 +1197,8 @@ public static class Program
 
     private sealed record BenchmarkOptions(string PlanPath, string OutputPath);
 
+    private sealed record LatencyMeasurement(List<double> Samples, double AllocatedBytesPerOperation);
+
     private sealed class BenchmarkResultsReport
     {
         [JsonPropertyName("$schema")]
@@ -1068,5 +1257,8 @@ public static class Program
 
         [JsonPropertyName("throughput_ops_per_sec")]
         public double? ThroughputOpsPerSecond { get; init; }
+
+        [JsonPropertyName("gc_alloc_bytes_per_op")]
+        public double? GcAllocatedBytesPerOperation { get; init; }
     }
 }

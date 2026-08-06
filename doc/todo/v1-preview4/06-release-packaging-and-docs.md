@@ -46,12 +46,25 @@
 ## Benchmarks
 
 - [ ] Benchmark runtime-control encode/decode and native send/receive.
+  - [x] Measure managed runtime-control metadata encode/decode latency and allocated bytes per operation.
+  - [ ] Measure a coarse native runtime-control send/receive round trip.
 - [ ] Benchmark object declare/ref/release and object delta.
+  - [x] Measure managed object declare, reference, and release encode/decode latency and allocated bytes per operation.
+  - [x] Measure managed object delta encode/decode latency and allocated bytes per operation.
+  - [x] Measure managed cache reference, miss, and invalidate encode/decode latency and allocated bytes per operation.
 - [ ] Benchmark copied snapshots and borrowed views.
 - [ ] Benchmark TCP loopback throughput and latency.
+  - [ ] Resolve and execute the TCP transport-scoped artifact.
+  - [ ] Record both request/result throughput and round-trip latency.
 - [ ] Benchmark QUIC loopback throughput and latency.
+  - [ ] Resolve and execute the QUIC transport-scoped artifact.
+  - [ ] Record both request/result throughput and round-trip latency.
 - [ ] Benchmark IPC loopback throughput and latency.
+  - [ ] Resolve and execute the IPC transport-scoped artifact.
+  - [ ] Record both request/result throughput and round-trip latency.
 - [ ] Benchmark WebSocket loopback throughput and latency.
+  - [ ] Resolve and execute the WebSocket transport-scoped artifact.
+  - [ ] Record both request/result throughput and round-trip latency.
 - [ ] Record allocation count, p50, p95, p99, throughput, and payload size.
 - [ ] Compare the same payload matrix with Rust, Python, and JavaScript SDK baselines.
 - [ ] Store reproducible commands and results under `doc/benchmarks`.

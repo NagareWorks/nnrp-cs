@@ -21,7 +21,7 @@ namespace Nnrp.Core.Tests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(11, results.Length);
+            Assert.Equal(14, results.Length);
 
             var headerResult = results.Single(result => result.GetProperty("id").GetString() == "l4.header.encode_decode.latency");
             Assert.Equal("measured", headerResult.GetProperty("outcome").GetString());
@@ -34,6 +34,9 @@ namespace Nnrp.Core.Tests
             Assert.Contains("Native benchmark artifact", submitResult.GetProperty("message").GetString(), StringComparison.Ordinal);
 
             AssertMeasured(results, "l4.metadata.session_open_ack.latency");
+            AssertMeasuredWithAllocations(results, "l4.runtime_control.encode_decode.latency");
+            AssertMeasuredWithAllocations(results, "l4.runtime_object.encode_decode.latency");
+            AssertMeasuredWithAllocations(results, "l4.cache_reference.encode_decode.latency");
             AssertMeasured(results, "l4.metadata.submit_result.latency");
             AssertMeasured(results, "l4.typed_payload.tensor_pack_unpack.latency");
             AssertMeasured(results, "l4.native.payload_snapshot_copy.latency");
@@ -65,7 +68,7 @@ namespace Nnrp.Core.Tests
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
                 Assert.Equal("nnrp-1", document.RootElement.GetProperty("protocol_version").GetString());
-                Assert.Equal(11, document.RootElement.GetProperty("results").GetArrayLength());
+                Assert.Equal(14, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
             {
@@ -82,6 +85,13 @@ namespace Nnrp.Core.Tests
         {
             var result = results.Single(entry => entry.GetProperty("id").GetString() == id);
             Assert.Equal("measured", result.GetProperty("outcome").GetString());
+        }
+
+        private static void AssertMeasuredWithAllocations(JsonElement[] results, string id)
+        {
+            var result = results.Single(entry => entry.GetProperty("id").GetString() == id);
+            Assert.Equal("measured", result.GetProperty("outcome").GetString());
+            Assert.True(result.GetProperty("metrics").GetProperty("gc_alloc_bytes_per_op").GetDouble() >= 0);
         }
 
         private static void AssertNativeSkipped(JsonElement[] results, string id)
@@ -155,6 +165,33 @@ namespace Nnrp.Core.Tests
                   "workload": {
                     "operation": "metadata_encode_decode",
                     "payload": "session_open_ack",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.runtime_control.encode_decode.latency",
+                  "workload": {
+                    "operation": "runtime_control_encode_decode",
+                    "payload": "cancel_with_diagnostic",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.runtime_object.encode_decode.latency",
+                  "workload": {
+                    "operation": "runtime_object_encode_decode",
+                    "payload": "object_lifecycle_and_delta",
+                    "iterations": 3,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.cache_reference.encode_decode.latency",
+                  "workload": {
+                    "operation": "cache_reference_encode_decode",
+                    "payload": "cache_reference_miss_invalidate",
                     "iterations": 3,
                     "warmup_iterations": 1
                   }
