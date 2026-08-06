@@ -53,19 +53,19 @@
   - [x] Measure managed object delta encode/decode latency and allocated bytes per operation.
   - [x] Measure managed cache reference, miss, and invalidate encode/decode latency and allocated bytes per operation.
 - [ ] Benchmark copied snapshots and borrowed views.
-- [ ] Benchmark TCP loopback throughput and latency.
-  - [ ] Resolve and execute the TCP transport-scoped artifact.
-  - [ ] Record both request/result throughput and round-trip latency.
-- [ ] Benchmark QUIC loopback throughput and latency.
-  - [ ] Resolve and execute the QUIC transport-scoped artifact.
-  - [ ] Record both request/result throughput and round-trip latency.
-- [ ] Benchmark IPC loopback throughput and latency.
-  - [ ] Resolve and execute the IPC transport-scoped artifact.
-  - [ ] Record both request/result throughput and round-trip latency.
-- [ ] Benchmark WebSocket loopback throughput and latency.
-  - [ ] Resolve and execute the WebSocket transport-scoped artifact.
-  - [ ] Record both request/result throughput and round-trip latency.
-- [ ] Record allocation count, p50, p95, p99, throughput, and payload size.
+- [x] Benchmark TCP loopback throughput and latency.
+  - [x] Resolve and execute the TCP transport-scoped artifact.
+  - [x] Record both request/result throughput and round-trip latency.
+- [x] Benchmark QUIC loopback throughput and latency.
+  - [x] Resolve and execute the QUIC transport-scoped artifact.
+  - [x] Record both request/result throughput and round-trip latency.
+- [x] Benchmark IPC loopback throughput and latency.
+  - [x] Resolve and execute the IPC transport-scoped artifact.
+  - [x] Record both request/result throughput and round-trip latency.
+- [x] Benchmark WebSocket loopback throughput and latency.
+  - [x] Resolve and execute the WebSocket transport-scoped artifact.
+  - [x] Record both request/result throughput and round-trip latency.
+- [x] Record allocated bytes per operation, p50, p95, p99, throughput, and payload size.
 - [ ] Compare the same payload matrix with Rust, Python, and JavaScript SDK baselines.
 - [ ] Store reproducible commands and results under `doc/benchmarks`.
 

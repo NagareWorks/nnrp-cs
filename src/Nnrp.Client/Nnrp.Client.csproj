@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
     <InternalsVisibleTo Include="Nnrp.Client.Tests" />
     <InternalsVisibleTo Include="Nnrp.WireConformance" />
+    <InternalsVisibleTo Include="Nnrp.BenchmarkAdapter" />
   </ItemGroup>
 
 </Project>

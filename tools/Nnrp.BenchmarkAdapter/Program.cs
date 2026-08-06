@@ -19,6 +19,11 @@ public static class Program
 
     private static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--transport-worker")
+        {
+            return TransportLoopbackBenchmark.RunWorker(args.Skip(1).ToArray());
+        }
+
         return Run(args);
     }
 
@@ -189,15 +194,16 @@ public static class Program
         }
 
         var samples = MeasureMicroseconds(Operation, iterations);
+        var percentiles = Percentiles(samples);
         return new BenchmarkScenarioResult
         {
             Id = id,
             Outcome = "measured",
             Metrics = new BenchmarkMetrics
             {
-                P50Microseconds = Percentile(samples, 50),
-                P95Microseconds = Percentile(samples, 95),
-                P99Microseconds = Percentile(samples, 99),
+                P50Microseconds = percentiles.P50,
+                P95Microseconds = percentiles.P95,
+                P99Microseconds = percentiles.P99,
             },
         };
     }
@@ -692,51 +698,26 @@ public static class Program
     {
         var durationSeconds = GetPositiveDouble(workload, "duration_seconds", 10.0);
         var warmupIterations = GetNonNegativeInt(workload, "warmup_iterations", 1_000);
-        var batchSize = GetPositiveInt(workload, "batch_size", 1024);
+        var allocationIterations = GetPositiveInt(workload, "allocation_iterations", 100);
         var payloadBytes = GetPositiveInt(workload, "payload_bytes", GetPositiveInt(workload, "probe_payload_bytes", 1024));
         var payload = new byte[payloadBytes];
         Array.Fill(payload, (byte)'x');
-        var transportSlot = NativeTransportSlot(workload);
+        var transportId = NativeTransportId(workload);
+        var transportSlot = NativeTransportSlot(transportId);
         var artifactPath = ResolveNativeArtifactPath(transportSlot);
         if (artifactPath == null)
         {
             return NativeUnavailableResult(id);
         }
 
-        var nextOperationId = 1UL;
-        var nextFrameId = 1U;
-        using var host = OpenNativeSessionHost(
+        var measurement = TransportLoopbackBenchmark.Run(
+            transportId,
             artifactPath,
-            transportSlot,
-            connectionId: transportSlot == NnrpNativeArtifact.TransportSlotQuic ? 2UL : 1UL,
-            sessionId: transportSlot == NnrpNativeArtifact.TransportSlotQuic ? 42U : 41U);
-
-        long Operation()
-        {
-            var completed = host.SubmitResultCompactBatch(
-                nextOperationId,
-                nextFrameId,
-                frameIdStride: 1,
-                payload,
-                payload,
-                maxEvents: batchSize * 2,
-                iterations: batchSize);
-            if (completed != (ulong)batchSize)
-            {
-                throw new InvalidOperationException("Native transport benchmark completed an unexpected number of operations.");
-            }
-
-            nextOperationId += completed;
-            nextFrameId += (uint)completed;
-            return (long)completed;
-        }
-
-        for (var index = 0; index < warmupIterations; index += 1)
-        {
-            Operation();
-        }
-
-        return MeasuredThroughputResult(id, MeasureThroughputItemsPerSecond(Operation, durationSeconds));
+            payload,
+            warmupIterations,
+            durationSeconds,
+            allocationIterations);
+        return MeasuredTransportResult(id, measurement);
     }
 
     private static (byte[] SubmitPacket, byte[] ResultPacket) BuildSubmitResultPackets()
@@ -843,7 +824,9 @@ public static class Program
     {
         if (transportSlot == NnrpNativeArtifact.TransportSlotTcp)
         {
-            var tcpPath = Environment.GetEnvironmentVariable("NNRP_BENCHMARK_NATIVE_TCP_ARTIFACT_PATH");
+            var tcpPath = FirstExistingPath(
+                "NNRP_BENCHMARK_NATIVE_TCP_ARTIFACT_PATH",
+                "NNRP_NATIVE_TCP_ARTIFACT_PATH");
             if (!string.IsNullOrWhiteSpace(tcpPath) && File.Exists(tcpPath))
             {
                 return tcpPath;
@@ -851,10 +834,32 @@ public static class Program
         }
         else if (transportSlot == NnrpNativeArtifact.TransportSlotQuic)
         {
-            var quicPath = Environment.GetEnvironmentVariable("NNRP_BENCHMARK_NATIVE_QUIC_ARTIFACT_PATH");
+            var quicPath = FirstExistingPath(
+                "NNRP_BENCHMARK_NATIVE_QUIC_ARTIFACT_PATH",
+                "NNRP_NATIVE_QUIC_ARTIFACT_PATH");
             if (!string.IsNullOrWhiteSpace(quicPath) && File.Exists(quicPath))
             {
                 return quicPath;
+            }
+        }
+        else if (transportSlot == NnrpNativeArtifact.TransportSlotIpc)
+        {
+            var ipcPath = FirstExistingPath(
+                "NNRP_BENCHMARK_NATIVE_IPC_ARTIFACT_PATH",
+                "NNRP_NATIVE_IPC_ARTIFACT_PATH");
+            if (!string.IsNullOrWhiteSpace(ipcPath) && File.Exists(ipcPath))
+            {
+                return ipcPath;
+            }
+        }
+        else if (transportSlot == NnrpNativeArtifact.TransportSlotWebSocket)
+        {
+            var websocketPath = FirstExistingPath(
+                "NNRP_BENCHMARK_NATIVE_WEBSOCKET_ARTIFACT_PATH",
+                "NNRP_NATIVE_WEBSOCKET_ARTIFACT_PATH");
+            if (!string.IsNullOrWhiteSpace(websocketPath) && File.Exists(websocketPath))
+            {
+                return websocketPath;
             }
         }
 
@@ -882,6 +887,20 @@ public static class Program
         {
             return null;
         }
+    }
+
+    private static string? FirstExistingPath(params string[] variables)
+    {
+        foreach (var variable in variables)
+        {
+            var value = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(value) && File.Exists(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static BenchmarkScenarioResult NativeUnavailableResult(string id)
@@ -1022,46 +1041,66 @@ public static class Program
         }
     }
 
-    private static uint NativeTransportSlot(JsonElement workload)
+    private static TransportId NativeTransportId(JsonElement workload)
     {
         if (!workload.TryGetProperty("transport", out var property)
             || property.ValueKind != JsonValueKind.String)
         {
-            return NnrpNativeArtifact.TransportSlotTcp;
+            return TransportId.Tcp;
         }
 
-        var value = property.GetString();
-        return string.Equals(value, "quic", StringComparison.OrdinalIgnoreCase)
-            ? NnrpNativeArtifact.TransportSlotQuic
-            : NnrpNativeArtifact.TransportSlotTcp;
+        var transport = property.GetString();
+        return transport?.ToLowerInvariant() switch
+        {
+            "tcp" => TransportId.Tcp,
+            "quic" => TransportId.Quic,
+            "ipc" => TransportId.Ipc,
+            "websocket" => TransportId.WebSocket,
+            _ => throw new ArgumentException(
+                $"Transport benchmark requires tcp, quic, ipc, or websocket; received '{transport ?? "<null>"}'."),
+        };
+    }
+
+    private static uint NativeTransportSlot(TransportId transportId)
+    {
+        return transportId switch
+        {
+            TransportId.Tcp => NnrpNativeArtifact.TransportSlotTcp,
+            TransportId.Quic => NnrpNativeArtifact.TransportSlotQuic,
+            TransportId.Ipc => NnrpNativeArtifact.TransportSlotIpc,
+            TransportId.WebSocket => NnrpNativeArtifact.TransportSlotWebSocket,
+            _ => throw new ArgumentOutOfRangeException(nameof(transportId)),
+        };
     }
 
     private static BenchmarkScenarioResult MeasuredLatencyResult(string id, List<double> samples)
     {
+        var percentiles = Percentiles(samples);
         return new BenchmarkScenarioResult
         {
             Id = id,
             Outcome = "measured",
             Metrics = new BenchmarkMetrics
             {
-                P50Microseconds = Percentile(samples, 50),
-                P95Microseconds = Percentile(samples, 95),
-                P99Microseconds = Percentile(samples, 99),
+                P50Microseconds = percentiles.P50,
+                P95Microseconds = percentiles.P95,
+                P99Microseconds = percentiles.P99,
             },
         };
     }
 
     private static BenchmarkScenarioResult MeasuredLatencyResult(string id, LatencyMeasurement measurement)
     {
+        var percentiles = Percentiles(measurement.Samples);
         return new BenchmarkScenarioResult
         {
             Id = id,
             Outcome = "measured",
             Metrics = new BenchmarkMetrics
             {
-                P50Microseconds = Percentile(measurement.Samples, 50),
-                P95Microseconds = Percentile(measurement.Samples, 95),
-                P99Microseconds = Percentile(measurement.Samples, 99),
+                P50Microseconds = percentiles.P50,
+                P95Microseconds = percentiles.P95,
+                P99Microseconds = percentiles.P99,
                 GcAllocatedBytesPerOperation = measurement.AllocatedBytesPerOperation,
             },
         };
@@ -1080,7 +1119,27 @@ public static class Program
         };
     }
 
-    private static double Percentile(List<double> samples, int percentile)
+    private static BenchmarkScenarioResult MeasuredTransportResult(
+        string id,
+        TransportLoopbackMeasurement measurement)
+    {
+        return new BenchmarkScenarioResult
+        {
+            Id = id,
+            Outcome = "measured",
+            Metrics = new BenchmarkMetrics
+            {
+                P50Microseconds = measurement.P50Microseconds,
+                P95Microseconds = measurement.P95Microseconds,
+                P99Microseconds = measurement.P99Microseconds,
+                ThroughputOpsPerSecond = measurement.ThroughputOperationsPerSecond,
+                GcAllocatedBytesPerOperation = measurement.AllocatedBytesPerOperation,
+                PayloadBytes = measurement.PayloadBytes,
+            },
+        };
+    }
+
+    internal static (double P50, double P95, double P99) Percentiles(List<double> samples)
     {
         if (samples.Count == 0)
         {
@@ -1088,14 +1147,18 @@ public static class Program
         }
 
         samples.Sort();
-        if (percentile == 50)
-        {
-            var middle = samples.Count / 2;
-            return samples.Count % 2 == 0 ? (samples[middle - 1] + samples[middle]) / 2 : samples[middle];
-        }
+        var middle = samples.Count / 2;
+        var p50 = samples.Count % 2 == 0 ? (samples[middle - 1] + samples[middle]) / 2 : samples[middle];
 
-        var rank = (int)Math.Round((percentile / 100.0) * (samples.Count - 1), MidpointRounding.AwayFromZero);
-        return samples[rank];
+        return (p50, RankedPercentile(samples, 95), RankedPercentile(samples, 99));
+    }
+
+    private static double RankedPercentile(List<double> sortedSamples, int percentile)
+    {
+        var rank = (int)Math.Round(
+            (percentile / 100.0) * (sortedSamples.Count - 1),
+            MidpointRounding.AwayFromZero);
+        return sortedSamples[rank];
     }
 
     private static BenchmarkEnvironment BuildEnvironment()
@@ -1260,5 +1323,8 @@ public static class Program
 
         [JsonPropertyName("gc_alloc_bytes_per_op")]
         public double? GcAllocatedBytesPerOperation { get; init; }
+
+        [JsonPropertyName("payload_bytes")]
+        public int? PayloadBytes { get; init; }
     }
 }

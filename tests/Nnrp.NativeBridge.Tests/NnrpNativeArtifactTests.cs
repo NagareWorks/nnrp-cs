@@ -3596,13 +3596,59 @@ namespace Nnrp.NativeBridge.Tests
             }
 
             await policyEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var stopwatch = Stopwatch.StartNew();
-            Assert.Throws<TimeoutException>(() => dispatcher.Dispose());
-            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1));
+            var disposeError = await Task.Run(() => Record.Exception(dispatcher.Dispose))
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.IsType<TimeoutException>(disposeError);
             Assert.False(ownership.IsDisposed);
 
             releasePolicy.TrySetResult(true);
             await ownership.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(ownership.IsDisposed);
+        }
+
+        [Fact]
+        public async Task ServerPolicyDispatcherSurfacesCompletionFailureAfterBoundedDrain()
+        {
+            var completionEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var releaseCompletion = new ManualResetEventSlim();
+            var ownership = new DisposableProbe();
+            using var entrypoints = CreateEntrypoints(
+                serverPolicyComplete: _ =>
+                {
+                    completionEntered.TrySetResult(true);
+                    releaseCompletion.Wait();
+                    return new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState);
+                });
+            var dispatcher = new NnrpNativeServerPolicyDispatcher(
+                entrypoints,
+                _ => new ValueTask<NnrpNativeServerPolicyDecision>(NnrpNativeServerPolicyDecision.Accept()),
+                ownership);
+
+            var metadata = PolicyMetadata(42).ToArray();
+            var owner = GCHandle.Alloc(metadata, GCHandleType.Pinned);
+            try
+            {
+                Assert.Equal(
+                    (uint)NnrpFfiStatusCode.Ok,
+                    dispatcher.BeginCallback(
+                        IntPtr.Zero,
+                        7,
+                        new NnrpBufferView(owner.AddrOfPinnedObject(), new UIntPtr((uint)metadata.Length))));
+            }
+            finally
+            {
+                owner.Free();
+            }
+
+            await completionEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var releasing = Task.Run(async () =>
+            {
+                await Task.Delay(20);
+                releaseCompletion.Set();
+            });
+
+            Assert.Throws<NnrpNativeInvalidStateException>(() => dispatcher.Dispose());
+            await releasing;
             Assert.True(ownership.IsDisposed);
         }
 

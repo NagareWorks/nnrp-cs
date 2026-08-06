@@ -253,8 +253,17 @@ namespace Nnrp.NativeBridge
                 drain = Task.WhenAll(Task.WhenAll(tasks), schedulers.Completion);
             }
 
-            var completed = Task.WhenAny(drain, Task.Delay(shutdownTimeout)).GetAwaiter().GetResult();
-            if (!ReferenceEquals(completed, drain))
+            var completed = false;
+            try
+            {
+                completed = drain.Wait(shutdownTimeout);
+            }
+            catch (AggregateException)
+            {
+                completed = true;
+            }
+
+            if (!completed)
             {
                 drain.ContinueWith(
                     CompleteTimedOutDrain,

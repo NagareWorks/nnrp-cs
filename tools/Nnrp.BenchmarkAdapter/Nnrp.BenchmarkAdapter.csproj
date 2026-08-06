@@ -8,9 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nnrp.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Client\Nnrp.Client.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Server\Nnrp.Server.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.Ipc\Nnrp.Transport.Ipc.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Transport.Quic\Nnrp.Transport.Quic.csproj" />
     <ProjectReference Include="..\..\src\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.WebSocket\Nnrp.Transport.WebSocket.csproj" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Nnrp.BenchmarkAdapter;
 using BenchmarkProgram = Nnrp.BenchmarkAdapter.Program;
 using Xunit;
 
@@ -9,6 +10,68 @@ namespace Nnrp.Core.Tests
 {
     public sealed class BenchmarkAdapterTests
     {
+        [Fact]
+        public void LatencySampleWindowKeepsTheMostRecentBoundedSampleSet()
+        {
+            var samples = new LatencySampleWindow(3);
+
+            samples.Add(1);
+            samples.Add(2);
+            samples.Add(3);
+            samples.Add(4);
+
+            Assert.Equal(3, samples.Count);
+            Assert.Equal((3.0, 4.0, 4.0), samples.Percentiles());
+
+            samples.Add(5);
+
+            Assert.Equal((4.0, 5.0, 5.0), samples.Percentiles());
+        }
+
+        [Fact]
+        public void TransportWorkerTimeoutIncludesBoundedIterationHeadroom()
+        {
+            Assert.Equal(
+                180_000,
+                TransportLoopbackBenchmark.CalculateWorkerTimeoutMilliseconds(
+                    durationSeconds: 10,
+                    warmupIterations: 1_000,
+                    allocationIterations: 100));
+            Assert.Equal(
+                370_000,
+                TransportLoopbackBenchmark.CalculateWorkerTimeoutMilliseconds(
+                    durationSeconds: 10,
+                    warmupIterations: int.MaxValue,
+                    allocationIterations: int.MaxValue));
+        }
+
+        [Theory]
+        [InlineData("-1", "1", "1", "warmupIterations")]
+        [InlineData("0", "0", "1", "durationSeconds")]
+        [InlineData("0", "NaN", "1", "durationSeconds")]
+        [InlineData("0", "1", "0", "allocationIterations")]
+        public void TransportWorkerRejectsInvalidWorkloadArgumentsBeforeReadingPayload(
+            string warmupIterations,
+            string durationSeconds,
+            string allocationIterations,
+            string expectedParameter)
+        {
+            var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                TransportLoopbackBenchmark.RunWorker(
+                [
+                    "Tcp",
+                    "missing-artifact",
+                    "missing-payload",
+                    warmupIterations,
+                    durationSeconds,
+                    allocationIterations,
+                    "unused-output",
+                    "nnrp-transport-worker-v1",
+                ]));
+
+            Assert.Equal(expectedParameter, error.ParamName);
+        }
+
         [Fact]
         public void BuildResultsJsonMeasuresConfiguredScenarios()
         {
@@ -21,7 +84,7 @@ namespace Nnrp.Core.Tests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(14, results.Length);
+            Assert.Equal(16, results.Length);
 
             var headerResult = results.Single(result => result.GetProperty("id").GetString() == "l4.header.encode_decode.latency");
             Assert.Equal("measured", headerResult.GetProperty("outcome").GetString());
@@ -45,6 +108,8 @@ namespace Nnrp.Core.Tests
             AssertNativeSkipped(results, "l4.session.lifecycle.latency");
             AssertNativeSkipped(results, "l4.transport.tcp.loopback.throughput");
             AssertNativeSkipped(results, "l4.transport.quic.loopback.throughput");
+            AssertNativeSkipped(results, "l4.transport.ipc.loopback.throughput");
+            AssertNativeSkipped(results, "l4.transport.websocket.loopback.throughput");
         }
 
         [Fact]
@@ -68,7 +133,7 @@ namespace Nnrp.Core.Tests
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
                 Assert.Equal("nnrp-1", document.RootElement.GetProperty("protocol_version").GetString());
-                Assert.Equal(14, document.RootElement.GetProperty("results").GetArrayLength());
+                Assert.Equal(16, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
             {
@@ -135,6 +200,31 @@ namespace Nnrp.Core.Tests
         {
             var error = Assert.Throws<ArgumentException>(() => BenchmarkProgram.BuildResultsJson(rawPlan));
             Assert.Contains(expectedMessageFragment, error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BuildResultsJsonReportsUnknownTransportValue()
+        {
+            const string plan = """
+                {
+                  "protocol_version": "nnrp-1",
+                  "implementation_name": "nnrp-cs",
+                  "scenarios": [
+                    {
+                      "id": "invalid-transport",
+                      "workload": {
+                        "operation": "transport_loopback",
+                        "transport": "sctp"
+                      }
+                    }
+                  ]
+                }
+                """;
+
+            var error = Assert.Throws<ArgumentException>(() => BenchmarkProgram.BuildResultsJson(plan));
+
+            Assert.Contains("sctp", error.Message, StringComparison.Ordinal);
+            Assert.Contains("tcp, quic, ipc, or websocket", error.Message, StringComparison.Ordinal);
         }
 
         private const string SamplePlanJson = """
@@ -268,6 +358,24 @@ namespace Nnrp.Core.Tests
                     "operation": "transport_loopback",
                     "payload": "request_result_stream",
                     "transport": "quic",
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.transport.ipc.loopback.throughput",
+                  "workload": {
+                    "operation": "transport_loopback",
+                    "transport": "ipc",
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.transport.websocket.loopback.throughput",
+                  "workload": {
+                    "operation": "transport_loopback",
+                    "transport": "websocket",
                     "duration_seconds": 0.01,
                     "warmup_iterations": 1
                   }
