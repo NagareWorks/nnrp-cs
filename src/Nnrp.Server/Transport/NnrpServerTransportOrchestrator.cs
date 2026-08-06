@@ -615,11 +615,9 @@ namespace Nnrp.Server
                 cancellationToken.ThrowIfCancellationRequested();
                 var current = server ?? throw new ObjectDisposedException(nameof(NativeListener));
                 var session = current.AcceptSession(
-                    options.SessionId == 0
-                        ? NnrpRuntimeHandleIdAllocator.Allocate()
-                        : options.SessionId,
-                    options.SessionGeneration,
-                    pollTimeoutMilliseconds);
+                    sessionHandleId: NnrpRuntimeHandleIdAllocator.Allocate(),
+                    generation: 1,
+                    timeoutMilliseconds: pollTimeoutMilliseconds);
                 return new ValueTask<NnrpAcceptedServerTransportSession>(
                     new NnrpAcceptedServerTransportSession(
                         session.ActiveTransportId,

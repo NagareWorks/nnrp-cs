@@ -12,27 +12,27 @@ namespace Nnrp.Core
         Invalidated = 4,
     }
 
-    public sealed class SchemaRegistry
+    public sealed class NnrpSchemaRegistry
     {
         private const ulong StandardTokenDeltaSchemaHash = 0x6E6E7270746F6B33UL;
 
-        private readonly Dictionary<SchemaRegistryKey, SchemaDescriptorHeader> _entries;
+        private readonly Dictionary<SchemaRegistryKey, NnrpSchemaDescriptorHeader> _entries;
 
-        public SchemaRegistry()
+        public NnrpSchemaRegistry()
         {
-            _entries = new Dictionary<SchemaRegistryKey, SchemaDescriptorHeader>();
+            _entries = new Dictionary<SchemaRegistryKey, NnrpSchemaDescriptorHeader>();
         }
 
         public int Count => _entries.Count;
 
-        internal IReadOnlyCollection<SchemaDescriptorHeader> SnapshotDescriptors()
+        internal IReadOnlyCollection<NnrpSchemaDescriptorHeader> SnapshotDescriptors()
         {
-            return new List<SchemaDescriptorHeader>(_entries.Values);
+            return new List<NnrpSchemaDescriptorHeader>(_entries.Values);
         }
 
-        public static SchemaRegistry WithStandardProfiles()
+        public static NnrpSchemaRegistry WithStandardProfiles()
         {
-            var registry = new SchemaRegistry();
+            var registry = new NnrpSchemaRegistry();
             if (!registry.TryInstall(CreateStandardTokenDeltaDescriptor(), out _, out var errorCode))
             {
                 throw new InvalidOperationException($"Standard token schema descriptor failed to install: {errorCode}.");
@@ -41,7 +41,7 @@ namespace Nnrp.Core
             return registry;
         }
 
-        public bool TryInstall(SchemaDescriptorHeader descriptor, out SchemaRegistryAction action, out SchemaErrorCode errorCode)
+        public bool TryInstall(NnrpSchemaDescriptorHeader descriptor, out SchemaRegistryAction action, out SchemaErrorCode errorCode)
         {
             action = SchemaRegistryAction.None;
             errorCode = SchemaErrorCode.None;
@@ -51,7 +51,7 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if ((descriptor.SchemaFlags & ~SchemaDescriptorHeader.KnownSchemaFlagMask) != 0)
+            if ((descriptor.SchemaFlags & ~NnrpSchemaDescriptorHeader.KnownSchemaFlagMask) != 0)
             {
                 errorCode = SchemaErrorCode.UpdateRejected;
                 return false;
@@ -85,7 +85,7 @@ namespace Nnrp.Core
             return true;
         }
 
-        public bool TryGet(uint schemaId, uint schemaVersion, out SchemaDescriptorHeader descriptor)
+        public bool TryGet(uint schemaId, uint schemaVersion, out NnrpSchemaDescriptorHeader descriptor)
         {
             return _entries.TryGetValue(new SchemaRegistryKey(schemaId, schemaVersion), out descriptor);
         }
@@ -112,7 +112,7 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if (descriptor.ProfileId == SchemaDescriptorHeader.ProfileUnspecified)
+            if (descriptor.ProfileId == NnrpSchemaDescriptorHeader.ProfileUnspecified)
             {
                 if (descriptor.SchemaId == 0 && descriptor.SchemaVersion == 0)
                 {
@@ -148,9 +148,9 @@ namespace Nnrp.Core
 
         public static bool TryValidateProfileAssignment(ushort profileId, out SchemaErrorCode errorCode)
         {
-            if (profileId == SchemaDescriptorHeader.ProfileUnspecified
-                || profileId == SchemaDescriptorHeader.ProfileTensor
-                || profileId == SchemaDescriptorHeader.ProfileToken)
+            if (profileId == NnrpSchemaDescriptorHeader.ProfileUnspecified
+                || profileId == NnrpSchemaDescriptorHeader.ProfileTensor
+                || profileId == NnrpSchemaDescriptorHeader.ProfileToken)
             {
                 errorCode = SchemaErrorCode.None;
                 return true;
@@ -173,18 +173,18 @@ namespace Nnrp.Core
             return false;
         }
 
-        private static SchemaDescriptorHeader CreateStandardTokenDeltaDescriptor()
+        private static NnrpSchemaDescriptorHeader CreateStandardTokenDeltaDescriptor()
         {
-            return new SchemaDescriptorHeader(
-                SchemaDescriptorHeader.TokenDeltaSchemaId,
-                SchemaDescriptorHeader.TokenDeltaSchemaVersion,
-                SchemaDescriptorHeader.ProfileToken,
+            return new NnrpSchemaDescriptorHeader(
+                NnrpSchemaDescriptorHeader.TokenDeltaSchemaId,
+                NnrpSchemaDescriptorHeader.TokenDeltaSchemaVersion,
+                NnrpSchemaDescriptorHeader.ProfileToken,
                 schemaFlags: 0,
                 minVersionMajor: 1,
                 maxVersionMajor: 1,
                 bodyBytes: 0,
                 dependencyCount: 0,
-                SchemaDescriptorHeader.TokenDeltaDefaultStreamSemantics,
+                NnrpSchemaDescriptorHeader.TokenDeltaDefaultStreamSemantics,
                 StandardTokenDeltaSchemaHash);
         }
 

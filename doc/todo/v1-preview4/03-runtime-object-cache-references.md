@@ -25,7 +25,7 @@
 - [x] Add cache reference record.
 - [x] Add cache miss record.
 - [x] Add cache invalidate record.
-- [x] Add cache lease metadata.
+- [x] Add cache lease, object-version, and lease-result metadata.
 - [x] Add cache policy options.
 - [x] Keep cache reference behavior explicit per request/profile.
 - [x] Add tests for typed cache miss diagnostics.

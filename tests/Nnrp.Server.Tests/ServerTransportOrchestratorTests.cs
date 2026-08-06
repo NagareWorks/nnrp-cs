@@ -52,6 +52,7 @@ namespace Nnrp.Server.Tests
                 NnrpEndpoint.Parse("nnrp://localhost:7000"),
                 serverGeneration: 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpServerAcceptOptions(
+                sessionId: 0,
                 sessionGeneration: 0));
         }
 
@@ -60,7 +61,7 @@ namespace Nnrp.Server.Tests
         {
             var profiles = new List<ushort> { TypedPayloadProfileId.TokenValue, TypedPayloadProfileId.TensorValue };
             var cacheObjects = new List<CacheObjectKind> { CacheObjectKind.PromptSegment };
-            var registry = SchemaRegistry.WithStandardProfiles();
+            var registry = NnrpSchemaRegistry.WithStandardProfiles();
             var policy = new RejectingPolicy();
             var options = new NnrpServerSessionOptions(
                 profiles,

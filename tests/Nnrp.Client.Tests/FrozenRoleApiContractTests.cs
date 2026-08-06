@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Client;
 using Nnrp.Core;
-using Nnrp.NativeBridge;
 using Nnrp.Runtime;
 using Nnrp.Server;
 using Xunit;
@@ -78,12 +77,10 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpClientOptions.Endpoint), typeof(NnrpEndpoint)),
                 (nameof(NnrpClientOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>)),
                 (nameof(NnrpClientOptions.TransportPolicy), typeof(TransportPolicy)),
-                (nameof(NnrpClientOptions.Transports), typeof(IReadOnlyList<INnrpNativeTransportProvider>)),
                 (nameof(NnrpClientOptions.SessionDefaults), typeof(NnrpClientSessionOptions)));
             AssertProperties(
                 typeof(NnrpClientSessionOptions),
-                (nameof(NnrpClientSessionOptions.SessionId), typeof(uint)),
-                (nameof(NnrpClientSessionOptions.SessionGeneration), typeof(uint)),
+                (nameof(NnrpClientSessionOptions.RequestedSessionId), typeof(uint)),
                 (nameof(NnrpClientSessionOptions.ProfileId), typeof(ushort)),
                 (nameof(NnrpClientSessionOptions.SchemaId), typeof(uint)),
                 (nameof(NnrpClientSessionOptions.SchemaVersion), typeof(uint)),
@@ -105,14 +102,9 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpServerOptions.Endpoint), typeof(NnrpEndpoint)),
                 (nameof(NnrpServerOptions.ProviderRoutes), typeof(IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>)),
                 (nameof(NnrpServerOptions.TransportPolicy), typeof(TransportPolicy)),
-                (nameof(NnrpServerOptions.Transports), typeof(IReadOnlyList<INnrpNativeTransportProvider>)),
-                (nameof(NnrpServerOptions.ServerId), typeof(ulong)),
-                (nameof(NnrpServerOptions.ServerGeneration), typeof(uint)),
                 (nameof(NnrpServerOptions.SessionDefaults), typeof(NnrpServerSessionOptions)));
             AssertProperties(
                 typeof(NnrpServerAcceptOptions),
-                (nameof(NnrpServerAcceptOptions.SessionId), typeof(ulong)),
-                (nameof(NnrpServerAcceptOptions.SessionGeneration), typeof(uint)),
                 (nameof(NnrpServerAcceptOptions.TimeoutMilliseconds), typeof(uint)));
             AssertProperties(
                 typeof(NnrpServerSessionOptions),
@@ -120,7 +112,7 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpServerSessionOptions.SupportedCacheObjects), typeof(IReadOnlyList<CacheObjectKind>)),
                 (nameof(NnrpServerSessionOptions.MaxCacheObjects), typeof(ulong)),
                 (nameof(NnrpServerSessionOptions.MaxCacheObjectBytes), typeof(uint)),
-                (nameof(NnrpServerSessionOptions.SchemaRegistry), typeof(SchemaRegistry)),
+                (nameof(NnrpServerSessionOptions.SchemaRegistry), typeof(NnrpSchemaRegistry)),
                 (nameof(NnrpServerSessionOptions.ResumeTokenBytes), typeof(uint)),
                 (nameof(NnrpServerSessionOptions.MaxInFlightOperations), typeof(ushort)),
                 (nameof(NnrpServerSessionOptions.GrantedOperationCredit), typeof(ushort)),
@@ -138,6 +130,103 @@ namespace Nnrp.Client.Tests
                 (nameof(NnrpServerSessionPolicyDecision.Accepted), typeof(bool)),
                 (nameof(NnrpServerSessionPolicyDecision.SessionErrorCode), typeof(SessionErrorCode)),
                 (nameof(NnrpServerSessionPolicyDecision.Diagnostic), typeof(string)));
+
+            AssertProperties(
+                typeof(NnrpCacheLeaseResult),
+                (nameof(NnrpCacheLeaseResult.ObjectId), typeof(NnrpCacheObjectId)),
+                (nameof(NnrpCacheLeaseResult.Outcome), typeof(NnrpCacheLeaseOutcome)),
+                (nameof(NnrpCacheLeaseResult.Lease), typeof(NnrpCacheLease?)),
+                (nameof(NnrpCacheLeaseResult.ObjectVersion), typeof(NnrpCacheObjectVersion?)),
+                (nameof(NnrpCacheLeaseResult.Diagnostic), typeof(string)));
+            AssertProperties(
+                typeof(CachePolicyOptions),
+                (nameof(CachePolicyOptions.Enabled), typeof(bool)),
+                (nameof(CachePolicyOptions.ReuseScope), typeof(CacheReuseScope?)),
+                (nameof(CachePolicyOptions.ExpirationHintMilliseconds), typeof(ulong)),
+                (nameof(CachePolicyOptions.InvalidationReason), typeof(CachePolicyInvalidationReason)));
+        }
+
+        [Fact]
+        public void LifecycleTypesMatchTheFrozenPreview4Projection()
+        {
+            AssertProperties(
+                typeof(NnrpConnectionLifecycle),
+                (nameof(NnrpConnectionLifecycle.State), typeof(NnrpConnectionLifecycleState)),
+                (nameof(NnrpConnectionLifecycle.SessionCount), typeof(int)),
+                (nameof(NnrpConnectionLifecycle.Sessions), typeof(IReadOnlyList<NnrpSessionLifecycle>)));
+            AssertProperties(
+                typeof(NnrpSessionLifecycle),
+                (nameof(NnrpSessionLifecycle.SessionId), typeof(uint)),
+                (nameof(NnrpSessionLifecycle.State), typeof(NnrpSessionLifecycleState)),
+                (nameof(NnrpSessionLifecycle.ProfileId), typeof(ushort)),
+                (nameof(NnrpSessionLifecycle.PriorityClass), typeof(SessionPriorityClass)),
+                (nameof(NnrpSessionLifecycle.SchemaId), typeof(uint)),
+                (nameof(NnrpSessionLifecycle.SchemaVersion), typeof(uint)),
+                (nameof(NnrpSessionLifecycle.MaxInFlightOperations), typeof(ushort)),
+                (nameof(NnrpSessionLifecycle.RouteScopeId), typeof(uint)),
+                (nameof(NnrpSessionLifecycle.LastOperationId), typeof(ulong)),
+                (nameof(NnrpSessionLifecycle.SessionErrorCode), typeof(SessionErrorCode)),
+                (nameof(NnrpSessionLifecycle.AcceptsSessionScopedMessages), typeof(bool)),
+                (nameof(NnrpSessionLifecycle.AcceptsNewOperations), typeof(bool)));
+        }
+
+        [Fact]
+        public void EveryFrozenCSharpProjectionTypeExistsInThePublishedAssemblies()
+        {
+            var assemblies = new[]
+            {
+                typeof(NnrpClient).Assembly,
+                typeof(NnrpConnectionLifecycle).Assembly,
+                typeof(NnrpServer).Assembly,
+            };
+            var projectedTypes = new[]
+            {
+                "Nnrp.Client.NnrpSubmitRequest",
+                "Nnrp.Client.NnrpSubmitHeaderContext",
+                "Nnrp.Runtime.RuntimeFrameHeader",
+                "Nnrp.Runtime.NnrpRuntimeEvent",
+                "Nnrp.Runtime.NnrpOperationLifecycleEvent",
+                "Nnrp.Runtime.NnrpTerminalEvent",
+                "Nnrp.Client.NnrpResult",
+                "Nnrp.Client.NnrpClient",
+                "Nnrp.Client.NnrpClientSession",
+                "Nnrp.Server.NnrpServer",
+                "Nnrp.Server.NnrpServerSession",
+                "Nnrp.Runtime.CapabilityMetadata",
+                "Nnrp.Core.NnrpConnectionLifecycle",
+                "Nnrp.Core.NnrpSessionLifecycle",
+                "Nnrp.Core.TypedPayloadDescriptor",
+                "Nnrp.Core.TypedPayloadFrameView",
+                "Nnrp.Core.NnrpCacheObjectId",
+                "Nnrp.Core.NnrpCacheLease",
+                "Nnrp.Core.NnrpCacheLeaseResult",
+                "Nnrp.Core.CachePolicyOptions",
+                "Nnrp.Core.NnrpTransportProviderMetadata",
+                "Nnrp.Core.NnrpTransportProviderDescriptor",
+                "Nnrp.Core.NnrpTransportSelectionOptions",
+                "Nnrp.Core.NnrpTransportSelection",
+                "Nnrp.Core.NnrpTransportSelectionException",
+                "Nnrp.Core.NnrpEndpoint",
+                "Nnrp.Core.NnrpProviderEndpoint",
+                "Nnrp.Core.NnrpTransportClientSecurity",
+                "Nnrp.Core.NnrpTransportServerSecurity",
+                "Nnrp.Core.NnrpClientProviderRoute",
+                "Nnrp.Core.NnrpServerProviderRoute",
+                "Nnrp.Core.NnrpSchemaDescriptorHeader",
+                "Nnrp.Core.NnrpSchemaRegistry",
+                "Nnrp.Client.NnrpClientOptions",
+                "Nnrp.Client.NnrpClientSessionOptions",
+                "Nnrp.Core.NnrpSessionRecoveryTicket",
+                "Nnrp.Server.NnrpServerOptions",
+                "Nnrp.Server.NnrpServerSessionOptions",
+                "Nnrp.Server.NnrpServerAcceptOptions",
+                "Nnrp.Server.INnrpServerSessionPolicy",
+            };
+
+            foreach (var projectedType in projectedTypes)
+            {
+                Assert.Contains(assemblies, assembly => assembly.GetType(projectedType, throwOnError: false) != null);
+            }
         }
 
         [Fact]

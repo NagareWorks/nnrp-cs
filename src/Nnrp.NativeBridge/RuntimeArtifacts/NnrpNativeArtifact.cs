@@ -4023,7 +4023,7 @@ namespace Nnrp.NativeBridge
                     grantedOperationCredit: 2,
                     leaseTtlMilliseconds: 30_000,
                     resumeWindowMilliseconds: 120_000,
-                    SchemaRegistry.WithStandardProfiles(),
+                    NnrpSchemaRegistry.WithStandardProfiles(),
                     _ => new System.Threading.Tasks.ValueTask<NnrpNativeServerPolicyDecision>(
                         NnrpNativeServerPolicyDecision.Accept())));
         }

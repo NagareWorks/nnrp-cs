@@ -10,8 +10,7 @@ namespace Nnrp.Client
     public sealed class NnrpClientSessionOptions
     {
         public NnrpClientSessionOptions(
-            uint sessionId = 0,
-            uint sessionGeneration = 1,
+            uint requestedSessionId = 0,
             ushort profileId = TypedPayloadProfileId.TokenValue,
             uint schemaId = TypedPayloadDescriptor.TokenDeltaSchemaId,
             uint schemaVersion = TypedPayloadDescriptor.TokenDeltaSchemaVersion,
@@ -23,11 +22,6 @@ namespace Nnrp.Client
             uint resumeTokenBytes = 0,
             IReadOnlyList<CacheObjectKind>? cacheHints = null)
         {
-            if (sessionGeneration == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(sessionGeneration));
-            }
-
             if (schemaId != 0 && schemaVersion == 0)
             {
                 throw new ArgumentException(
@@ -58,8 +52,7 @@ namespace Nnrp.Client
                 throw new ArgumentException("Cache hints contain an unknown object kind.", nameof(cacheHints));
             }
 
-            SessionId = sessionId;
-            SessionGeneration = sessionGeneration;
+            RequestedSessionId = requestedSessionId;
             ProfileId = profileId;
             SchemaId = schemaId;
             SchemaVersion = schemaVersion;
@@ -72,9 +65,9 @@ namespace Nnrp.Client
             CacheHints = new ReadOnlyCollection<CacheObjectKind>(copiedHints);
         }
 
-        public uint SessionId { get; }
+        public uint RequestedSessionId { get; }
 
-        public uint SessionGeneration { get; }
+        internal uint SessionGeneration => 1;
 
         public ushort ProfileId { get; }
 
@@ -103,7 +96,25 @@ namespace Nnrp.Client
             NnrpEndpoint endpoint,
             IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes = null,
             TransportPolicy transportPolicy = TransportPolicy.Auto,
-            IReadOnlyList<INnrpNativeTransportProvider>? transports = null,
+            NnrpClientSessionOptions? sessionDefaults = null)
+            : this(endpoint, providerRoutes, transportPolicy, transports: null, sessionDefaults)
+        {
+        }
+
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports)
+            : this(endpoint, providerRoutes, transportPolicy, transports, sessionDefaults: null)
+        {
+        }
+
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpClientProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports,
             NnrpClientSessionOptions? sessionDefaults = null)
         {
             if (!Enum.IsDefined(typeof(TransportPolicy), transportPolicy))
@@ -124,6 +135,13 @@ namespace Nnrp.Client
             }
         }
 
+        internal NnrpClientOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports)
+            : this(endpoint, providerRoutes: null, TransportPolicy.Auto, transports, sessionDefaults: null)
+        {
+        }
+
         public NnrpEndpoint Endpoint { get; }
 
         public IReadOnlyDictionary<TransportId, NnrpClientProviderRoute> ProviderRoutes { get; }
@@ -132,6 +150,6 @@ namespace Nnrp.Client
 
         public NnrpClientSessionOptions SessionDefaults { get; }
 
-        public IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
+        internal IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
     }
 }

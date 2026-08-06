@@ -44,7 +44,7 @@ namespace Nnrp.NativeBridge.Tests
                 401,
                 402,
                 403,
-                SchemaDescriptorHeader.ProfileToken,
+                Nnrp.Core.NnrpSchemaDescriptorHeader.ProfileToken,
                 CacheReuseScope.Session,
                 404,
                 405,

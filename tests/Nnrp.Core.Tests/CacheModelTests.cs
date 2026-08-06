@@ -220,6 +220,72 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void CacheLeaseResultPreservesTheFrozenLeaseAndVersionEvidence()
+        {
+            var objectId = new NnrpCacheObjectId(1, 2, 3, CacheObjectKind.PromptSegment);
+            var lease = new NnrpCacheLease(
+                objectId,
+                objectVersion: 7,
+                leaseId: 8,
+                CacheLeaseOwnerScope.Session,
+                ownerId: 9,
+                grantedAtMilliseconds: 10,
+                ttlMilliseconds: 11);
+            var version = new NnrpCacheObjectVersion(objectId, 7, schemaId: 12, schemaVersion: 13);
+            var sameVersion = new NnrpCacheObjectVersion(objectId, 7, schemaId: 12, schemaVersion: 13);
+            var otherVersion = new NnrpCacheObjectVersion(objectId, 8, schemaId: 12, schemaVersion: 13);
+
+            var result = new NnrpCacheLeaseResult(
+                objectId,
+                NnrpCacheLeaseOutcome.Valid,
+                lease,
+                version,
+                diagnostic: "local hit");
+
+            Assert.Equal(objectId, result.ObjectId);
+            Assert.Equal(NnrpCacheLeaseOutcome.Valid, result.Outcome);
+            Assert.Equal(lease, result.Lease);
+            Assert.Equal(version, result.ObjectVersion);
+            Assert.Equal("local hit", result.Diagnostic);
+            Assert.True(version.Equals(sameVersion));
+            Assert.True(version == sameVersion);
+            Assert.False(version != sameVersion);
+            Assert.True(version.Equals((object)sameVersion));
+            Assert.False(version.Equals(otherVersion));
+            Assert.True(version != otherVersion);
+            Assert.False(version == otherVersion);
+            Assert.False(version.Equals((object)"version"));
+            Assert.Equal(version.GetHashCode(), sameVersion.GetHashCode());
+            Assert.NotEqual(version.GetHashCode(), otherVersion.GetHashCode());
+        }
+
+        [Fact]
+        public void CacheLeaseResultRejectsUnknownOutcomesAndMismatchedEvidence()
+        {
+            var objectId = new NnrpCacheObjectId(1, 2, 3, CacheObjectKind.PromptSegment);
+            var otherId = new NnrpCacheObjectId(1, 2, 4, CacheObjectKind.PromptSegment);
+            var otherLease = new NnrpCacheLease(
+                otherId,
+                objectVersion: 1,
+                leaseId: 2,
+                CacheLeaseOwnerScope.Connection,
+                ownerId: 3,
+                grantedAtMilliseconds: 4,
+                ttlMilliseconds: 5);
+            var otherVersion = new NnrpCacheObjectVersion(otherId, 1);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new NnrpCacheLeaseResult(objectId, (NnrpCacheLeaseOutcome)byte.MaxValue));
+            Assert.Throws<ArgumentException>(() =>
+                new NnrpCacheLeaseResult(objectId, NnrpCacheLeaseOutcome.Valid, otherLease));
+            Assert.Throws<ArgumentException>(() =>
+                new NnrpCacheLeaseResult(
+                    objectId,
+                    NnrpCacheLeaseOutcome.Valid,
+                    objectVersion: otherVersion));
+        }
+
+        [Fact]
         public void CacheObjectIdMatchesInvalidateScopes()
         {
             var putMetadata = new CachePutMetadata(

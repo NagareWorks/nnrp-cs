@@ -21,7 +21,7 @@ namespace Nnrp.NativeBridge
             ushort grantedOperationCredit,
             uint leaseTtlMilliseconds,
             uint resumeWindowMilliseconds,
-            SchemaRegistry schemaRegistry,
+            NnrpSchemaRegistry schemaRegistry,
             Func<SessionOpenMetadata, ValueTask<NnrpNativeServerPolicyDecision>> applicationPolicy)
         {
             ServerId = serverId;
@@ -50,7 +50,7 @@ namespace Nnrp.NativeBridge
         internal ushort GrantedOperationCredit { get; }
         internal uint LeaseTtlMilliseconds { get; }
         internal uint ResumeWindowMilliseconds { get; }
-        internal SchemaRegistry SchemaRegistry { get; }
+        internal NnrpSchemaRegistry SchemaRegistry { get; }
         internal Func<SessionOpenMetadata, ValueTask<NnrpNativeServerPolicyDecision>> ApplicationPolicy { get; }
     }
 

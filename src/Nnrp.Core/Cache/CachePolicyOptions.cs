@@ -1,6 +1,7 @@
 using System;
+using Nnrp.Runtime;
 
-namespace Nnrp.Runtime
+namespace Nnrp.Core
 {
     public enum CachePolicyInvalidationReason : byte
     {

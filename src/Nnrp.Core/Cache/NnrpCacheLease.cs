@@ -230,6 +230,115 @@ namespace Nnrp.Core
         }
     }
 
+    public readonly struct NnrpCacheObjectVersion : IEquatable<NnrpCacheObjectVersion>
+    {
+        public NnrpCacheObjectVersion(
+            NnrpCacheObjectId objectId,
+            ulong objectVersion,
+            uint schemaId = 0,
+            uint schemaVersion = 0)
+        {
+            ObjectId = objectId;
+            ObjectVersion = objectVersion;
+            SchemaId = schemaId;
+            SchemaVersion = schemaVersion;
+        }
+
+        public NnrpCacheObjectId ObjectId { get; }
+
+        public ulong ObjectVersion { get; }
+
+        public uint SchemaId { get; }
+
+        public uint SchemaVersion { get; }
+
+        public bool Equals(NnrpCacheObjectVersion other)
+        {
+            return ObjectId == other.ObjectId
+                && ObjectVersion == other.ObjectVersion
+                && SchemaId == other.SchemaId
+                && SchemaVersion == other.SchemaVersion;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is NnrpCacheObjectVersion other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = ObjectId.GetHashCode();
+                hash = (hash * 397) ^ ObjectVersion.GetHashCode();
+                hash = (hash * 397) ^ SchemaId.GetHashCode();
+                hash = (hash * 397) ^ SchemaVersion.GetHashCode();
+                return hash;
+            }
+        }
+
+        public static bool operator ==(NnrpCacheObjectVersion left, NnrpCacheObjectVersion right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(NnrpCacheObjectVersion left, NnrpCacheObjectVersion right)
+        {
+            return !left.Equals(right);
+        }
+    }
+
+    public enum NnrpCacheLeaseOutcome : byte
+    {
+        Valid = 0,
+        Expired = 1,
+        Renewed = 2,
+        Released = 3,
+        Missing = 4,
+    }
+
+    public sealed class NnrpCacheLeaseResult
+    {
+        public NnrpCacheLeaseResult(
+            NnrpCacheObjectId objectId,
+            NnrpCacheLeaseOutcome outcome,
+            NnrpCacheLease? lease = null,
+            NnrpCacheObjectVersion? objectVersion = null,
+            string? diagnostic = null)
+        {
+            if (!Enum.IsDefined(typeof(NnrpCacheLeaseOutcome), outcome))
+            {
+                throw new ArgumentOutOfRangeException(nameof(outcome));
+            }
+
+            if (lease.HasValue && lease.Value.ObjectId != objectId)
+            {
+                throw new ArgumentException("Lease identity must match the result identity.", nameof(lease));
+            }
+
+            if (objectVersion.HasValue && objectVersion.Value.ObjectId != objectId)
+            {
+                throw new ArgumentException("Object version identity must match the result identity.", nameof(objectVersion));
+            }
+
+            ObjectId = objectId;
+            Outcome = outcome;
+            Lease = lease;
+            ObjectVersion = objectVersion;
+            Diagnostic = diagnostic;
+        }
+
+        public NnrpCacheObjectId ObjectId { get; }
+
+        public NnrpCacheLeaseOutcome Outcome { get; }
+
+        public NnrpCacheLease? Lease { get; }
+
+        public NnrpCacheObjectVersion? ObjectVersion { get; }
+
+        public string? Diagnostic { get; }
+    }
+
     public enum CacheValidationFailure
     {
         None = 0,

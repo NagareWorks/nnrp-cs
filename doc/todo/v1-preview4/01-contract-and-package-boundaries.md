@@ -46,10 +46,10 @@
   - [x] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
   - [x] Add `NnrpClient.ConnectAsync(NnrpClientOptions, CancellationToken)`.
   - [x] Add `NnrpClient.OpenSession(NnrpClientSessionOptions)`.
-  - [x] Add `NnrpServerOptions` and `NnrpServerAcceptOptions` with the frozen endpoint, route set, policy, server, session, and timeout fields.
+  - [x] Add `NnrpServerOptions` with the frozen endpoint, route set, policy, and session defaults, plus `NnrpServerAcceptOptions` with only the public timeout field; keep native handles and generations internal.
   - [x] Add `NnrpServer.ListenAsync(NnrpServerOptions, CancellationToken)`.
   - [x] Add `NnrpServer.AcceptAsync(NnrpServerAcceptOptions, CancellationToken)`.
-  - [x] Add the frozen production client session, server session, and server operation surfaces.
+  - [x] Add the frozen connection/session lifecycle projections and production client session, server session, and server operation surfaces.
     - [x] Add `NnrpClientSession` with owned connection/session lifetime and typed runtime operations.
     - [x] Add `NnrpServerSession` with owned accepted-session lifetime and typed control/cache operations.
     - [x] Add `NnrpServerOperation` with owned request values, operation identity, trace context, and terminal-state enforcement.

@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Nnrp.Core\Nnrp.Core.csproj" />
     <ProjectReference Include="..\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
     <InternalsVisibleTo Include="Nnrp.Client.Tests" />
+    <InternalsVisibleTo Include="Nnrp.WireConformance" />
   </ItemGroup>
 
 </Project>

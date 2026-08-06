@@ -57,8 +57,7 @@ namespace Nnrp.Client.Tests
                 resumeWindowMilliseconds: 120_000);
             var ticket = NnrpSessionRecoveryTicket.FromBytes(encoded);
             var options = new NnrpClientSessionOptions(
-                sessionId: 99,
-                sessionGeneration: 7,
+                requestedSessionId: 99,
                 profileId: 3,
                 schemaId: 0x2001,
                 schemaVersion: 4,
@@ -74,7 +73,7 @@ namespace Nnrp.Client.Tests
 
             var request = Assert.Single(harness.SessionResumeRequests);
             Assert.Equal((uint)42, request.Open.RequestedSessionId);
-            Assert.Equal((uint)7, request.Open.Generation);
+            Assert.Equal((uint)1, request.Open.Generation);
             Assert.NotEqual((ulong)0, request.Open.SessionHandleId);
             Assert.Equal((ushort)3, request.Open.ProfileId);
             Assert.Equal((byte)SessionPriorityClass.Interactive, request.Open.PriorityClass);
@@ -88,8 +87,8 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new UIntPtr(2), request.Open.CacheHints.Length);
             Assert.Equal(encoded, Assert.Single(harness.SubmittedRecoveryTickets));
             Assert.NotSame(options, session.Options);
-            Assert.Equal((uint)42, session.Options.SessionId);
-            Assert.Equal((uint)7, session.Options.SessionGeneration);
+            Assert.Equal((uint)42, session.Options.RequestedSessionId);
+            Assert.Equal((uint)1, session.Options.SessionGeneration);
             Assert.Equal((ushort)3, session.Options.ProfileId);
             Assert.Equal(SessionPriorityClass.Interactive, session.Options.PriorityClass);
             Assert.True(session.Options.AllowResume);
@@ -120,7 +119,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var progress = new ProgressMetadata(201, 1, 2, 5000, 1, 1);
             harness.QueueClientEvent(
                 MessageType.Progress,
@@ -140,7 +139,7 @@ namespace Nnrp.Client.Tests
             Assert.Equal(MessageType.ResultPush, resultEvent.Header.MessageType);
             Assert.Equal(NnrpRuntimeEventMetadataKind.ResultPush, resultEvent.Metadata.Kind);
             Assert.Empty(BodyOf(resultEvent).ToArray());
-            Assert.Equal((uint)41, session.Options.SessionId);
+            Assert.Equal((uint)41, session.Options.RequestedSessionId);
             Assert.False(session.IsClosed);
             Assert.Equal(TransportId.Tcp, client.ActiveTransportId);
             Assert.Equal(
@@ -163,7 +162,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var cancel = new ControlRequestMetadata(301, 1, 2, RuntimeRole.Client, 0, 2);
             await session.CancelAsync(cancel, new byte[] { 1, 2 });
             harness.QueueClientEvent(MessageType.ResultPush, 31, 301, SuccessPayload());
@@ -215,7 +214,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientEvent(MessageType.ResultPush, 11, 201, ResultPayload(statusCode));
 
             var result = await session.NextResultAsync();
@@ -228,7 +227,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientEvent(MessageType.ResultDrop, 11, 201, Array.Empty<byte>());
 
             var result = await session.NextResultAsync();
@@ -249,7 +248,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientLifecycleEvent(eventKind, 201);
 
             var result = await session.NextResultAsync();
@@ -266,7 +265,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             harness.QueueClientLifecycleEvent(
                 6,
                 201,
@@ -342,7 +341,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
 
@@ -417,7 +416,7 @@ namespace Nnrp.Client.Tests
         {
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
-            await using var session = client.OpenSession(new NnrpClientSessionOptions(sessionId: 41));
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var tail = new byte[] { 1, 2 };
 
             await session.SendControlAsync(MessageType.Cancel, new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), tail);

@@ -64,7 +64,7 @@ namespace Nnrp.Server
             IReadOnlyList<CacheObjectKind>? supportedCacheObjects = null,
             ulong maxCacheObjects = 0,
             uint maxCacheObjectBytes = 0,
-            SchemaRegistry? schemaRegistry = null,
+            NnrpSchemaRegistry? schemaRegistry = null,
             uint resumeTokenBytes = 24,
             ushort maxInFlightOperations = 4,
             ushort grantedOperationCredit = 2,
@@ -98,7 +98,7 @@ namespace Nnrp.Server
             SupportedCacheObjects = new ReadOnlyCollection<CacheObjectKind>(cacheObjects);
             MaxCacheObjects = maxCacheObjects;
             MaxCacheObjectBytes = maxCacheObjectBytes;
-            SchemaRegistry = schemaRegistry ?? SchemaRegistry.WithStandardProfiles();
+            SchemaRegistry = schemaRegistry ?? NnrpSchemaRegistry.WithStandardProfiles();
             ResumeTokenBytes = resumeTokenBytes;
             MaxInFlightOperations = maxInFlightOperations;
             GrantedOperationCredit = grantedOperationCredit;
@@ -115,7 +115,7 @@ namespace Nnrp.Server
 
         public uint MaxCacheObjectBytes { get; }
 
-        public SchemaRegistry SchemaRegistry { get; }
+        public NnrpSchemaRegistry SchemaRegistry { get; }
 
         public uint ResumeTokenBytes { get; }
 
@@ -132,9 +132,14 @@ namespace Nnrp.Server
 
     public sealed class NnrpServerAcceptOptions
     {
-        public NnrpServerAcceptOptions(
-            ulong sessionId = 0,
-            uint sessionGeneration = 1,
+        public NnrpServerAcceptOptions(uint timeoutMilliseconds = 0)
+            : this(sessionId: 0, sessionGeneration: 1, timeoutMilliseconds)
+        {
+        }
+
+        internal NnrpServerAcceptOptions(
+            ulong sessionId,
+            uint sessionGeneration,
             uint timeoutMilliseconds = 0)
         {
             if (sessionGeneration == 0)
@@ -147,9 +152,9 @@ namespace Nnrp.Server
             TimeoutMilliseconds = timeoutMilliseconds;
         }
 
-        public ulong SessionId { get; }
+        internal ulong SessionId { get; }
 
-        public uint SessionGeneration { get; }
+        internal uint SessionGeneration { get; }
 
         public uint TimeoutMilliseconds { get; }
     }
@@ -160,7 +165,23 @@ namespace Nnrp.Server
             NnrpEndpoint endpoint,
             IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes = null,
             TransportPolicy transportPolicy = TransportPolicy.Auto,
-            IReadOnlyList<INnrpNativeTransportProvider>? transports = null,
+            NnrpServerSessionOptions? sessionDefaults = null)
+            : this(
+                endpoint,
+                providerRoutes,
+                transportPolicy,
+                transports: null,
+                serverId: 0,
+                serverGeneration: 1,
+                sessionDefaults)
+        {
+        }
+
+        internal NnrpServerOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyDictionary<TransportId, NnrpServerProviderRoute>? providerRoutes,
+            TransportPolicy transportPolicy,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports,
             ulong serverId = 0,
             uint serverGeneration = 1,
             NnrpServerSessionOptions? sessionDefaults = null)
@@ -190,17 +211,43 @@ namespace Nnrp.Server
             }
         }
 
+        internal NnrpServerOptions(
+            NnrpEndpoint endpoint,
+            IReadOnlyList<INnrpNativeTransportProvider>? transports)
+            : this(
+                endpoint,
+                providerRoutes: null,
+                TransportPolicy.Auto,
+                transports,
+                serverId: 0,
+                serverGeneration: 1,
+                sessionDefaults: null)
+        {
+        }
+
+        internal NnrpServerOptions(NnrpEndpoint endpoint, uint serverGeneration)
+            : this(
+                endpoint,
+                providerRoutes: null,
+                TransportPolicy.Auto,
+                transports: null,
+                serverId: 0,
+                serverGeneration,
+                sessionDefaults: null)
+        {
+        }
+
         public NnrpEndpoint Endpoint { get; }
 
         public IReadOnlyDictionary<TransportId, NnrpServerProviderRoute> ProviderRoutes { get; }
 
         public TransportPolicy TransportPolicy { get; }
 
-        public IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
+        internal IReadOnlyList<INnrpNativeTransportProvider>? Transports { get; }
 
-        public ulong ServerId { get; }
+        internal ulong ServerId { get; }
 
-        public uint ServerGeneration { get; }
+        internal uint ServerGeneration { get; }
 
         public NnrpServerSessionOptions SessionDefaults { get; }
     }

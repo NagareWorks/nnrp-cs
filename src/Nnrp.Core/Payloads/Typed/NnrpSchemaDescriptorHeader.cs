@@ -2,7 +2,7 @@ using System;
 
 namespace Nnrp.Core
 {
-    public readonly struct SchemaDescriptorHeader : IEquatable<SchemaDescriptorHeader>
+    public readonly struct NnrpSchemaDescriptorHeader : IEquatable<NnrpSchemaDescriptorHeader>
     {
         public const int HeaderLength = 32;
         public const ushort KnownSchemaFlagMask = 0x000F;
@@ -17,7 +17,7 @@ namespace Nnrp.Core
         public const uint TokenDeltaSchemaVersion = TypedPayloadDescriptor.TokenDeltaSchemaVersion;
         public const ushort TokenDeltaDefaultStreamSemantics = TypedPayloadDescriptor.StreamSemanticsAppend;
 
-        public SchemaDescriptorHeader(
+        public NnrpSchemaDescriptorHeader(
             uint schemaId,
             uint schemaVersion,
             ushort profileId,
@@ -114,12 +114,12 @@ namespace Nnrp.Core
             return payload;
         }
 
-        public static bool TryParse(ReadOnlySpan<byte> source, out SchemaDescriptorHeader header)
+        public static bool TryParse(ReadOnlySpan<byte> source, out NnrpSchemaDescriptorHeader header)
         {
             return TryParse(source, out header, out _);
         }
 
-        public static bool TryParse(ReadOnlySpan<byte> source, out SchemaDescriptorHeader header, out NnrpParseError error)
+        public static bool TryParse(ReadOnlySpan<byte> source, out NnrpSchemaDescriptorHeader header, out NnrpParseError error)
         {
             header = default;
             error = NnrpParseError.None;
@@ -152,7 +152,7 @@ namespace Nnrp.Core
                 return false;
             }
 
-            header = new SchemaDescriptorHeader(
+            header = new NnrpSchemaDescriptorHeader(
                 schemaId,
                 schemaVersion,
                 profileId,
@@ -166,7 +166,7 @@ namespace Nnrp.Core
             return true;
         }
 
-        public bool Equals(SchemaDescriptorHeader other)
+        public bool Equals(NnrpSchemaDescriptorHeader other)
         {
             return SchemaId == other.SchemaId
                 && SchemaVersion == other.SchemaVersion
@@ -182,7 +182,7 @@ namespace Nnrp.Core
 
         public override bool Equals(object obj)
         {
-            return obj is SchemaDescriptorHeader other && Equals(other);
+            return obj is NnrpSchemaDescriptorHeader other && Equals(other);
         }
 
         public override int GetHashCode()
