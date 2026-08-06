@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NagareWorks/nnrp-conformance/main/schemas/benchmark-results.schema.json",
+  "protocol_version": "nnrp-1-preview4",
+  "implementation_name": "nnrp-py",
+  "environment": {
+    "sdk_commit": "ff8a9b2e23fd16c0549f000b7605bc19accc22b5",
+    "nnrp_rs_artifact": "1.0.0-preview.4.22",
+    "host_runtime": "3.13.5",
+    "os": "windows",
+    "arch": "amd64",
+    "cpu": "Intel64 Family 6 Model 15 Stepping 11, GenuineIntel",
+    "notes": "candidate_wheel=nnrp_py-1.0.0rc4.post14-py3-none-win_amd64.whl; sdk_version=1.0.0rc4.post14"
+  },
+  "results": [
+    {
+      "id": "comparison.native.object_metadata.copy.1024",
+      "outcome": "measured",
+      "metrics": {
+        "p50_us": 14.4,
+        "p95_us": 27.4,
+        "p99_us": 78.2
+      }
+    },
+    {
+      "id": "comparison.native.object_metadata.borrow.1024",
+      "outcome": "measured",
+      "metrics": {
+        "p50_us": 16.6,
+        "p95_us": 30.9,
+        "p99_us": 72.9
+      }
+    },
+    {
+      "id": "comparison.transport.ipc.loopback.1024",
+      "outcome": "measured",
+      "metrics": {
+        "throughput_ops_per_sec": 64.66666666666667,
+        "completed_operations": 194,
+        "native_ffi_calls_per_op": 4.0,
+        "native_ffi_client_submit_calls_per_op": 1.0,
+        "native_ffi_client_await_events_calls_per_op": 1.0,
+        "native_ffi_client_cancel_calls_per_op": 0.0,
+        "native_ffi_server_await_events_calls_per_op": 1.0,
+        "native_ffi_server_send_result_calls_per_op": 1.0,
+        "native_ffi_runtime_frame_send_calls_per_op": 0.0
+      }
+    },
+    {
+      "id": "comparison.transport.websocket.loopback.1024",
+      "outcome": "measured",
+      "metrics": {
+        "throughput_ops_per_sec": 65.0,
+        "completed_operations": 195,
+        "native_ffi_calls_per_op": 4.0,
+        "native_ffi_client_submit_calls_per_op": 1.0,
+        "native_ffi_client_await_events_calls_per_op": 1.0,
+        "native_ffi_client_cancel_calls_per_op": 0.0,
+        "native_ffi_server_await_events_calls_per_op": 1.0,
+        "native_ffi_server_send_result_calls_per_op": 1.0,
+        "native_ffi_runtime_frame_send_calls_per_op": 0.0
+      }
+    }
+  ]
+}

@@ -29,6 +29,12 @@ internal sealed class TransportLoopbackMeasurement
     public required int PayloadBytes { get; init; }
 }
 
+internal enum TransportLoopbackOperation
+{
+    SubmitResult,
+    RuntimeControl,
+}
+
 internal sealed class LatencySampleWindow
 {
     private readonly List<double> samples;
@@ -79,7 +85,8 @@ internal static class TransportLoopbackBenchmark
         byte[] payload,
         int warmupIterations,
         double durationSeconds,
-        int allocationIterations)
+        int allocationIterations,
+        TransportLoopbackOperation operation)
     {
         ValidateWorkloadArguments(warmupIterations, durationSeconds, allocationIterations);
 
@@ -99,6 +106,7 @@ internal static class TransportLoopbackBenchmark
                 warmupIterations,
                 durationSeconds,
                 allocationIterations,
+                operation,
                 outputPath);
             var standardOutput = process.StandardOutput.ReadToEndAsync();
             var standardError = process.StandardError.ReadToEndAsync();
@@ -134,7 +142,7 @@ internal static class TransportLoopbackBenchmark
 
     internal static int RunWorker(string[] args)
     {
-        if (args.Length != 8)
+        if (args.Length != 9)
         {
             throw new ArgumentException("Transport benchmark worker received an invalid argument set.");
         }
@@ -144,9 +152,10 @@ internal static class TransportLoopbackBenchmark
         var warmupIterations = int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
         var durationSeconds = double.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture);
         var allocationIterations = int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture);
-        var outputPath = args[6];
-        var expectedMarker = args[7];
-        if (expectedMarker != "nnrp-transport-worker-v1")
+        var operation = Enum.Parse<TransportLoopbackOperation>(args[6], ignoreCase: true);
+        var outputPath = args[7];
+        var expectedMarker = args[8];
+        if (expectedMarker != "nnrp-transport-worker-v2")
         {
             throw new ArgumentException("Transport benchmark worker marker is invalid.");
         }
@@ -159,7 +168,8 @@ internal static class TransportLoopbackBenchmark
             payload,
             warmupIterations,
             durationSeconds,
-            allocationIterations);
+            allocationIterations,
+            operation);
         File.WriteAllText(outputPath, JsonSerializer.Serialize(measurement));
         return 0;
     }
@@ -200,18 +210,25 @@ internal static class TransportLoopbackBenchmark
         byte[] payload,
         int warmupIterations,
         double durationSeconds,
-        int allocationIterations)
+        int allocationIterations,
+        TransportLoopbackOperation operation)
     {
         using var loopback = LoopbackSession.OpenAsync(transportId, artifactPath, payload)
             .GetAwaiter()
             .GetResult();
         var completedRoundTrips = 0;
+        Action roundTrip = operation switch
+        {
+            TransportLoopbackOperation.SubmitResult => loopback.SubmitResultRoundTrip,
+            TransportLoopbackOperation.RuntimeControl => loopback.RuntimeControlRoundTrip,
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
 
         try
         {
             for (var index = 0; index < warmupIterations; index += 1)
             {
-                loopback.RoundTrip();
+                roundTrip();
                 completedRoundTrips += 1;
             }
 
@@ -222,7 +239,7 @@ internal static class TransportLoopbackBenchmark
             while (Stopwatch.GetTimestamp() < deadline)
             {
                 var start = Stopwatch.GetTimestamp();
-                loopback.RoundTrip();
+                roundTrip();
                 completedRoundTrips += 1;
                 measuredRoundTrips += 1;
                 var latencyMicroseconds =
@@ -239,7 +256,7 @@ internal static class TransportLoopbackBenchmark
             var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
             for (var index = 0; index < allocationIterations; index += 1)
             {
-                loopback.RoundTrip();
+                roundTrip();
                 completedRoundTrips += 1;
             }
 
@@ -282,6 +299,7 @@ internal static class TransportLoopbackBenchmark
         int warmupIterations,
         double durationSeconds,
         int allocationIterations,
+        TransportLoopbackOperation operation,
         string outputPath)
     {
         var assemblyPath = typeof(TransportLoopbackBenchmark).Assembly.Location;
@@ -295,8 +313,9 @@ internal static class TransportLoopbackBenchmark
         startInfo.ArgumentList.Add(warmupIterations.ToString(System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(durationSeconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add(allocationIterations.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add(operation.ToString());
         startInfo.ArgumentList.Add(outputPath);
-        startInfo.ArgumentList.Add("nnrp-transport-worker-v1");
+        startInfo.ArgumentList.Add("nnrp-transport-worker-v2");
         startInfo.UseShellExecute = false;
         startInfo.CreateNoWindow = true;
         startInfo.RedirectStandardOutput = true;
@@ -324,6 +343,16 @@ internal static class TransportLoopbackBenchmark
         {
         }
     }
+
+    internal static ReadOnlyMemory<byte> RequireBodyTail(NnrpRuntimeEvent @event) =>
+        @event.Tail.Match(
+            static () => throw UnexpectedRuntimeControlTail(),
+            static value => value,
+            static _ => throw UnexpectedRuntimeControlTail(),
+            static (_, _) => throw UnexpectedRuntimeControlTail());
+
+    private static InvalidOperationException UnexpectedRuntimeControlTail() =>
+        new("Transport benchmark runtime-control event must carry a body tail.");
 
     private sealed class LoopbackSession : IDisposable
     {
@@ -449,9 +478,14 @@ internal static class TransportLoopbackBenchmark
             }
         }
 
-        internal void RoundTrip()
+        internal void SubmitResultRoundTrip()
         {
-            RoundTripAsync().GetAwaiter().GetResult();
+            SubmitResultRoundTripAsync().GetAwaiter().GetResult();
+        }
+
+        internal void RuntimeControlRoundTrip()
+        {
+            RuntimeControlRoundTripAsync().GetAwaiter().GetResult();
         }
 
         public void Dispose()
@@ -472,7 +506,7 @@ internal static class TransportLoopbackBenchmark
             }
         }
 
-        private async Task RoundTripAsync()
+        private async Task SubmitResultRoundTripAsync()
         {
             var operationId = nextOperationId++;
             var request = NnrpSubmitRequest.CreateToken(new NnrpTokenSubmitInput(
@@ -499,6 +533,42 @@ internal static class TransportLoopbackBenchmark
             if (result.OperationId != operationId || !resultBody.Span.SequenceEqual(body))
             {
                 throw new InvalidOperationException("Transport benchmark result payload mismatch.");
+            }
+        }
+
+        private async Task RuntimeControlRoundTripAsync()
+        {
+            var traceId = nextOperationId++;
+            var request = new TraceContextMetadata(
+                traceId,
+                traceId * 2,
+                0,
+                1,
+                0,
+                checked((uint)body.Length));
+            await clientSession.SendTraceContextAsync(request, body);
+            var received = await serverSession.NextEventAsync();
+            AssertTraceContext(received, request);
+
+            var response = new TraceContextMetadata(
+                traceId,
+                traceId * 2 + 1,
+                request.SpanId,
+                2,
+                0,
+                checked((uint)body.Length));
+            await serverSession.SendTraceContextAsync(response, body);
+            var returned = await clientSession.NextEventAsync();
+            AssertTraceContext(returned, response);
+        }
+
+        private void AssertTraceContext(NnrpRuntimeEvent @event, TraceContextMetadata expected)
+        {
+            if (@event.Header.MessageType != MessageType.TraceContext
+                || @event.Metadata.Get<TraceContextMetadata>() != expected
+                || !RequireBodyTail(@event).Span.SequenceEqual(body))
+            {
+                throw new InvalidOperationException("Transport benchmark runtime-control round trip mismatch.");
             }
         }
 

@@ -1,0 +1,117 @@
+{
+  "protocol_version": "nnrp-1-preview4",
+  "implementation_name": "nnrp-cs",
+  "artifacts": {
+    "results_path": "artifacts/preview4-benchmark-results.json",
+    "evidence_dir": "artifacts/preview4-benchmark-evidence"
+  },
+  "scenarios": [
+    {
+      "id": "preview4.runtime_control.encode_decode",
+      "category": "latency",
+      "workload": {
+        "operation": "runtime_control_encode_decode",
+        "payload": "control_frame_metadata",
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "preview4.runtime_object.encode_decode",
+      "category": "latency",
+      "workload": {
+        "operation": "runtime_object_encode_decode",
+        "payload": "object_lifecycle_and_delta",
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "preview4.native.snapshot_copy.1024",
+      "category": "latency",
+      "workload": {
+        "operation": "payload_snapshot_copy",
+        "payload": "native_buffer_1024",
+        "payload_bytes": 1024,
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "preview4.native.borrowed_view.1024",
+      "category": "latency",
+      "workload": {
+        "operation": "borrowed_buffer_view",
+        "payload": "native_buffer_1024",
+        "payload_bytes": 1024,
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "preview4.native.runtime_control.ipc_roundtrip",
+      "category": "latency",
+      "workload": {
+        "operation": "native_runtime_control_roundtrip",
+        "transport": "ipc",
+        "payload": "trace_context_64b",
+        "payload_bytes": 64,
+        "duration_seconds": 3,
+        "warmup_iterations": 100,
+        "allocation_iterations": 100
+      }
+    },
+    {
+      "id": "preview4.transport.tcp.loopback.1024",
+      "category": "throughput",
+      "workload": {
+        "operation": "transport_loopback",
+        "transport": "tcp",
+        "payload": "request_result_1024",
+        "payload_bytes": 1024,
+        "duration_seconds": 3,
+        "warmup_iterations": 100,
+        "allocation_iterations": 100
+      }
+    },
+    {
+      "id": "preview4.transport.quic.loopback.1024",
+      "category": "throughput",
+      "workload": {
+        "operation": "transport_loopback",
+        "transport": "quic",
+        "payload": "request_result_1024",
+        "payload_bytes": 1024,
+        "duration_seconds": 3,
+        "warmup_iterations": 100,
+        "allocation_iterations": 100
+      }
+    },
+    {
+      "id": "preview4.transport.ipc.loopback.1024",
+      "category": "throughput",
+      "workload": {
+        "operation": "transport_loopback",
+        "transport": "ipc",
+        "payload": "request_result_1024",
+        "payload_bytes": 1024,
+        "duration_seconds": 3,
+        "warmup_iterations": 100,
+        "allocation_iterations": 100
+      }
+    },
+    {
+      "id": "preview4.transport.websocket.loopback.1024",
+      "category": "throughput",
+      "workload": {
+        "operation": "transport_loopback",
+        "transport": "websocket",
+        "payload": "request_result_1024",
+        "payload_bytes": 1024,
+        "duration_seconds": 3,
+        "warmup_iterations": 100,
+        "allocation_iterations": 100
+      }
+    }
+  ]
+}
