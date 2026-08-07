@@ -38,8 +38,8 @@
 - [x] Build and test managed assemblies before downloading release artifacts.
 - [x] Download and verify every transport/platform artifact.
 - [x] Pack NuGet and Unity distributions once from the verified artifact tree.
-- [ ] Publish NuGet packages with trusted publishing.
-- [ ] Publish the Unity package and GitHub release assets from the same commit.
+- [x] Configure and validate NuGet trusted publishing with an explicit API-token fallback.
+- [x] Gate the Unity package and GitHub release assets on the same validated commit and package tree.
 - [x] Create the repository tag only after package validation passes.
 - [x] Make reruns idempotent for already-published packages and existing tags.
 
@@ -71,14 +71,14 @@
 
 ## Documentation
 
-- [ ] Update the repository README for the Preview4 role-first package graph.
-- [ ] Update package READMEs for client, server, core, NativeBridge, and all four transports.
-- [ ] Update the English and Chinese C# SDK overview and quick start.
-- [ ] Document `NnrpClient` connection, session, control, object, cache, result, and shutdown workflows.
-- [ ] Document `NnrpServer` listen, accept, operation, event, result, and shutdown workflows.
-- [ ] Document provider registration, automatic selection, explicit selection, costs, limits, and diagnostics.
-- [ ] Document TCP, QUIC, IPC, and WebSocket endpoint and security rules.
-- [ ] Document runtime-frame encoding and WebSocket binary framing.
-- [ ] Document wire conformance commands and evidence outputs.
-- [ ] Verify every documented public symbol and signature against compiled reference assemblies.
-- [ ] Verify all internal links and English/Chinese navigation entries.
+- [x] Update the repository README for the Preview4 role-first package graph.
+- [x] Update package READMEs for client, server, core, NativeBridge, and all four transports.
+- [x] Update the English and Chinese C# SDK overview and quick start.
+- [x] Document `NnrpClient` connection, session, control, object, cache, result, and shutdown workflows.
+- [x] Document `NnrpServer` listen, accept, operation, event, result, and shutdown workflows.
+- [x] Document provider registration, automatic selection, explicit selection, costs, limits, and diagnostics.
+- [x] Document TCP, QUIC, IPC, and WebSocket endpoint and security rules.
+- [x] Document runtime-frame encoding and WebSocket binary framing.
+- [x] Document wire conformance commands and evidence outputs.
+- [x] Verify every documented public symbol and signature against compiled reference assemblies.
+- [x] Verify all internal links and English/Chinese navigation entries.

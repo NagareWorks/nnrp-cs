@@ -8,10 +8,10 @@ application endpoints remain `nnrp://` or `nnrps://`; the WebSocket locator is a
 package.
 
 ```powershell
-dotnet add package Nnrp.Transport.WebSocket --version <published-version>
+dotnet add package Nnrp.Transport.WebSocket --version 1.0.0-preview.4
 ```
 
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
-- https://nagareworks.github.io/nnrp-doc/
+- https://nagareworks.github.io/nnrp-doc/en/sdk/csharp/api/transport

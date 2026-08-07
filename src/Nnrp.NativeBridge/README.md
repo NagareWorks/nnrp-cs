@@ -33,7 +33,11 @@ using var host = NnrpNativeRuntimeSessionHost.Open(
 Most applications should use `Nnrp.Client` or `Nnrp.Server`; the low-level bridge surface exists for hosts that manage
 native role and session identities directly.
 
+```powershell
+dotnet add package Nnrp.NativeBridge --version 1.0.0-preview.4
+```
+
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
-- https://nagareworks.github.io/nnrp-doc/
+- https://nagareworks.github.io/nnrp-doc/en/sdk/csharp/api/runtime

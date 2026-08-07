@@ -7,7 +7,7 @@ probe operations through the packaged TCP native library and returns opaque carr
 the package adds real TCP behavior; it is not a configuration switch over an implementation hidden in another package.
 
 ```powershell
-dotnet add package Nnrp.Transport.Tcp --version <published-version>
+dotnet add package Nnrp.Transport.Tcp --version 1.0.0-preview.4
 ```
 
 Install TCP alone to use TCP without probing. Install multiple provider packages when Auto or Prefer policy should probe
@@ -16,4 +16,4 @@ and compare eligible carriers.
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
-- https://nagareworks.github.io/nnrp-doc/
+- https://nagareworks.github.io/nnrp-doc/en/sdk/csharp/api/transport

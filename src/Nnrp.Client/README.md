@@ -11,10 +11,10 @@ This package depends on `Nnrp.Core` and `Nnrp.NativeBridge`, but carries no nati
 Install:
 
 ```powershell
-dotnet add package Nnrp.Client --version <published-version>
+dotnet add package Nnrp.Client --version 1.0.0-preview.4
 ```
 
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
-- https://nagareworks.github.io/nnrp-doc/
+- https://nagareworks.github.io/nnrp-doc/en/sdk/csharp/api/client
