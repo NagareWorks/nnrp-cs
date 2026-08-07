@@ -27,7 +27,7 @@ Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-
 | `Nnrp.Client` | Production client connection, session, submit, control, object, cache, result, and event APIs. |
 | `Nnrp.Server` | Production multi-listener server, accepted session, operation, control, object, cache, and result APIs. |
 | `Nnrp.Transport.Tcp` | TCP native provider and transport-scoped artifacts. |
-| `Nnrp.Transport.Quic` | QUIC native transport entry surface. |
+| `Nnrp.Transport.Quic` | QUIC native provider and transport-scoped artifacts. |
 | `Nnrp.Transport.Ipc` | Unix-domain socket and Windows named-pipe native provider. |
 | `Nnrp.Transport.WebSocket` | WS/WSS native provider and binary runtime-frame codec. |
 
@@ -36,10 +36,14 @@ Full protocol and SDK documentation lives at https://nagareworks.github.io/nnrp-
 NuGet-style package publication is CI owned. Install one role package and every transport allowed by the deployment:
 
 ```powershell
-dotnet add package Nnrp.Client --version <published-version>
-dotnet add package Nnrp.Transport.Tcp --version <published-version>
-dotnet add package Nnrp.Transport.Quic --version <published-version>
+dotnet add package Nnrp.Client --version 1.0.0-preview.4
+dotnet add package Nnrp.Transport.Tcp --version 1.0.0-preview.4
+dotnet add package Nnrp.Transport.Quic --version 1.0.0-preview.4
 ```
+
+Install one transport package to select that provider directly. Install several only when the host
+should apply `TransportPolicy` filtering and probe the viable installed providers. Public endpoints
+remain `nnrp://` or `nnrps://`; IPC and WebSocket locators belong in provider routes.
 
 Unity package generation is also CI owned. The Unity package is expected to contain managed assemblies plus platform-specific native plugins under Unity importer-aware plugin paths.
 
@@ -94,6 +98,9 @@ dotnet format Nnrp.sln --verify-no-changes --no-restore
 ```
 
 CI enforces test coverage, package boundary checks, conformance adapter behavior, and packaging layout regressions.
+The exact Preview4 release gates, wire-conformance commands, evidence paths, and remaining Unity
+manual check are recorded in
+[doc/validation/preview4-release.md](./doc/validation/preview4-release.md).
 
 ## Contributors
 

@@ -7,7 +7,7 @@ Install this package for same-host communication over Unix domain sockets or Win
 package does not enable IPC behavior hidden in a role or common package.
 
 ```powershell
-dotnet add package Nnrp.Transport.Ipc --version <published-version>
+dotnet add package Nnrp.Transport.Ipc --version 1.0.0-preview.4
 ```
 
 Use `unix:///absolute/path.sock` on Unix hosts and `npipe://pipe-name` on Windows. Platform-incompatible endpoints are
@@ -16,4 +16,4 @@ rejected before native handles are created.
 Repository and full SDK documentation:
 
 - https://github.com/NagareWorks/nnrp-cs
-- https://nagareworks.github.io/nnrp-doc/
+- https://nagareworks.github.io/nnrp-doc/en/sdk/csharp/api/transport
