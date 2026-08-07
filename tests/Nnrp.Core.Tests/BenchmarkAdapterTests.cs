@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Nnrp.BenchmarkAdapter;
+using Nnrp.Core;
+using Nnrp.Runtime;
 using BenchmarkProgram = Nnrp.BenchmarkAdapter.Program;
 using Xunit;
 
@@ -45,6 +47,37 @@ namespace Nnrp.Core.Tests
                     allocationIterations: int.MaxValue));
         }
 
+        [Fact]
+        public void RuntimeControlBenchmarkRejectsNonBodyTails()
+        {
+            var body = new byte[] { 1, 2, 3 };
+            var trace = NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.TraceContext),
+                NnrpRuntimeControl.Encode(
+                    MessageType.TraceContext,
+                    new TraceContextMetadata(1, 2, 0, 1, 0, 3),
+                    body));
+            var diagnostic = NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.ResultDropReason),
+                NnrpRuntimeControl.Encode(
+                    MessageType.ResultDropReason,
+                    new ResultDropReasonMetadata(
+                        1,
+                        2,
+                        NnrpResultDropReasonCode.Backpressure,
+                        RuntimeRole.Server,
+                        0,
+                        3),
+                    body));
+
+            Assert.Equal(body, TransportLoopbackBenchmark.RequireBodyTail(trace).ToArray());
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                TransportLoopbackBenchmark.RequireBodyTail(diagnostic));
+            Assert.Equal(
+                "Transport benchmark runtime-control event must carry a body tail.",
+                error.Message);
+        }
+
         [Theory]
         [InlineData("-1", "1", "1", "warmupIterations")]
         [InlineData("0", "0", "1", "durationSeconds")]
@@ -65,8 +98,9 @@ namespace Nnrp.Core.Tests
                     warmupIterations,
                     durationSeconds,
                     allocationIterations,
+                    "SubmitResult",
                     "unused-output",
-                    "nnrp-transport-worker-v1",
+                    "nnrp-transport-worker-v2",
                 ]));
 
             Assert.Equal(expectedParameter, error.ParamName);
@@ -84,7 +118,7 @@ namespace Nnrp.Core.Tests
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("environment").GetProperty("os").GetString()));
 
             var results = root.GetProperty("results").EnumerateArray().ToArray();
-            Assert.Equal(16, results.Length);
+            Assert.Equal(17, results.Length);
 
             var headerResult = results.Single(result => result.GetProperty("id").GetString() == "l4.header.encode_decode.latency");
             Assert.Equal("measured", headerResult.GetProperty("outcome").GetString());
@@ -102,8 +136,9 @@ namespace Nnrp.Core.Tests
             AssertMeasuredWithAllocations(results, "l4.cache_reference.encode_decode.latency");
             AssertMeasured(results, "l4.metadata.submit_result.latency");
             AssertMeasured(results, "l4.typed_payload.tensor_pack_unpack.latency");
-            AssertMeasured(results, "l4.native.payload_snapshot_copy.latency");
+            AssertNativeSkipped(results, "l4.native.payload_snapshot_copy.latency");
             AssertNativeSkipped(results, "l4.native.borrowed_buffer_view.latency");
+            AssertNativeSkipped(results, "l4.native.runtime_control.roundtrip.latency");
             AssertNativeSkipped(results, "l4.runtime.probe.latency");
             AssertNativeSkipped(results, "l4.session.lifecycle.latency");
             AssertNativeSkipped(results, "l4.transport.tcp.loopback.throughput");
@@ -133,7 +168,7 @@ namespace Nnrp.Core.Tests
 
                 using var document = JsonDocument.Parse(File.ReadAllText(outputPath));
                 Assert.Equal("nnrp-1", document.RootElement.GetProperty("protocol_version").GetString());
-                Assert.Equal(16, document.RootElement.GetProperty("results").GetArrayLength());
+                Assert.Equal(17, document.RootElement.GetProperty("results").GetArrayLength());
             }
             finally
             {
@@ -331,6 +366,18 @@ namespace Nnrp.Core.Tests
                     "payload": "version_capability_query",
                     "iterations": 3,
                     "warmup_iterations": 1
+                  }
+                },
+                {
+                  "id": "l4.native.runtime_control.roundtrip.latency",
+                  "workload": {
+                    "operation": "native_runtime_control_roundtrip",
+                    "payload": "trace_context_64b",
+                    "transport": "ipc",
+                    "payload_bytes": 64,
+                    "duration_seconds": 0.01,
+                    "warmup_iterations": 1,
+                    "allocation_iterations": 1
                   }
                 },
                 {

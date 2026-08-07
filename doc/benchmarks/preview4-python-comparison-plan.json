@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NagareWorks/nnrp-conformance/main/schemas/benchmark-execution-plan.schema.json",
+  "protocol_version": "nnrp-1-preview4",
+  "suite_version": "python-csharp-comparison",
+  "implementation_name": "nnrp-py",
+  "artifacts": {
+    "results_path": "artifacts/python-comparison-results.json",
+    "evidence_dir": "artifacts/python-comparison-evidence"
+  },
+  "scenarios": [
+    {
+      "id": "comparison.native.object_metadata.copy.1024",
+      "category": "latency",
+      "feature": "benchmark.native.object_metadata.copy",
+      "required_capabilities": ["object.lifecycle"],
+      "workload": {
+        "operation": "native_object_metadata_copy_snapshot",
+        "payload": "object_metadata_copy",
+        "payload_bytes": 1024,
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "comparison.native.object_metadata.borrow.1024",
+      "category": "latency",
+      "feature": "benchmark.native.object_metadata.borrow",
+      "required_capabilities": ["object.lifecycle"],
+      "workload": {
+        "operation": "native_object_metadata_borrowed_view",
+        "payload": "object_metadata_borrow",
+        "payload_bytes": 1024,
+        "iterations": 100000,
+        "warmup_iterations": 10000
+      }
+    },
+    {
+      "id": "comparison.transport.ipc.loopback.1024",
+      "category": "throughput",
+      "feature": "benchmark.transport.ipc",
+      "required_capabilities": ["transport.ipc"],
+      "workload": {
+        "operation": "transport_loopback",
+        "payload": "request_result_1024",
+        "transport": "ipc",
+        "probe_payload_bytes": 1024,
+        "warmup_iterations": 100,
+        "duration_seconds": 3
+      }
+    },
+    {
+      "id": "comparison.transport.websocket.loopback.1024",
+      "category": "throughput",
+      "feature": "benchmark.transport.websocket",
+      "required_capabilities": ["transport.websocket"],
+      "workload": {
+        "operation": "transport_loopback",
+        "payload": "request_result_1024",
+        "transport": "websocket",
+        "probe_payload_bytes": 1024,
+        "warmup_iterations": 100,
+        "duration_seconds": 3
+      }
+    }
+  ]
+}
