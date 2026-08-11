@@ -3712,6 +3712,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeEvent
     {
+        private const uint OperationLifecycleEventKind = 14;
+
         public NnrpNativeRuntimeEvent(
             uint kind,
             NnrpFfiRuntimeFrameHeader header,
@@ -3779,6 +3781,30 @@ namespace Nnrp.NativeBridge
                     Header.VersionMajor,
                     Header.WireFormat),
                 Payload);
+        }
+
+        public NnrpOperationLifecycleEvent ToOperationLifecycleEvent()
+        {
+            Diagnostic.Status.ThrowIfError();
+            if (HasWireHeader || Kind != OperationLifecycleEventKind)
+            {
+                throw new InvalidOperationException(
+                    "Native operation-lifecycle events must be headerless and carry the frozen lifecycle kind.");
+            }
+
+            if (Diagnostic.RelatedOperationId == 0 || Payload.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    "Native operation-lifecycle events require a non-zero operation id and one state byte.");
+            }
+
+            var state = (NnrpOperationState)Payload[0];
+            if (!Enum.IsDefined(typeof(NnrpOperationState), state))
+            {
+                throw new InvalidOperationException("Native operation-lifecycle event carries an unknown state.");
+            }
+
+            return new NnrpOperationLifecycleEvent(Diagnostic.RelatedOperationId, state);
         }
 
         public static NnrpNativeRuntimeEvent FromFfi(
@@ -4300,6 +4326,22 @@ namespace Nnrp.NativeBridge
                 new NnrpServerSendResultRequest(operation.Handle.Handle, payload.BorrowView())).ThrowIfError();
         }
 
+        public void SendProgress(
+            NnrpNativeRuntimeOperation operation,
+            ProgressMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
+        {
+            SendOperationRuntimeFrame(operation, MessageType.Progress, metadata.OperationId, metadata, body);
+        }
+
+        public void SendPartialResult(
+            NnrpNativeRuntimeOperation operation,
+            PartialResultMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
+        {
+            SendOperationRuntimeFrame(operation, MessageType.PartialResult, metadata.OperationId, metadata, body);
+        }
+
         public void DropResult(
             NnrpNativeRuntimeOperation operation,
             ResultDropReasonMetadata metadata,
@@ -4342,16 +4384,6 @@ namespace Nnrp.NativeBridge
             Entrypoints.ServerSendFlowUpdate(new NnrpServerFlowUpdateRequest(Handle.Handle, frameId)).ThrowIfError();
         }
 
-        public void SendProgress(ProgressMetadata metadata, ReadOnlyMemory<byte> body = default)
-        {
-            SendRuntimeFrame(MessageType.Progress, metadata, body);
-        }
-
-        public void SendPartialResult(PartialResultMetadata metadata, ReadOnlyMemory<byte> body = default)
-        {
-            SendRuntimeFrame(MessageType.PartialResult, metadata, body);
-        }
-
         public void SendBackpressure(PressureMetadata metadata)
         {
             SendRuntimeFrame(MessageType.Backpressure, metadata, ReadOnlyMemory<byte>.Empty);
@@ -4360,13 +4392,6 @@ namespace Nnrp.NativeBridge
         public void SendCreditUpdate(PressureMetadata metadata)
         {
             SendRuntimeFrame(MessageType.CreditUpdate, metadata, ReadOnlyMemory<byte>.Empty);
-        }
-
-        public void SendResultDropReason(
-            ResultDropReasonMetadata metadata,
-            ReadOnlyMemory<byte> diagnostic = default)
-        {
-            SendRuntimeFrame(MessageType.ResultDropReason, metadata, diagnostic);
         }
 
         public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
@@ -4564,6 +4589,41 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             SendEncodedRuntimeFrame(messageType, NnrpRuntimeControl.Encode(messageType, metadata, tail.Span));
+        }
+
+        private void SendOperationRuntimeFrame(
+            NnrpNativeRuntimeOperation operation,
+            MessageType messageType,
+            ulong metadataOperationId,
+            IRuntimeControlMetadata metadata,
+            ReadOnlyMemory<byte> tail)
+        {
+            if (operation == null)
+            {
+                throw new ArgumentNullException(nameof(operation));
+            }
+
+            if (metadataOperationId != operation.OperationId)
+            {
+                throw new ArgumentException(
+                    "Operation-scoped runtime metadata does not match the native operation.",
+                    nameof(metadata));
+            }
+
+            EnsureOpen();
+            var payload = NnrpRuntimeControl.Encode(messageType, metadata, tail.Span);
+            NnrpNativeRuntimeSession.WithBorrowedView(
+                payload,
+                payloadView =>
+                {
+                    Entrypoints.RuntimeFrameSend(
+                        new NnrpRuntimeFrameSendRequest(
+                            operation.Handle.Handle,
+                            (uint)messageType,
+                            operation.FrameId,
+                            payloadView)).ThrowIfError();
+                    return true;
+                });
         }
 
         private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)

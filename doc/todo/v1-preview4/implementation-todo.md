@@ -10,6 +10,7 @@ Preview4 C# work adapts managed client/server/Unity surfaces to runtime control,
 - [x] [04 - Transport package integration](04-transport-package-integration.md)
 - [x] [05 - Wire conformance and validation](05-wire-conformance-and-validation.md)
 - [ ] [06 - Release packaging and docs](06-release-packaging-and-docs.md)
+- [x] [07 - SDK contract v15 role events](07-sdk-contract-v15-role-events.md)
 
 ## Frozen Delivery Rules
 

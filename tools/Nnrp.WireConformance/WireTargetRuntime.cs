@@ -239,8 +239,11 @@ internal sealed class NnrpWireTargetServerSession(NnrpServerSession session) : I
             await session.ReceiveSubmitAsync(cancellationToken).ConfigureAwait(false));
 
     public async ValueTask<WireTargetReceivedEvent> NextEventAsync(CancellationToken cancellationToken) =>
-        WireTargetReceivedEvent.FromRuntime(
-            await session.NextEventAsync(cancellationToken).ConfigureAwait(false));
+        (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+            _ => throw new InvalidOperationException("Wire target expected a non-submit server event."),
+            WireTargetReceivedEvent.FromRuntime,
+            _ => throw new InvalidOperationException(
+                "Wire target expected a runtime event but received an operation lifecycle event."));
 
     public ValueTask SendTraceContextAsync(
         TraceContextMetadata metadata,
@@ -292,8 +295,10 @@ internal sealed class NnrpWireTargetClientSession(NnrpClientSession session) : I
         session.SubmitNoWaitAsync(request, cancellationToken);
 
     public async ValueTask<WireTargetReceivedEvent> NextEventAsync(CancellationToken cancellationToken) =>
-        WireTargetReceivedEvent.FromRuntime(
-            await session.NextEventAsync(cancellationToken).ConfigureAwait(false));
+        (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+            WireTargetReceivedEvent.FromRuntime,
+            _ => throw new InvalidOperationException(
+                "Wire target expected a runtime event but received an operation lifecycle event."));
 
     public async ValueTask<WireTargetTerminalResult> NextResultAsync(CancellationToken cancellationToken)
     {

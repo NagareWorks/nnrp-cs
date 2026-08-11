@@ -81,6 +81,46 @@ namespace Nnrp.Server
             }
         }
 
+        public ValueTask SendProgressAsync(
+            ProgressMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureReplyAllowed(metadata.OperationId, nameof(metadata), cancellationToken);
+            session.SendProgress(operation, metadata, body);
+            return default;
+        }
+
+        public ValueTask SendPartialResultAsync(
+            PartialResultMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureReplyAllowed(metadata.OperationId, nameof(metadata), cancellationToken);
+            session.SendPartialResult(operation, metadata, body);
+            return default;
+        }
+
+        private void EnsureReplyAllowed(
+            ulong operationId,
+            string parameterName,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (operationId != OperationId)
+            {
+                throw new ArgumentException(
+                    "Reply operation id does not match the accepted operation.",
+                    parameterName);
+            }
+
+            if (Volatile.Read(ref terminal) != 0)
+            {
+                throw new NnrpNativeInvalidStateException(
+                    new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Operation));
+            }
+        }
+
         private void BeginTerminal(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -152,7 +192,7 @@ namespace Nnrp.Server
             }
         }
 
-        public async ValueTask<NnrpRuntimeEvent> NextEventAsync(CancellationToken cancellationToken = default)
+        public async ValueTask<NnrpServerEvent> NextEventAsync(CancellationToken cancellationToken = default)
         {
             EnsureOpen();
             await consumeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -165,10 +205,12 @@ namespace Nnrp.Server
                         : await NextNativeEventAsync(cancellationToken).ConfigureAwait(false);
                     if (nativeEvent.HasWireHeader)
                     {
-                        return nativeEvent.ToRuntimeEvent();
+                        return IsSubmit(nativeEvent)
+                            ? NnrpServerEvent.FromSubmit(CreateOperation(nativeEvent))
+                            : NnrpServerEvent.FromRuntime(nativeEvent.ToRuntimeEvent());
                     }
 
-                    nativeEvent.Diagnostic.Status.ThrowIfError();
+                    return NnrpServerEvent.FromLifecycle(nativeEvent.ToOperationLifecycleEvent());
                 }
             }
             finally
@@ -177,20 +219,11 @@ namespace Nnrp.Server
             }
         }
 
-        public ValueTask SendProgressAsync(ProgressMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.SendProgress(metadata, body));
-
-        public ValueTask SendPartialResultAsync(PartialResultMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.SendPartialResult(metadata, body));
-
         public ValueTask SendBackpressureAsync(PressureMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendBackpressure(metadata));
 
         public ValueTask SendCreditUpdateAsync(PressureMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendCreditUpdate(metadata));
-
-        public ValueTask SendResultDropReasonAsync(ResultDropReasonMetadata metadata, ReadOnlyMemory<byte> diagnostic = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.SendResultDropReason(metadata, diagnostic));
 
         public ValueTask SendTraceContextAsync(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendTraceContext(metadata, body));
@@ -209,11 +242,8 @@ namespace Nnrp.Server
         {
             return messageType switch
             {
-                MessageType.Progress when metadata is ProgressMetadata value => SendProgressAsync(value, tail, cancellationToken),
-                MessageType.PartialResult when metadata is PartialResultMetadata value => SendPartialResultAsync(value, tail, cancellationToken),
                 MessageType.Backpressure when metadata is PressureMetadata value => SendBackpressureAsync(value, cancellationToken),
                 MessageType.CreditUpdate when metadata is PressureMetadata value => SendCreditUpdateAsync(value, cancellationToken),
-                MessageType.ResultDropReason when metadata is ResultDropReasonMetadata value => SendResultDropReasonAsync(value, tail, cancellationToken),
                 MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(value, tail, cancellationToken),
                 MessageType.ErrorRecoverable when metadata is RecoverableErrorMetadata value => SendRecoverableErrorAsync(value, tail, cancellationToken),
                 MessageType.RetryAfter when metadata is RetryAfterMetadata value => SendRetryAfterAsync(value, tail, cancellationToken),

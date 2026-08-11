@@ -3865,14 +3865,21 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
                 new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)),
                 TransportId.Tcp);
+            var operation = new NnrpNativeRuntimeOperation(
+                entrypoints,
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)),
+                new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)),
+                operationId: 20,
+                frameId: 91);
 
-            session.SendProgress(new ProgressMetadata(20, 1, 5, 2500, 0, 1), new byte[] { 1 });
-            session.SendPartialResult(new PartialResultMetadata(20, 2, 0, 0, 2, 1), new byte[] { 2, 3 });
-            session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
-            session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
-            session.SendResultDropReason(
+            session.SendProgress(operation, new ProgressMetadata(20, 1, 5, 2500, 0, 1), new byte[] { 1 });
+            session.SendPartialResult(operation, new PartialResultMetadata(20, 2, 0, 0, 2, 1), new byte[] { 2, 3 });
+            session.DropResult(
+                operation,
                 new ResultDropReasonMetadata(20, 3, NnrpResultDropReasonCode.Backpressure, RuntimeRole.Server, 3, 1),
                 new byte[] { 4 });
+            session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
+            session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
             session.SendRecoverableError(
                 new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 1, 4, 5, 6, 7, 1),
                 new byte[] { 5 });
@@ -3885,18 +3892,30 @@ namespace Nnrp.NativeBridge.Tests
                 {
                     MessageType.Progress,
                     MessageType.PartialResult,
+                    MessageType.ResultDropReason,
                     MessageType.Backpressure,
                     MessageType.CreditUpdate,
-                    MessageType.ResultDropReason,
                     MessageType.ErrorRecoverable,
                     MessageType.RetryAfter,
                 },
                 sent.ConvertAll(item => (MessageType)item.Request.MessageType));
-            for (var index = 0; index < sent.Count; index++)
+            for (var index = 0; index < 3; index++)
             {
-                Assert.Equal((uint)(index + 1), sent[index].Request.FrameId);
+                Assert.Equal((ulong)3, sent[index].Request.Handle.Id);
+                Assert.Equal((uint)91, sent[index].Request.FrameId);
                 NnrpRuntimeControl.Decode((MessageType)sent[index].Request.MessageType, sent[index].Payload);
             }
+
+            for (var index = 3; index < sent.Count; index++)
+            {
+                Assert.Equal((uint)(index - 2), sent[index].Request.FrameId);
+                NnrpRuntimeControl.Decode((MessageType)sent[index].Request.MessageType, sent[index].Payload);
+            }
+
+            Assert.Throws<ArgumentNullException>(() =>
+                session.SendProgress(null!, new ProgressMetadata(20, 1, 5, 2500, 0, 1)));
+            Assert.Throws<ArgumentException>(() =>
+                session.SendPartialResult(operation, new PartialResultMetadata(21, 2, 0, 0, 0, 0)));
         }
 
         [Fact]

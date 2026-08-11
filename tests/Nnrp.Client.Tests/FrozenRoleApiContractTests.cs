@@ -41,7 +41,7 @@ namespace Nnrp.Client.Tests
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitAsync), typeof(ValueTask<NnrpResult>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitNoWaitAsync), typeof(ValueTask<ulong>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.NextResultAsync), typeof(ValueTask<NnrpResult>), false, typeof(CancellationToken));
-            AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.NextEventAsync), typeof(ValueTask<NnrpRuntimeEvent>), false, typeof(CancellationToken));
+            AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.NextEventAsync), typeof(ValueTask<NnrpClientEvent>), false, typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.GetRecoveryTicket), typeof(NnrpSessionRecoveryTicket), false);
 
             AssertTailMethod<ControlRequestMetadata>(nameof(NnrpClientSession.CancelAsync));
@@ -247,13 +247,10 @@ namespace Nnrp.Client.Tests
                 typeof(NnrpServerAcceptOptions),
                 typeof(CancellationToken));
             AssertMethod(typeof(NnrpServerSession), nameof(NnrpServerSession.ReceiveSubmitAsync), typeof(ValueTask<NnrpServerOperation>), false, typeof(CancellationToken));
-            AssertMethod(typeof(NnrpServerSession), nameof(NnrpServerSession.NextEventAsync), typeof(ValueTask<NnrpRuntimeEvent>), false, typeof(CancellationToken));
+            AssertMethod(typeof(NnrpServerSession), nameof(NnrpServerSession.NextEventAsync), typeof(ValueTask<NnrpServerEvent>), false, typeof(CancellationToken));
 
-            AssertServerTailMethod<ProgressMetadata>(nameof(NnrpServerSession.SendProgressAsync));
-            AssertServerTailMethod<PartialResultMetadata>(nameof(NnrpServerSession.SendPartialResultAsync));
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendBackpressureAsync));
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendCreditUpdateAsync));
-            AssertServerTailMethod<ResultDropReasonMetadata>(nameof(NnrpServerSession.SendResultDropReasonAsync));
             AssertServerTailMethod<TraceContextMetadata>(nameof(NnrpServerSession.SendTraceContextAsync));
             AssertServerTailMethod<RecoverableErrorMetadata>(nameof(NnrpServerSession.SendRecoverableErrorAsync));
             AssertServerTailMethod<RetryAfterMetadata>(nameof(NnrpServerSession.SendRetryAfterAsync));
@@ -270,6 +267,12 @@ namespace Nnrp.Client.Tests
             AssertServerObjectAndCacheMethods();
             AssertMethod(typeof(NnrpServerOperation), nameof(NnrpServerOperation.SendResultAsync), typeof(ValueTask), false, typeof(ResultPushMetadata), typeof(ReadOnlyMemory<byte>), typeof(CancellationToken));
             AssertMethod(typeof(NnrpServerOperation), nameof(NnrpServerOperation.SendResultDropAsync), typeof(ValueTask), false, typeof(ResultDropReasonMetadata), typeof(ReadOnlyMemory<byte>), typeof(CancellationToken));
+            AssertMethod(typeof(NnrpServerOperation), nameof(NnrpServerOperation.SendProgressAsync), typeof(ValueTask), false, typeof(ProgressMetadata), typeof(ReadOnlyMemory<byte>), typeof(CancellationToken));
+            AssertMethod(typeof(NnrpServerOperation), nameof(NnrpServerOperation.SendPartialResultAsync), typeof(ValueTask), false, typeof(PartialResultMetadata), typeof(ReadOnlyMemory<byte>), typeof(CancellationToken));
+            Assert.Null(typeof(NnrpServerSession).GetMethod("SendProgressAsync"));
+            Assert.Null(typeof(NnrpServerSession).GetMethod("SendPartialResultAsync"));
+            Assert.Null(typeof(NnrpServerSession).GetMethod("SendResultDropAsync"));
+            Assert.Null(typeof(NnrpServerSession).GetMethod("SendResultDropReasonAsync"));
         }
 
         [Fact]
@@ -298,6 +301,18 @@ namespace Nnrp.Client.Tests
                 typeof(NnrpOperationLifecycleEvent),
                 (nameof(NnrpOperationLifecycleEvent.OperationId), typeof(ulong)),
                 (nameof(NnrpOperationLifecycleEvent.State), typeof(NnrpOperationState)));
+            AssertProperties(
+                typeof(NnrpClientEvent),
+                (nameof(NnrpClientEvent.Kind), typeof(NnrpClientEventKind)));
+            AssertProperties(
+                typeof(NnrpServerEvent),
+                (nameof(NnrpServerEvent.Kind), typeof(NnrpServerEventKind)));
+            Assert.Single(
+                typeof(NnrpClientEvent).GetMethods(BindingFlags.Public | BindingFlags.Instance),
+                method => method.Name == nameof(NnrpClientEvent.Match));
+            Assert.Single(
+                typeof(NnrpServerEvent).GetMethods(BindingFlags.Public | BindingFlags.Instance),
+                method => method.Name == nameof(NnrpServerEvent.Match));
             Assert.Single(
                 typeof(NnrpRuntimeEventTail).GetMethods(BindingFlags.Public | BindingFlags.Instance),
                 method => method.Name == nameof(NnrpRuntimeEventTail.Match));

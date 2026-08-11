@@ -211,6 +211,20 @@ jobs:
           path: nnrp-conformance-action
           fetch-depth: 1
 
+      - name: Checkout frozen SDK API contract
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository_owner }}/nnrp-doc
+          ref: dcd36a73ef74f62a23575c1a06fe0eb9f3a0bcbb
+          path: nnrp-doc-contract
+          fetch-depth: 1
+
+      - name: Validate frozen SDK API contract
+        run: >-
+          python scripts/check_sdk_api_contract.py
+          --contract nnrp-doc-contract/docs/public/contracts/nnrp-1-preview4-sdk-api.json
+          --source-root .
+
       - name: Validate tracked UPM metadata
         shell: pwsh
         run: >-

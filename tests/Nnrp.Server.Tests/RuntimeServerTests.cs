@@ -54,7 +54,7 @@ namespace Nnrp.Server.Tests
             await using var session = await server.AcceptAsync(
                 new NnrpServerAcceptOptions(timeoutMilliseconds: 100));
             var operation = await session.ReceiveSubmitAsync();
-            var progress = await session.NextEventAsync();
+            var progress = RuntimeEventOf(await session.NextEventAsync());
 
             Assert.Equal(TransportId.Tcp, session.ActiveTransportId);
             Assert.Equal(NnrpProviderEndpoint.Parse("tcp://127.0.0.1:4100"), server.BoundProviderEndpoints[TransportId.Tcp]);
@@ -65,6 +65,52 @@ namespace Nnrp.Server.Tests
             Assert.Equal((ulong)401, operation.Metadata.OperationId);
             Assert.Empty(operation.Body.ToArray());
             Assert.Equal(MessageType.Progress, progress.Header.MessageType);
+        }
+
+        [Fact]
+        public async Task NextEventPreservesSubmitRuntimeAndLifecycleVariantsInOrder()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            var listener = new TestListener(CreateNativeSession(harness));
+            await using var server = new NnrpServer(
+                new NnrpServerOptions(NnrpEndpoint.Parse("nnrp://localhost/runtime/default")),
+                new NnrpServerTransportListenerSet(new[] { listener }));
+            await using var session = await server.AcceptAsync();
+            harness.QueueServerBatch(
+                harness.CreateEvent(MessageType.FrameSubmit, 45, 405, SubmitPayload(405)),
+                harness.CreateEvent(
+                    MessageType.Progress,
+                    46,
+                    405,
+                    NnrpRuntimeControl.Encode(
+                        MessageType.Progress,
+                        new ProgressMetadata(405, 1, 2, 3000, 0, 0))),
+                harness.CreateOperationLifecycleEvent(NnrpOperationState.Running, 405));
+
+            var submit = await session.NextEventAsync();
+            var runtime = await session.NextEventAsync();
+            var lifecycle = await session.NextEventAsync();
+
+            Assert.Equal(NnrpServerEventKind.Submit, submit.Kind);
+            Assert.Throws<ArgumentNullException>(() =>
+                submit.Match<ulong>(null!, _ => 0, _ => 0));
+            Assert.Throws<ArgumentNullException>(() =>
+                submit.Match<ulong>(_ => 0, null!, _ => 0));
+            Assert.Throws<ArgumentNullException>(() =>
+                submit.Match<ulong>(_ => 0, _ => 0, null!));
+            Assert.Equal(
+                (ulong)405,
+                submit.Match(
+                    operation => operation.OperationId,
+                    _ => throw new InvalidOperationException("Expected submit."),
+                    _ => throw new InvalidOperationException("Expected submit.")));
+            Assert.Equal(MessageType.Progress, RuntimeEventOf(runtime).Header.MessageType);
+            var projected = lifecycle.Match(
+                _ => throw new InvalidOperationException("Expected lifecycle."),
+                _ => throw new InvalidOperationException("Expected lifecycle."),
+                value => value);
+            Assert.Equal((ulong)405, projected.OperationId);
+            Assert.Equal(NnrpOperationState.Running, projected.State);
         }
 
         [Fact]
@@ -86,6 +132,8 @@ namespace Nnrp.Server.Tests
             await resultOperation.SendResultAsync(SuccessMetadata(), new byte[] { 9 });
             await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
                 await resultOperation.SendResultAsync(SuccessMetadata()));
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await resultOperation.SendProgressAsync(new ProgressMetadata(402, 1, 1, 5000, 0, 0)));
 
             harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 43, 403, SubmitPayload(403)));
             var dropOperation = await session.ReceiveSubmitAsync();
@@ -125,13 +173,15 @@ namespace Nnrp.Server.Tests
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
 
-            await session.SendProgressAsync(new ProgressMetadata(1, 2, 3, 4000, 4, 3), body);
-            await session.SendPartialResultAsync(new PartialResultMetadata(1, 2, 3, 4, 3, 0), body);
+            harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 44, 1, SubmitPayload(1)));
+            var operation = await session.ReceiveSubmitAsync();
+            await operation.SendProgressAsync(new ProgressMetadata(1, 2, 3, 4000, 4, 3), body);
+            await operation.SendPartialResultAsync(new PartialResultMetadata(1, 2, 3, 4, 3, 0), body);
+            var mismatch = await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await operation.SendProgressAsync(new ProgressMetadata(2, 2, 3, 4000, 4, 3), body));
+            Assert.Equal("metadata", mismatch.ParamName);
             await session.SendBackpressureAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendCreditUpdateAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
-            await session.SendResultDropReasonAsync(
-                new ResultDropReasonMetadata(1, 2, NnrpResultDropReasonCode.Backpressure, RuntimeRole.Server, 0, 2),
-                diagnostic);
             await session.SendTraceContextAsync(new TraceContextMetadata(1, 2, 3, 4, 0, 3), body);
             await session.SendRecoverableErrorAsync(
                 new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2),
@@ -139,10 +189,6 @@ namespace Nnrp.Server.Tests
             await session.SendRetryAfterAsync(
                 new RetryAfterMetadata(1, 2, 3, 4, 5, RuntimeRole.Server, 0, 2),
                 diagnostic);
-            await session.SendControlAsync(
-                MessageType.Progress,
-                new ProgressMetadata(1, 2, 3, 4000, 4, 3),
-                body);
 
             await session.DeclareObjectAsync(
                 new ObjectDescriptorMetadata(1, RuntimeObjectKind.Tensor, RuntimeRole.Server, RuntimeRole.Client, 2, 3, 4, MemoryLocationHint.HostMemory, OwnershipHint.TransferOnRef, 5, 3),
@@ -162,11 +208,9 @@ namespace Nnrp.Server.Tests
                     MessageType.PartialResult,
                     MessageType.Backpressure,
                     MessageType.CreditUpdate,
-                    MessageType.ResultDropReason,
                     MessageType.TraceContext,
                     MessageType.ErrorRecoverable,
                     MessageType.RetryAfter,
-                    MessageType.Progress,
                     MessageType.ObjectDeclare,
                     MessageType.ObjectRef,
                     MessageType.ObjectRelease,
@@ -177,8 +221,17 @@ namespace Nnrp.Server.Tests
                     MessageType.CacheInvalidate,
                 },
                 harness.RuntimeFrames.Select(frame => (MessageType)frame.Request.MessageType).ToArray());
+            Assert.All(
+                harness.RuntimeFrames.Take(2),
+                frame =>
+                {
+                    Assert.Equal((ulong)10_001, frame.Request.Handle.Id);
+                    Assert.Equal((uint)44, frame.Request.FrameId);
+                });
             Assert.Throws<ArgumentException>(() =>
                 session.SendControlAsync(MessageType.Cancel, new ProgressMetadata(1, 2, 3, 4, 5, 0)));
+            Assert.Throws<ArgumentException>(() =>
+                session.SendControlAsync(MessageType.Progress, new ProgressMetadata(1, 2, 3, 4, 5, 0)));
             Assert.Throws<ArgumentException>(() =>
                 session.PatchObjectAsync(
                     new ObjectDeltaMetadata(1, 2, 3, 4, 2, 0, 2),
@@ -202,16 +255,15 @@ namespace Nnrp.Server.Tests
             await using var session = await server.AcceptAsync();
             var tail = new byte[] { 1, 2 };
 
-            await session.SendControlAsync(MessageType.Progress, new ProgressMetadata(1, 2, 3, 4, 0, 2), tail);
-            await session.SendControlAsync(MessageType.PartialResult, new PartialResultMetadata(1, 2, 3, 4, 2, 0), tail);
             await session.SendControlAsync(MessageType.Backpressure, new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendControlAsync(MessageType.CreditUpdate, new PressureMetadata(1, 2, 3, 4, 5, 0));
-            await session.SendControlAsync(MessageType.ResultDropReason, new ResultDropReasonMetadata(1, 2, NnrpResultDropReasonCode.Backpressure, RuntimeRole.Server, 0, 2), tail);
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);
             await session.SendControlAsync(MessageType.ErrorRecoverable, new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2), tail);
             await session.SendControlAsync(MessageType.RetryAfter, new RetryAfterMetadata(1, 2, 3, 4, 5, RuntimeRole.Server, 0, 2), tail);
 
-            Assert.Equal(8, harness.RuntimeFrames.Count);
+            Assert.Equal(5, harness.RuntimeFrames.Count);
+            Assert.Throws<ArgumentException>(() =>
+                session.SendControlAsync(MessageType.Progress, new ProgressMetadata(1, 2, 3, 4, 0, 2), tail));
         }
 
         private static NnrpNativeRuntimeServerSession CreateNativeSession(RuntimeEntrypointHarness harness)
@@ -266,6 +318,14 @@ namespace Nnrp.Server.Tests
                 0,
                 0,
                 0);
+        }
+
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpServerEvent @event)
+        {
+            return @event.Match(
+                _ => throw new InvalidOperationException("Expected a server runtime event."),
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Expected a server runtime event."));
         }
 
         private sealed class TestListener : INnrpServerTransportListener

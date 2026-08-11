@@ -34,6 +34,74 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void OperationLifecycleEventsRequireTheFrozenHeaderlessShape()
+        {
+            var lifecycle = new NnrpNativeRuntimeEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, frameId: 0, present: 0),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                new[] { (byte)NnrpOperationState.Partial },
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 41, 0));
+
+            var projected = lifecycle.ToOperationLifecycleEvent();
+
+            Assert.Equal((ulong)41, projected.OperationId);
+            Assert.Equal(NnrpOperationState.Partial, projected.State);
+            Assert.Throws<InvalidOperationException>(() => new NnrpNativeRuntimeEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, frameId: 0, present: 0),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 41, 0))
+                .ToOperationLifecycleEvent());
+            Assert.Throws<InvalidOperationException>(() => new NnrpNativeRuntimeEvent(
+                1,
+                new NnrpFfiRuntimeFrameHeader((byte)MessageType.Progress, frameId: 1, present: 1),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                new[] { (byte)NnrpOperationState.Running },
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 41, 0))
+                .ToOperationLifecycleEvent());
+            Assert.Throws<InvalidOperationException>(() => new NnrpNativeRuntimeEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, frameId: 0, present: 0),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                new[] { byte.MaxValue },
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 41, 0))
+                .ToOperationLifecycleEvent());
+        }
+
+        [Fact]
+        public void OperationLifecycleEventsPreserveNativeErrorPrecedence()
+        {
+            var nativeError = new NnrpNativeRuntimeEvent(
+                kind: 0,
+                new NnrpFfiRuntimeFrameHeader((byte)MessageType.Progress, frameId: 1, present: 1),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(
+                    new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Operation),
+                    0,
+                    0,
+                    0,
+                    0));
+
+            var exception = Assert.Throws<NnrpNativeInvalidStateException>(
+                () => nativeError.ToOperationLifecycleEvent());
+
+            Assert.Equal(NnrpErrorFamily.Operation, exception.Status.ErrorFamily);
+        }
+
+        [Fact]
         public void WireEventsPreserveEveryRuntimeHeaderField()
         {
             var metadata = new ProgressMetadata(10, 11, 12, 5000, 0, 0);

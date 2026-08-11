@@ -141,7 +141,10 @@ internal sealed class WireHostRouteDriver
         {
             await using (session.ConfigureAwait(false))
             {
-                NnrpRuntimeEvent close = await session.NextEventAsync(cancellationToken).ConfigureAwait(false);
+                NnrpRuntimeEvent close = (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+                    _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a submit event."),
+                    runtime => runtime,
+                    _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a lifecycle event."));
                 if (close.Header.MessageType != MessageType.SessionClose)
                 {
                     throw new InvalidOperationException(
