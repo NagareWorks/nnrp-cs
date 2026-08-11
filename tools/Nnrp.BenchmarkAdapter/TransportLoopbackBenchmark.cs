@@ -547,7 +547,7 @@ internal static class TransportLoopbackBenchmark
                 0,
                 checked((uint)body.Length));
             await clientSession.SendTraceContextAsync(request, body);
-            var received = await serverSession.NextEventAsync();
+            var received = RuntimeEventOf(await serverSession.NextEventAsync());
             AssertTraceContext(received, request);
 
             var response = new TraceContextMetadata(
@@ -558,7 +558,7 @@ internal static class TransportLoopbackBenchmark
                 0,
                 checked((uint)body.Length));
             await serverSession.SendTraceContextAsync(response, body);
-            var returned = await clientSession.NextEventAsync();
+            var returned = RuntimeEventOf(await clientSession.NextEventAsync());
             AssertTraceContext(returned, response);
         }
 
@@ -572,6 +572,17 @@ internal static class TransportLoopbackBenchmark
             }
         }
 
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpClientEvent @event) =>
+            @event.Match(
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Transport benchmark expected a client runtime event."));
+
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpServerEvent @event) =>
+            @event.Match(
+                _ => throw new InvalidOperationException("Transport benchmark expected a server runtime event."),
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Transport benchmark expected a server runtime event."));
+
         private async Task CloseAsync()
         {
             Exception? firstError = null;
@@ -579,7 +590,7 @@ internal static class TransportLoopbackBenchmark
             {
                 using var closeTimeout = new CancellationTokenSource(CloseTimeout);
                 var closingClient = clientSession.DisposeAsync().AsTask();
-                var closeEvent = await serverSession.NextEventAsync(closeTimeout.Token);
+                var closeEvent = RuntimeEventOf(await serverSession.NextEventAsync(closeTimeout.Token));
                 if (closeEvent.Header.MessageType != MessageType.SessionClose)
                 {
                     throw new InvalidOperationException("Transport benchmark expected a SESSION_CLOSE event.");

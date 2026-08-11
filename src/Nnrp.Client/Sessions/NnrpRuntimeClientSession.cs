@@ -43,10 +43,13 @@ namespace Nnrp.Client
         private readonly object stateGate = new object();
         private readonly SemaphoreSlim consumeGate = new SemaphoreSlim(1, 1);
         private readonly Queue<NnrpNativeRuntimeEvent> deferredEvents = new Queue<NnrpNativeRuntimeEvent>();
+        private readonly Queue<NnrpNativeRuntimeEvent> deferredTerminalEvents = new Queue<NnrpNativeRuntimeEvent>();
         private readonly Queue<ulong> cancelledOperationOrder = new Queue<ulong>();
         private readonly HashSet<ulong> cancelledOperations = new HashSet<ulong>();
         private readonly NnrpClient client;
         private readonly NnrpNativeRuntimeSession session;
+        private bool hasControlSequence;
+        private ulong lastControlSequence;
 
         internal NnrpClientSession(
             NnrpClient client,
@@ -69,34 +72,42 @@ namespace Nnrp.Client
             CancellationToken cancellationToken = default)
         {
             var operationId = await SubmitNoWaitAsync(request, cancellationToken).ConfigureAwait(false);
-            await consumeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                while (true)
+                await consumeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
                 {
-                    if (TryTakeMatchingTerminal(operationId, out var deferred))
+                    while (true)
                     {
-                        return ToResult(deferred!);
-                    }
+                        if (TryTakeMatchingTerminal(operationId, out var deferred))
+                        {
+                            return ToResult(deferred!);
+                        }
 
-                    var nativeEvent = await client.NextNativeEventAsync(session, cancellationToken).ConfigureAwait(false);
-                    if (ShouldSuppress(nativeEvent))
-                    {
-                        continue;
-                    }
+                        var nativeEvent = await client.NextNativeEventAsync(session, cancellationToken).ConfigureAwait(false);
+                        if (ShouldSuppress(nativeEvent))
+                        {
+                            continue;
+                        }
 
-                    if (IsTerminalResult(nativeEvent)
-                        && MatchesOperation(nativeEvent, operationId))
-                    {
-                        return ToResult(nativeEvent);
-                    }
+                        if (IsTerminalResult(nativeEvent)
+                            && MatchesOperation(nativeEvent, operationId))
+                        {
+                            return ToResult(nativeEvent);
+                        }
 
-                    deferredEvents.Enqueue(nativeEvent);
+                        Defer(nativeEvent);
+                    }
+                }
+                finally
+                {
+                    consumeGate.Release();
                 }
             }
-            finally
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                consumeGate.Release();
+                CancelSubmittedWait(operationId, cancellationToken);
+                throw;
             }
         }
 
@@ -142,7 +153,7 @@ namespace Nnrp.Client
                         return ToResult(nativeEvent);
                     }
 
-                    deferredEvents.Enqueue(nativeEvent);
+                    Defer(nativeEvent);
                 }
             }
             finally
@@ -151,7 +162,7 @@ namespace Nnrp.Client
             }
         }
 
-        public async ValueTask<NnrpRuntimeEvent> NextEventAsync(CancellationToken cancellationToken = default)
+        public async ValueTask<NnrpClientEvent> NextEventAsync(CancellationToken cancellationToken = default)
         {
             EnsureOpen();
             await consumeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -167,12 +178,18 @@ namespace Nnrp.Client
                         continue;
                     }
 
-                    if (nativeEvent.HasWireHeader)
+                    if (IsTerminalResult(nativeEvent))
                     {
-                        return nativeEvent.ToRuntimeEvent();
+                        deferredTerminalEvents.Enqueue(nativeEvent);
+                        continue;
                     }
 
-                    nativeEvent.Diagnostic.Status.ThrowIfError();
+                    if (nativeEvent.HasWireHeader)
+                    {
+                        return NnrpClientEvent.FromRuntime(nativeEvent.ToRuntimeEvent());
+                    }
+
+                    return NnrpClientEvent.FromLifecycle(nativeEvent.ToOperationLifecycleEvent());
                 }
             }
             finally
@@ -182,22 +199,22 @@ namespace Nnrp.Client
         }
 
         public ValueTask CancelAsync(ControlRequestMetadata metadata, ReadOnlyMemory<byte> diagnostic = default, CancellationToken cancellationToken = default) =>
-            SendCancellation(metadata.OperationId, cancellationToken, () => session.CancelOperation(metadata, diagnostic));
+            SendCancellation(metadata.OperationId, metadata.ControlSequence, cancellationToken, () => session.CancelOperation(metadata, diagnostic));
 
         public ValueTask AbortAsync(ControlRequestMetadata metadata, ReadOnlyMemory<byte> diagnostic = default, CancellationToken cancellationToken = default) =>
-            SendCancellation(metadata.OperationId, cancellationToken, () => session.AbortOperation(metadata, diagnostic));
+            SendCancellation(metadata.OperationId, metadata.ControlSequence, cancellationToken, () => session.AbortOperation(metadata, diagnostic));
 
         public ValueTask UpdatePriorityAsync(SchedulingMetadata metadata, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.UpdatePriority(metadata));
+            SendControl(metadata.ControlSequence, cancellationToken, () => session.UpdatePriority(metadata));
 
         public ValueTask UpdateDeadlineAsync(SchedulingMetadata metadata, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.UpdateDeadline(metadata));
+            SendControl(metadata.ControlSequence, cancellationToken, () => session.UpdateDeadline(metadata));
 
         public ValueTask ExpireAtAsync(SchedulingMetadata metadata, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.ExpireAt(metadata));
+            SendControl(metadata.ControlSequence, cancellationToken, () => session.ExpireAt(metadata));
 
         public ValueTask SupersedeAsync(SupersedeMetadata metadata, ReadOnlyMemory<byte> diagnostic = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.Supersede(metadata, diagnostic));
+            SendControl(metadata.ControlSequence, cancellationToken, () => session.Supersede(metadata, diagnostic));
 
         public ValueTask UpdateBudgetAsync(BudgetMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.UpdateBudget(metadata));
@@ -281,6 +298,7 @@ namespace Nnrp.Client
 
             IsClosed = true;
             deferredEvents.Clear();
+            deferredTerminalEvents.Clear();
             lock (stateGate)
             {
                 cancelledOperations.Clear();
@@ -322,14 +340,82 @@ namespace Nnrp.Client
 
         private ValueTask SendCancellation(
             ulong operationId,
+            ulong controlSequence,
             CancellationToken cancellationToken,
             Action action)
         {
             EnsureOpen();
             cancellationToken.ThrowIfCancellationRequested();
+            ObserveControlSequence(controlSequence);
             action();
             RememberCancelledOperation(operationId);
             return default;
+        }
+
+        private ValueTask SendControl(
+            ulong controlSequence,
+            CancellationToken cancellationToken,
+            Action action)
+        {
+            EnsureOpen();
+            cancellationToken.ThrowIfCancellationRequested();
+            ObserveControlSequence(controlSequence);
+            action();
+            return default;
+        }
+
+        private void CancelSubmittedWait(ulong operationId, CancellationToken cancellationToken)
+        {
+            var metadata = new ControlRequestMetadata(
+                operationId,
+                NextControlSequence(),
+                0,
+                RuntimeRole.Client,
+                0,
+                0);
+            try
+            {
+                session.CancelOperation(metadata, ReadOnlyMemory<byte>.Empty);
+                RememberCancelledOperation(operationId);
+            }
+            catch (Exception error)
+            {
+                throw new OperationCanceledException(
+                    "The submit wait was cancelled after dispatch, but the protocol CANCEL frame could not be sent.",
+                    error,
+                    cancellationToken);
+            }
+        }
+
+        private void ObserveControlSequence(ulong controlSequence)
+        {
+            lock (stateGate)
+            {
+                if (hasControlSequence && controlSequence <= lastControlSequence)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        "metadata",
+                        "Control sequence must increase strictly within the sender.");
+                }
+
+                lastControlSequence = controlSequence;
+                hasControlSequence = true;
+            }
+        }
+
+        private ulong NextControlSequence()
+        {
+            lock (stateGate)
+            {
+                if (lastControlSequence == ulong.MaxValue)
+                {
+                    throw new InvalidOperationException("The sender control sequence is exhausted.");
+                }
+
+                lastControlSequence++;
+                hasControlSequence = true;
+                return lastControlSequence;
+            }
         }
 
         private static ReadOnlyMemory<byte> Join(ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second)
@@ -389,11 +475,24 @@ namespace Nnrp.Client
             ulong operationId,
             out NnrpNativeRuntimeEvent? matched)
         {
+            if (TryTakeMatchingTerminalFrom(deferredTerminalEvents, operationId, out matched))
+            {
+                return true;
+            }
+
+            return TryTakeMatchingTerminalFrom(deferredEvents, operationId, out matched);
+        }
+
+        private bool TryTakeMatchingTerminalFrom(
+            Queue<NnrpNativeRuntimeEvent> queue,
+            ulong operationId,
+            out NnrpNativeRuntimeEvent? matched)
+        {
             matched = null;
-            var count = deferredEvents.Count;
+            var count = queue.Count;
             for (var index = 0; index < count; index++)
             {
-                var candidate = deferredEvents.Dequeue();
+                var candidate = queue.Dequeue();
                 if (ShouldSuppress(candidate))
                 {
                     continue;
@@ -405,7 +504,7 @@ namespace Nnrp.Client
                     continue;
                 }
 
-                deferredEvents.Enqueue(candidate);
+                queue.Enqueue(candidate);
             }
 
             return matched != null;
@@ -413,11 +512,23 @@ namespace Nnrp.Client
 
         private bool TryTakeNextTerminal(out NnrpNativeRuntimeEvent? matched)
         {
+            if (TryTakeNextTerminalFrom(deferredTerminalEvents, out matched))
+            {
+                return true;
+            }
+
+            return TryTakeNextTerminalFrom(deferredEvents, out matched);
+        }
+
+        private bool TryTakeNextTerminalFrom(
+            Queue<NnrpNativeRuntimeEvent> queue,
+            out NnrpNativeRuntimeEvent? matched)
+        {
             matched = null;
-            var count = deferredEvents.Count;
+            var count = queue.Count;
             for (var index = 0; index < count; index++)
             {
-                var candidate = deferredEvents.Dequeue();
+                var candidate = queue.Dequeue();
                 if (ShouldSuppress(candidate))
                 {
                     continue;
@@ -429,10 +540,21 @@ namespace Nnrp.Client
                     continue;
                 }
 
-                deferredEvents.Enqueue(candidate);
+                queue.Enqueue(candidate);
             }
 
             return matched != null;
+        }
+
+        private void Defer(NnrpNativeRuntimeEvent @event)
+        {
+            if (IsTerminalResult(@event))
+            {
+                deferredTerminalEvents.Enqueue(@event);
+                return;
+            }
+
+            deferredEvents.Enqueue(@event);
         }
 
         private bool ShouldSuppress(NnrpNativeRuntimeEvent @event)

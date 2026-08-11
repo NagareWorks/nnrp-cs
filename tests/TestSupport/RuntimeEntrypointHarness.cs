@@ -109,9 +109,41 @@ namespace Nnrp.TestSupport
                 new NnrpFfiDiagnostic(status, relatedOperationId: operationId)));
         }
 
+        internal void QueueClientOperationLifecycleEvent(
+            NnrpOperationState state,
+            ulong operationId,
+            uint sessionId = 41)
+        {
+            clientEvents.Enqueue(CreateOperationLifecycleEvent(state, operationId, sessionId));
+        }
+
         internal void QueueServerBatch(params NnrpEvent[] events)
         {
             serverEventBatches.Enqueue(events ?? throw new ArgumentNullException(nameof(events)));
+        }
+
+        internal NnrpEvent CreateOperationLifecycleEvent(
+            NnrpOperationState state,
+            ulong operationId,
+            uint sessionId = 41)
+        {
+            if (operationId == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(operationId));
+            }
+
+            var payload = new[] { (byte)state };
+            var pin = GCHandle.Alloc(payload, GCHandleType.Pinned);
+            payloadPins.Add(pin);
+            return new NnrpEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, 0, present: 0),
+                new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                new NnrpHandle(NnrpHandleKind.Session, sessionId, 1),
+                new NnrpHandle(NnrpHandleKind.Operation, checked(operationId + 10_000), 1),
+                NnrpHandle.Invalid,
+                new NnrpBufferView(pin.AddrOfPinnedObject(), new UIntPtr(1)),
+                new NnrpFfiDiagnostic(NnrpFfiStatus.Ok, relatedOperationId: operationId));
         }
 
         internal NnrpEvent CreateEvent(

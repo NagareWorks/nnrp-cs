@@ -8,6 +8,28 @@ namespace Nnrp.Core.Tests
     public sealed class RuntimeEventTests
     {
         [Fact]
+        public void ClientEventIsAClosedRuntimeOrLifecycleUnion()
+        {
+            var runtime = NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.Progress),
+                NnrpRuntimeControl.Encode(
+                    MessageType.Progress,
+                    new ProgressMetadata(81, 1, 2, 3000, 0, 0)));
+            var lifecycle = new NnrpOperationLifecycleEvent(81, NnrpOperationState.Running);
+            var runtimeEvent = NnrpClientEvent.FromRuntime(runtime);
+            var lifecycleEvent = NnrpClientEvent.FromLifecycle(lifecycle);
+
+            Assert.Equal(NnrpClientEventKind.Runtime, runtimeEvent.Kind);
+            Assert.Same(runtime, runtimeEvent.Match(value => value, _ => null!));
+            Assert.Equal(NnrpClientEventKind.Lifecycle, lifecycleEvent.Kind);
+            Assert.Same(lifecycle, lifecycleEvent.Match(_ => null!, value => value));
+            Assert.Throws<ArgumentNullException>(() => NnrpClientEvent.FromRuntime(null!));
+            Assert.Throws<ArgumentNullException>(() => NnrpClientEvent.FromLifecycle(null!));
+            Assert.Throws<ArgumentNullException>(() => runtimeEvent.Match<NnrpRuntimeEvent>(null!, _ => null!));
+            Assert.Throws<ArgumentNullException>(() => runtimeEvent.Match<NnrpRuntimeEvent>(value => value, null!));
+        }
+
+        [Fact]
         public void DecodePreservesFullHeaderAndOwnsControlTail()
         {
             var metadata = new ProgressMetadata(81, 82, 5, 5000, 3, 3);

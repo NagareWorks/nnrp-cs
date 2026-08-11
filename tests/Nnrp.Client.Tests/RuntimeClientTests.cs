@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nnrp.Core;
@@ -131,7 +132,7 @@ namespace Nnrp.Client.Tests
 
             var result = await session.SubmitAsync(CreateSubmit(201, 11));
             var deferredResult = await session.NextResultAsync();
-            var deferredEvent = await session.NextEventAsync();
+            var deferredEvent = RuntimeEventOf(await session.NextEventAsync());
 
             Assert.Equal((ulong)201, result.OperationId);
             Assert.Equal(NnrpResultTerminalState.Success, result.TerminalState);
@@ -155,6 +156,75 @@ namespace Nnrp.Client.Tests
             Assert.Single(harness.SubmitRequests);
             Assert.Equal((ulong)201, harness.SubmitRequests[0].OperationId);
             Assert.Equal((uint)11, harness.SubmitRequests[0].FrameId);
+        }
+
+        [Fact]
+        public async Task SubmitCancellationAfterDispatchSendsCancelAndPreservesLifecycle()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            await session.UpdatePriorityAsync(new SchedulingMetadata(201, 7, 1, 0, 0, 0));
+            var sequenceError = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+                await session.UpdateDeadlineAsync(new SchedulingMetadata(201, 7, 0, 0, 1, 0)));
+            Assert.Equal("metadata", sequenceError.ParamName);
+            Assert.Single(harness.RuntimeFrames);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await session.SubmitAsync(CreateSubmit(201, 11), cancellation.Token));
+
+            Assert.Single(harness.SubmitRequests);
+            Assert.Equal(2, harness.RuntimeFrames.Count);
+            var cancel = Assert.Single(
+                harness.RuntimeFrames,
+                item => item.Request.MessageType == (uint)MessageType.Cancel);
+            var decoded = NnrpRuntimeControl.Decode(MessageType.Cancel, cancel.Payload);
+            Assert.Equal(
+                new ControlRequestMetadata(201, 8, 0, RuntimeRole.Client, 0, 0),
+                decoded.Metadata);
+
+            harness.QueueClientOperationLifecycleEvent(NnrpOperationState.Cancelled, 201);
+            var lifecycle = await session.NextEventAsync();
+            Assert.Equal(NnrpClientEventKind.Lifecycle, lifecycle.Kind);
+            var projected = lifecycle.Match(
+                _ => throw new InvalidOperationException("Expected a lifecycle event."),
+                value => value);
+            Assert.Equal((ulong)201, projected.OperationId);
+            Assert.Equal(NnrpOperationState.Cancelled, projected.State);
+        }
+
+        [Fact]
+        public async Task ImplicitCancelSequencePreventsTheNextExplicitControlFromRegressing()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await session.SubmitAsync(CreateSubmit(201, 11), cancellation.Token));
+
+            var sequenceError = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+                await session.UpdatePriorityAsync(new SchedulingMetadata(201, 1, 0, 0, 0, 0)));
+            Assert.Equal("metadata", sequenceError.ParamName);
+            Assert.Single(harness.RuntimeFrames);
+        }
+
+        [Fact]
+        public async Task SubmitCancellationBeforeDispatchEmitsNoFrames()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await session.SubmitAsync(CreateSubmit(201, 11), cancellation.Token));
+
+            Assert.Empty(harness.SubmitRequests);
+            Assert.Empty(harness.RuntimeFrames);
         }
 
         [Fact]
@@ -195,7 +265,7 @@ namespace Nnrp.Client.Tests
                 NnrpRuntimeControl.Encode(MessageType.ResultDropReason, drop, new byte[] { 3, 4 }));
 
             var result = await session.NextResultAsync();
-            var trace = await session.NextEventAsync();
+            var trace = RuntimeEventOf(await session.NextEventAsync());
 
             Assert.Equal(NnrpResultTerminalState.Dropped, result.TerminalState);
             var dropEvent = RuntimeEventOf(result);
@@ -203,6 +273,34 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 3, 4 }, DiagnosticOf(dropEvent).ToArray());
             Assert.Equal(MessageType.TraceContext, trace.Header.MessageType);
             Assert.Contains(harness.RuntimeFrames, frame => frame.Request.MessageType == (uint)MessageType.Cancel);
+        }
+
+        [Fact]
+        public async Task NextEventPreservesHeaderlessOperationLifecycleEvents()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            harness.QueueClientEvent(
+                MessageType.Progress,
+                31,
+                301,
+                NnrpRuntimeControl.Encode(
+                    MessageType.Progress,
+                    new ProgressMetadata(301, 1, 2, 3000, 0, 0)));
+            harness.QueueClientOperationLifecycleEvent(NnrpOperationState.Running, 301);
+
+            var runtime = await session.NextEventAsync();
+            var lifecycle = await session.NextEventAsync();
+
+            Assert.Equal(NnrpClientEventKind.Runtime, runtime.Kind);
+            Assert.Equal(MessageType.Progress, RuntimeEventOf(runtime).Header.MessageType);
+            Assert.Equal(NnrpClientEventKind.Lifecycle, lifecycle.Kind);
+            var projected = lifecycle.Match(
+                _ => throw new InvalidOperationException("Expected a lifecycle event."),
+                value => value);
+            Assert.Equal((ulong)301, projected.OperationId);
+            Assert.Equal(NnrpOperationState.Running, projected.State);
         }
 
         [Theory]
@@ -258,6 +356,58 @@ namespace Nnrp.Client.Tests
             var lifecycle = LifecycleEventOf(result);
             Assert.Equal((ulong)201, lifecycle.OperationId);
             Assert.Equal(operationState, lifecycle.State);
+        }
+
+        [Theory]
+        [InlineData(6u, NnrpResultTerminalState.Success)]
+        [InlineData(7u, NnrpResultTerminalState.Cancelled)]
+        [InlineData(10u, NnrpResultTerminalState.Error)]
+        public async Task NextEventDefersHeaderlessTerminalEvidenceForNextResult(
+            uint eventKind,
+            NnrpResultTerminalState terminalState)
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            harness.QueueClientLifecycleEvent(eventKind, 201);
+            harness.QueueClientEvent(
+                MessageType.Progress,
+                31,
+                202,
+                NnrpRuntimeControl.Encode(
+                    MessageType.Progress,
+                    new ProgressMetadata(202, 1, 2, 3000, 0, 0)));
+
+            var runtime = await session.NextEventAsync();
+            var result = await session.NextResultAsync();
+
+            Assert.Equal(NnrpClientEventKind.Runtime, runtime.Kind);
+            Assert.Equal(MessageType.Progress, RuntimeEventOf(runtime).Header.MessageType);
+            Assert.Equal((ulong)201, result.OperationId);
+            Assert.Equal(terminalState, result.TerminalState);
+        }
+
+        [Fact]
+        public async Task DisposeReleasesDeferredTerminalEvidence()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+            harness.QueueClientLifecycleEvent(6, 201);
+            harness.QueueClientEvent(
+                MessageType.Progress,
+                31,
+                202,
+                NnrpRuntimeControl.Encode(
+                    MessageType.Progress,
+                    new ProgressMetadata(202, 1, 2, 3000, 0, 0)));
+
+            await session.NextEventAsync();
+            Assert.Equal(1, DeferredTerminalEventCount(session));
+
+            await session.DisposeAsync();
+
+            Assert.Equal(0, DeferredTerminalEventCount(session));
         }
 
         [Fact]
@@ -349,7 +499,7 @@ namespace Nnrp.Client.Tests
             await session.UpdatePriorityAsync(new SchedulingMetadata(1, 2, 3, -1, 4, 0));
             await session.UpdateDeadlineAsync(new SchedulingMetadata(1, 3, 3, 0, 4, 0));
             await session.ExpireAtAsync(new SchedulingMetadata(1, 4, 3, 1, 4, 0));
-            await session.SupersedeAsync(new SupersedeMetadata(1, 5, 2, NnrpResultDropReasonCode.Superseded, 0, 2), diagnostic);
+            await session.SupersedeAsync(new SupersedeMetadata(1, 5, 5, NnrpResultDropReasonCode.Superseded, 0, 2), diagnostic);
             await session.UpdateBudgetAsync(new BudgetMetadata(1, 6, 7, 8, 9, 0));
             await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
             await session.DegradeProfileAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
@@ -424,7 +574,7 @@ namespace Nnrp.Client.Tests
             await session.SendControlAsync(MessageType.PriorityUpdate, new SchedulingMetadata(1, 3, 1, 1, 2, 0));
             await session.SendControlAsync(MessageType.Deadline, new SchedulingMetadata(1, 4, 1, 1, 2, 0));
             await session.SendControlAsync(MessageType.ExpireAt, new SchedulingMetadata(1, 5, 1, 1, 2, 0));
-            await session.SendControlAsync(MessageType.Supersede, new SupersedeMetadata(1, 6, 2, NnrpResultDropReasonCode.Superseded, 0, 2), tail);
+            await session.SendControlAsync(MessageType.Supersede, new SupersedeMetadata(1, 6, 6, NnrpResultDropReasonCode.Superseded, 0, 2), tail);
             await session.SendControlAsync(MessageType.BudgetUpdate, new BudgetMetadata(1, 7, 1, 2, 3, 0));
             await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
             await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
@@ -533,11 +683,31 @@ namespace Nnrp.Client.Tests
                 _ => throw new InvalidOperationException("Expected runtime terminal evidence."));
         }
 
+        private static NnrpRuntimeEvent RuntimeEventOf(NnrpClientEvent @event)
+        {
+            return @event.Match(
+                runtime => runtime,
+                _ => throw new InvalidOperationException("Expected a client runtime event."));
+        }
+
         private static NnrpOperationLifecycleEvent LifecycleEventOf(NnrpResult result)
         {
             return result.Event.Match(
                 _ => throw new InvalidOperationException("Expected lifecycle terminal evidence."),
                 lifecycle => lifecycle);
+        }
+
+        private static int DeferredTerminalEventCount(NnrpClientSession session)
+        {
+            var field = typeof(NnrpClientSession).GetField(
+                "deferredTerminalEvents",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var queue = field!.GetValue(session);
+            Assert.NotNull(queue);
+            var count = queue!.GetType().GetProperty("Count");
+            Assert.NotNull(count);
+            return Assert.IsType<int>(count!.GetValue(queue));
         }
 
         private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)

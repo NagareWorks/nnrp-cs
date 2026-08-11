@@ -35,24 +35,24 @@
   - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
 - [x] Add production result and event iteration.
   - [x] `NextResultAsync(CancellationToken)`.
-  - [x] `NextEventAsync(CancellationToken)` returning `NnrpRuntimeEvent` in wire order.
+  - [x] `NextEventAsync(CancellationToken)` returning the closed `NnrpClientEvent` runtime/lifecycle union in wire order.
   - [x] Suppress late `RESULT_PUSH` after cancel or abort reaches terminal state.
   - [x] Suppress late `PARTIAL_RESULT` after cancel or abort reaches terminal state.
   - [x] Keep `RESULT_DROP_REASON` observable after late-result suppression.
 
 ## Server Role Controls
 
-- [x] Add typed runtime-control sends to the production `NnrpServerSession` and `NnrpServerOperation`.
-  - [x] `SendProgressAsync(ProgressMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [x] `SendPartialResultAsync(PartialResultMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+- [x] Add typed runtime-control sends to the production role owners.
+  - [x] `NnrpServerOperation.SendProgressAsync(ProgressMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `NnrpServerOperation.SendPartialResultAsync(PartialResultMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendBackpressureAsync(PressureMetadata, CancellationToken)`.
   - [x] `SendCreditUpdateAsync(PressureMetadata, CancellationToken)`.
-  - [x] `SendResultDropReasonAsync(ResultDropReasonMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `NnrpServerOperation.SendResultDropAsync(ResultDropReasonMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendRecoverableErrorAsync(RecoverableErrorMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendRetryAfterAsync(RetryAfterMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
-- [x] Add `NextEventAsync(CancellationToken)` for incoming client controls.
+- [x] Add `NextEventAsync(CancellationToken)` returning the closed `NnrpServerEvent` submit/runtime/lifecycle union.
 - [x] Enforce one terminal result or drop send per `NnrpServerOperation`.
 
 ## Client And Server Object/Cache Methods
