@@ -2086,6 +2086,79 @@ namespace Nnrp.NativeBridge.Tests
             Assert.Equal(NnrpNativeOperationLifecycle.Cancelled, NnrpNativeRuntimeResult.FromEvent(dropEvent).State);
         }
 
+        [Theory]
+        [InlineData(NnrpOperationState.Completed)]
+        [InlineData(NnrpOperationState.Cancelled)]
+        [InlineData(NnrpOperationState.Superseded)]
+        [InlineData(NnrpOperationState.Failed)]
+        public void NativeRuntimeEventRecognizesEveryTerminalLifecycleState(NnrpOperationState state)
+        {
+            var @event = new NnrpNativeRuntimeEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, 0, present: 0),
+                new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
+                new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                new[] { (byte)state },
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 12, 41, 99, 7));
+
+            Assert.True(@event.IsTerminalClientOperationEvidence);
+        }
+
+        [Theory]
+        [InlineData(MessageType.Cancel)]
+        [InlineData(MessageType.Abort)]
+        [InlineData(MessageType.Supersede)]
+        [InlineData(MessageType.ResultPush)]
+        [InlineData(MessageType.ResultDrop)]
+        [InlineData(MessageType.ResultDropReason)]
+        public void NativeRuntimeEventRecognizesEveryTerminalWireMessage(MessageType messageType)
+        {
+            var @event = new NnrpNativeRuntimeEvent(
+                1,
+                new NnrpFfiRuntimeFrameHeader((byte)messageType, 7),
+                new NnrpHandle(NnrpHandleKind.Connection, 12, 2),
+                new NnrpHandle(NnrpHandleKind.Session, 41, 3),
+                new NnrpHandle(NnrpHandleKind.Operation, 99, 1),
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 12, 41, 99, 7));
+
+            Assert.True(@event.IsTerminalClientOperationEvidence);
+        }
+
+        [Fact]
+        public void NativeRuntimeEventRejectsNonTerminalOrUnscopedEvidence()
+        {
+            var progress = new NnrpNativeRuntimeEvent(
+                1,
+                new NnrpFfiRuntimeFrameHeader((byte)MessageType.Progress, 7),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 99, 0));
+            var unscoped = new NnrpNativeRuntimeEvent(
+                1,
+                new NnrpFfiRuntimeFrameHeader((byte)MessageType.ResultPush, 7),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 0, 0));
+            var malformedLifecycle = new NnrpNativeRuntimeEvent(
+                14,
+                new NnrpFfiRuntimeFrameHeader(0, 0, present: 0),
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                NnrpHandle.Invalid,
+                Array.Empty<byte>(),
+                new NnrpNativeRuntimeDiagnostic(NnrpFfiStatus.Ok, 0, 0, 99, 0));
+
+            Assert.False(progress.IsTerminalClientOperationEvidence);
+            Assert.False(unscoped.IsTerminalClientOperationEvidence);
+            Assert.False(malformedLifecycle.IsTerminalClientOperationEvidence);
+        }
+
         [Fact]
         public async Task NativeRuntimeAsyncSubmitCancelsNativeFrameWhenTokenIsCancelled()
         {
@@ -3821,7 +3894,7 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
-        public void ClientRuntimeControlsUseOneNativeFrameSendAndIncrementFrameIds()
+        public void ClientRuntimeControlsReuseTheSubmitFrameAndRetireOnTerminalControl()
         {
             var sent = new List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)>();
             var entrypoints = CreateEntrypoints(
@@ -3835,19 +3908,115 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
                 new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
 
-            session.CancelOperation(
-                new ControlRequestMetadata(10, 1, 1, RuntimeRole.Client, 1, 2),
-                new byte[] { 7, 8 });
+            session.SubmitOperation(10, SubmitHeader(91));
+            session.SubmitOperation(11, SubmitHeader(92));
             session.UpdatePriority(new SchedulingMetadata(10, 2, 3, -1, 0, 1));
+            session.UpdateDeadline(new SchedulingMetadata(10, 3, 3, 0, 0, 1));
+            session.ExpireAt(new SchedulingMetadata(10, 4, 3, 1, 0, 1));
             session.SendRouteHint(
-                new RouteHintMetadata(10, 4, 3, 2, 99, 1, 2),
+                new RouteHintMetadata(10, 5, 3, 2, 99, 1, 2),
                 new byte[] { 9 });
+            session.SendExecutionHint(new RouteHintMetadata(10, 6, 3, 2, 99, 0, 0));
+            session.SendTraceContext(new TraceContextMetadata(1, 2, 3, 4, 0, 0));
+            session.Supersede(new SupersedeMetadata(11, 10, 7, NnrpResultDropReasonCode.Superseded, 0, 0));
+            session.CancelOperation(
+                new ControlRequestMetadata(10, 8, 1, RuntimeRole.Client, 1, 2),
+                new byte[] { 7, 8 });
 
             Assert.Collection(
                 sent,
-                item => AssertRuntimeFrame(item, MessageType.Cancel, 1, typeof(ControlRequestMetadata), new byte[] { 7, 8 }),
-                item => AssertRuntimeFrame(item, MessageType.PriorityUpdate, 2, typeof(SchedulingMetadata), Array.Empty<byte>()),
-                item => AssertRuntimeFrame(item, MessageType.RouteHint, 3, typeof(RouteHintMetadata), new byte[] { 9 }));
+                item => AssertRuntimeFrame(item, MessageType.PriorityUpdate, 91, typeof(SchedulingMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.Deadline, 91, typeof(SchedulingMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.ExpireAt, 91, typeof(SchedulingMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.RouteHint, 91, typeof(RouteHintMetadata), new byte[] { 9 }),
+                item => AssertRuntimeFrame(item, MessageType.ExecutionHint, 91, typeof(RouteHintMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.TraceContext, 1, typeof(TraceContextMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.Supersede, 92, typeof(SupersedeMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.Cancel, 91, typeof(ControlRequestMetadata), new byte[] { 7, 8 }));
+            Assert.Throws<InvalidOperationException>(() =>
+                session.UpdatePriority(new SchedulingMetadata(10, 6, 3, -1, 0, 1)));
+        }
+
+        [Fact]
+        public void ClientSessionScopeUsesFrameZeroOnlyForTheFrozenWhitelist()
+        {
+            var sent = new List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)>();
+            var entrypoints = CreateEntrypoints(
+                request =>
+                {
+                    sent.Add((request, CopyBufferView(request.Payload)));
+                    return NnrpFfiStatus.Ok;
+                });
+            var session = new NnrpNativeRuntimeSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+
+            session.CancelOperation(new ControlRequestMetadata(0, 1, 0, RuntimeRole.Client, 0, 0));
+            session.AbortOperation(new ControlRequestMetadata(0, 2, 0, RuntimeRole.Client, 0, 0));
+            session.UpdateBudget(new BudgetMetadata(0, 1, 2, 3, 4, 0));
+            session.SendRuntimeObject(MessageType.ObjectRef, new ObjectReferenceMetadata(1, 0, 1, 0, 0, 0, 0));
+            session.SendRuntimeObject(
+                MessageType.ObjectRelease,
+                new ObjectReleaseMetadata(1, 0, ObjectReleaseReason.Completed, RuntimeRole.Client, 0, 0));
+
+            Assert.Equal(5, sent.Count);
+            Assert.All(sent, item => Assert.Equal((uint)0, item.Request.FrameId));
+            Assert.Throws<InvalidOperationException>(() =>
+                session.UpdatePriority(new SchedulingMetadata(0, 3, 0, 0, 0, 0)));
+            Assert.Throws<InvalidOperationException>(() =>
+                session.SendRouteHint(new RouteHintMetadata(0, 0, 0, 0, 0, 0, 0)));
+            Assert.Equal(5, sent.Count);
+        }
+
+        [Fact]
+        public void ClientTerminalEventAndFrameCancellationRetireSubmitBindings()
+        {
+            var pollCount = 0;
+            NnrpFfiStatus AwaitResult(
+                NnrpRoleEventPollRequest request,
+                IntPtr events,
+                UIntPtr eventCapacity,
+                out UIntPtr eventCount)
+            {
+                Assert.True(eventCapacity.ToUInt64() >= 1);
+                if (pollCount++ != 0)
+                {
+                    eventCount = UIntPtr.Zero;
+                    return new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock);
+                }
+
+                Marshal.StructureToPtr(
+                    new NnrpEvent(
+                        1,
+                        (uint)MessageType.ResultPush,
+                        new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                        request.Scope,
+                        new NnrpHandle(NnrpHandleKind.Operation, 10_020, 1),
+                        91,
+                        NnrpHandle.Invalid,
+                        NnrpBufferView.Empty,
+                        new NnrpFfiDiagnostic(NnrpFfiStatus.Ok, relatedOperationId: 20, relatedFrameId: 91)),
+                    events,
+                    false);
+                eventCount = new UIntPtr(1);
+                return NnrpFfiStatus.Ok;
+            }
+
+            var entrypoints = CreateEntrypoints(clientAwaitEvents: AwaitResult);
+            var session = new NnrpNativeRuntimeSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
+            session.SubmitOperation(20, SubmitHeader(91));
+            session.SubmitOperation(21, SubmitHeader(92));
+
+            Assert.Single(session.AwaitEvents());
+            Assert.Throws<InvalidOperationException>(() =>
+                session.UpdatePriority(new SchedulingMetadata(20, 1, 0, 0, 0, 0)));
+            session.Cancel(92);
+            Assert.Throws<InvalidOperationException>(() =>
+                session.UpdatePriority(new SchedulingMetadata(21, 2, 0, 0, 0, 0)));
         }
 
         [Fact]
@@ -3919,6 +4088,86 @@ namespace Nnrp.NativeBridge.Tests
         }
 
         [Fact]
+        public void ServerOperationBindingSurvivesCancelUntilTerminalResult()
+        {
+            var sent = new List<(NnrpRuntimeFrameSendRequest Request, byte[] Payload)>();
+            var sessionHandle = new NnrpHandle(NnrpHandleKind.Session, 2, 1);
+            var delivered = 0;
+
+            NnrpFfiStatus AwaitOperationEvent(
+                NnrpRoleEventPollRequest request,
+                IntPtr events,
+                UIntPtr eventCapacity,
+                out UIntPtr eventCount)
+            {
+                Assert.Equal(sessionHandle, request.Scope);
+                Assert.True(eventCapacity.ToUInt64() >= 1);
+                if (delivered >= 2)
+                {
+                    eventCount = UIntPtr.Zero;
+                    return new NnrpFfiStatus(NnrpFfiStatusCode.WouldBlock);
+                }
+
+                var messageType = delivered == 0 ? MessageType.FrameSubmit : MessageType.Cancel;
+                Marshal.StructureToPtr(
+                    new NnrpEvent(
+                        1,
+                        (uint)messageType,
+                        new NnrpHandle(NnrpHandleKind.Connection, 1, 1),
+                        sessionHandle,
+                        new NnrpHandle(NnrpHandleKind.Operation, 10_020, 1),
+                        91,
+                        NnrpHandle.Invalid,
+                        NnrpBufferView.Empty,
+                        new NnrpFfiDiagnostic(NnrpFfiStatus.Ok, relatedOperationId: 20, relatedFrameId: 91)),
+                    events,
+                    false);
+                delivered++;
+                eventCount = new UIntPtr(1);
+                return NnrpFfiStatus.Ok;
+            }
+
+            var entrypoints = CreateEntrypoints(
+                request =>
+                {
+                    sent.Add((request, CopyBufferView(request.Payload)));
+                    return NnrpFfiStatus.Ok;
+                },
+                serverAwaitEvents: AwaitOperationEvent);
+            var session = new NnrpNativeRuntimeServerSession(
+                entrypoints,
+                new NnrpConnectionHandle(new NnrpHandle(NnrpHandleKind.Connection, 1, 1)),
+                new NnrpSessionHandle(sessionHandle),
+                TransportId.Tcp);
+
+            Assert.Single(session.AwaitEvents());
+            Assert.Single(session.AwaitEvents());
+            session.SendRuntimeObject(
+                MessageType.ObjectRef,
+                new ObjectReferenceMetadata(1, 20, 1, 0, 0, 0, 0));
+            Assert.Equal((uint)91, Assert.Single(sent).Request.FrameId);
+            session.SendRuntimeObject(
+                MessageType.ObjectRelease,
+                new ObjectReleaseMetadata(1, 20, ObjectReleaseReason.Completed, RuntimeRole.Server, 0, 0));
+            session.SendRuntimeObject(
+                MessageType.ObjectRef,
+                new ObjectReferenceMetadata(2, 0, 1, 0, 0, 0, 0));
+            Assert.Equal(new uint[] { 91, 91, 0 }, sent.ConvertAll(item => item.Request.FrameId));
+
+            var operation = new NnrpNativeRuntimeOperation(
+                entrypoints,
+                new NnrpSessionHandle(sessionHandle),
+                new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Operation, 10_020, 1)),
+                operationId: 20,
+                frameId: 91);
+            session.SendResult(operation);
+            Assert.Throws<InvalidOperationException>(() =>
+                session.SendRuntimeObject(
+                    MessageType.ObjectRef,
+                    new ObjectReferenceMetadata(1, 20, 1, 0, 0, 0, 0)));
+        }
+
+        [Fact]
         public void RuntimeFrameSendFailurePreservesNativeStatus()
         {
             var entrypoints = CreateEntrypoints(
@@ -3929,7 +4178,7 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpSessionHandle(new NnrpHandle(NnrpHandleKind.Session, 2, 1)));
 
             var error = Assert.Throws<NnrpNativeInvalidStateException>(() =>
-                session.UpdateBudget(new BudgetMetadata(1, 2, 3, 4, 5, 1)));
+                session.UpdateBudget(new BudgetMetadata(0, 2, 3, 4, 5, 1)));
 
             Assert.Equal(NnrpErrorFamily.Session, error.Status.ErrorFamily);
             Assert.Equal(77u, error.Status.ProtocolErrorCode);

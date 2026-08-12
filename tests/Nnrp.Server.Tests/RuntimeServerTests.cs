@@ -134,6 +134,8 @@ namespace Nnrp.Server.Tests
                 await resultOperation.SendResultAsync(SuccessMetadata()));
             await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
                 await resultOperation.SendProgressAsync(new ProgressMetadata(402, 1, 1, 5000, 0, 0)));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 402, 1, 0, 0, 0, 0)));
 
             harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 43, 403, SubmitPayload(403)));
             var dropOperation = await session.ReceiveSubmitAsync();
@@ -193,8 +195,8 @@ namespace Nnrp.Server.Tests
             await session.DeclareObjectAsync(
                 new ObjectDescriptorMetadata(1, RuntimeObjectKind.Tensor, RuntimeRole.Server, RuntimeRole.Client, 2, 3, 4, MemoryLocationHint.HostMemory, OwnershipHint.TransferOnRef, 5, 3),
                 body);
-            await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 2, 3, 4, 5, 0, 3), body);
-            await session.ReleaseObjectAsync(new ObjectReleaseMetadata(1, 2, ObjectReleaseReason.Completed, RuntimeRole.Server, 0, 2), diagnostic);
+            await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 1, 3, 4, 5, 0, 3), body);
+            await session.ReleaseObjectAsync(new ObjectReleaseMetadata(1, 1, ObjectReleaseReason.Completed, RuntimeRole.Server, 0, 2), diagnostic);
             await session.PatchObjectAsync(new ObjectDeltaMetadata(1, 2, 3, 4, 2, 0, 1), new byte[] { 8 }, new byte[] { 9, 10 });
             await session.SendObjectDeltaAsync(new ObjectDeltaMetadata(1, 3, 4, 5, 2, 0, 1), new byte[] { 8 }, new byte[] { 9, 10 });
             await session.ReferenceCacheAsync(new CacheReferenceMetadata(1, 2, 3, 4, CacheReuseScope.Session, 5, 6, 7, 3, 0), body);
@@ -222,12 +224,18 @@ namespace Nnrp.Server.Tests
                 },
                 harness.RuntimeFrames.Select(frame => (MessageType)frame.Request.MessageType).ToArray());
             Assert.All(
-                harness.RuntimeFrames.Take(2),
+                harness.RuntimeFrames.Where(frame =>
+                    frame.Request.MessageType == (uint)MessageType.Progress
+                    || frame.Request.MessageType == (uint)MessageType.PartialResult
+                    || frame.Request.MessageType == (uint)MessageType.ObjectRef
+                    || frame.Request.MessageType == (uint)MessageType.ObjectRelease),
                 frame =>
                 {
-                    Assert.Equal((ulong)10_001, frame.Request.Handle.Id);
                     Assert.Equal((uint)44, frame.Request.FrameId);
                 });
+            Assert.All(
+                harness.RuntimeFrames.Take(2),
+                frame => Assert.Equal((ulong)10_001, frame.Request.Handle.Id));
             Assert.Throws<ArgumentException>(() =>
                 session.SendControlAsync(MessageType.Cancel, new ProgressMetadata(1, 2, 3, 4, 5, 0)));
             Assert.Throws<ArgumentException>(() =>

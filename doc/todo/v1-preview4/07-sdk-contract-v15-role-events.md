@@ -33,6 +33,7 @@
 
 - [x] Move progress and partial-result replies onto `NnrpServerOperation`.
 - [x] Send operation-scoped frames through the native operation handle and submit frame identity.
+- [x] Bind every operation-scoped control, route, budget, and object message to its submit frame; restrict operation ID zero to frozen session-scoped messages, retire client bindings on terminal evidence, and retain server bindings until a terminal reply succeeds or the session closes.
 - [x] Reject reply metadata whose operation ID differs from the accepted operation.
 - [x] Reject non-terminal replies after a terminal reply has been accepted.
 - [x] Remove session-owned progress, partial-result, and result-drop reply paths.

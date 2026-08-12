@@ -3756,6 +3756,38 @@ namespace Nnrp.NativeBridge
 
         public NnrpNativeRuntimeDiagnostic Diagnostic { get; }
 
+        internal bool IsTerminalClientOperationEvidence
+        {
+            get
+            {
+                if (Diagnostic.RelatedOperationId == 0)
+                {
+                    return false;
+                }
+
+                if (!HasWireHeader)
+                {
+                    if (Kind != OperationLifecycleEventKind || Payload.Length != 1)
+                    {
+                        return false;
+                    }
+
+                    var state = (NnrpOperationState)Payload[0];
+                    return state == NnrpOperationState.Completed
+                        || state == NnrpOperationState.Cancelled
+                        || state == NnrpOperationState.Superseded
+                        || state == NnrpOperationState.Failed;
+                }
+
+                return MessageType == (uint)global::Nnrp.Core.MessageType.Cancel
+                    || MessageType == (uint)global::Nnrp.Core.MessageType.Abort
+                    || MessageType == (uint)global::Nnrp.Core.MessageType.Supersede
+                    || MessageType == (uint)global::Nnrp.Core.MessageType.ResultPush
+                    || MessageType == (uint)global::Nnrp.Core.MessageType.ResultDrop
+                    || MessageType == (uint)global::Nnrp.Core.MessageType.ResultDropReason;
+            }
+        }
+
         public NnrpRuntimeEvent ToRuntimeEvent()
         {
             if (!HasWireHeader)
@@ -4206,6 +4238,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeServerSession
     {
+        private readonly object operationGate = new object();
+        private readonly Dictionary<ulong, uint> operationFrames = new Dictionary<ulong, uint>();
         private uint nextRuntimeFrameId = 1;
 
         public NnrpNativeRuntimeServerSession(
@@ -4307,6 +4341,7 @@ namespace Nnrp.NativeBridge
                         new NnrpServerSendResultRequest(operation.Handle.Handle, payloadView)).ThrowIfError();
                     return true;
                 });
+            CompleteOperation(operation.OperationId);
         }
 
         public void SendResult(NnrpNativeRuntimeOperation operation, NnrpNativeBuffer payload)
@@ -4324,6 +4359,7 @@ namespace Nnrp.NativeBridge
             EnsureOpen();
             Entrypoints.ServerSendResult(
                 new NnrpServerSendResultRequest(operation.Handle.Handle, payload.BorrowView())).ThrowIfError();
+            CompleteOperation(operation.OperationId);
         }
 
         public void SendProgress(
@@ -4376,6 +4412,7 @@ namespace Nnrp.NativeBridge
                             payloadView)).ThrowIfError();
                     return true;
                 });
+            CompleteOperation(operation.OperationId);
         }
 
         public void SendFlowUpdate(uint frameId)
@@ -4405,7 +4442,10 @@ namespace Nnrp.NativeBridge
             ReadOnlyMemory<byte> tail = default)
         {
             EnsureOpen();
-            SendEncodedRuntimeFrame(messageType, NnrpRuntimeObject.Encode(messageType, metadata, tail.Span));
+            SendEncodedRuntimeFrame(
+                messageType,
+                NnrpRuntimeObject.Encode(messageType, metadata, tail.Span),
+                RuntimeOperationId(messageType, metadata));
         }
 
         public void SendCacheInvalidate(CacheInvalidateMetadata metadata)
@@ -4539,6 +4579,7 @@ namespace Nnrp.NativeBridge
                             IntPtr.Add(events, checked(index * eventSize)));
                         consumed = index + 1;
                         snapshots[index] = NnrpNativeRuntimeEvent.FromFfi(nativeEvent, Entrypoints);
+                        ObserveOperationEvent(snapshots[index]);
                     }
                 }
                 catch
@@ -4579,7 +4620,41 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             Entrypoints.ServerClose(Handle.Handle).ThrowIfError();
+            lock (operationGate)
+            {
+                operationFrames.Clear();
+            }
             IsClosed = true;
+        }
+
+        private void RememberOperationFrame(ulong operationId, uint frameId)
+        {
+            lock (operationGate)
+            {
+                operationFrames[operationId] = frameId;
+            }
+        }
+
+        private void CompleteOperation(ulong operationId)
+        {
+            lock (operationGate)
+            {
+                operationFrames.Remove(operationId);
+            }
+        }
+
+        private void ObserveOperationEvent(NnrpNativeRuntimeEvent @event)
+        {
+            var operationId = @event.Diagnostic.RelatedOperationId;
+            if (operationId == 0)
+            {
+                return;
+            }
+
+            if (@event.HasWireHeader && @event.MessageType == (uint)MessageType.FrameSubmit)
+            {
+                RememberOperationFrame(operationId, @event.FrameId);
+            }
         }
 
         private void SendRuntimeFrame(
@@ -4626,9 +4701,12 @@ namespace Nnrp.NativeBridge
                 });
         }
 
-        private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
+        private void SendEncodedRuntimeFrame(
+            MessageType messageType,
+            ReadOnlyMemory<byte> payload,
+            ulong? operationId = null)
         {
-            var frameId = nextRuntimeFrameId;
+            var frameId = ResolveRuntimeFrameId(messageType, operationId);
             NnrpNativeRuntimeSession.WithBorrowedView(
                 payload,
                 payloadView =>
@@ -4641,7 +4719,44 @@ namespace Nnrp.NativeBridge
                             payloadView)).ThrowIfError();
                     return true;
                 });
-            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+            if (!operationId.HasValue)
+            {
+                nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+            }
+        }
+
+        private uint ResolveRuntimeFrameId(MessageType messageType, ulong? operationId)
+        {
+            if (!operationId.HasValue)
+            {
+                return nextRuntimeFrameId;
+            }
+
+            if (operationId.Value == 0)
+            {
+                return 0;
+            }
+
+            lock (operationGate)
+            {
+                if (operationFrames.TryGetValue(operationId.Value, out var frameId))
+                {
+                    return frameId;
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"{messageType} references inactive operation {operationId.Value}.");
+        }
+
+        private static ulong? RuntimeOperationId(MessageType messageType, IRuntimeObjectMetadata metadata)
+        {
+            return messageType switch
+            {
+                MessageType.ObjectRef when metadata is ObjectReferenceMetadata value => value.OperationId,
+                MessageType.ObjectRelease when metadata is ObjectReleaseMetadata value => value.OperationId,
+                _ => null,
+            };
         }
 
         private void EnsureOpen()
@@ -4973,6 +5088,8 @@ namespace Nnrp.NativeBridge
 
     public sealed class NnrpNativeRuntimeSession
     {
+        private readonly object operationGate = new object();
+        private readonly Dictionary<ulong, uint> operationFrames = new Dictionary<ulong, uint>();
         private uint nextRuntimeFrameId = 1;
 
         public NnrpNativeRuntimeSession(
@@ -5102,6 +5219,7 @@ namespace Nnrp.NativeBridge
                             payloadView),
                         out operation);
                     status.ThrowIfError();
+                    RememberOperationFrame(operationId, header.FrameId);
                     return new NnrpNativeRuntimeOperation(
                         Entrypoints,
                         Handle,
@@ -5140,6 +5258,7 @@ namespace Nnrp.NativeBridge
                     payload.BorrowView()),
                 out operation);
             status.ThrowIfError();
+            RememberOperationFrame(operationId, header.FrameId);
             return new NnrpNativeRuntimeOperation(
                 Entrypoints,
                 Handle,
@@ -5403,6 +5522,7 @@ namespace Nnrp.NativeBridge
                             IntPtr.Add(events, checked(index * eventSize)));
                         consumed = index + 1;
                         snapshots[index] = NnrpNativeRuntimeEvent.FromFfi(nativeEvent, Entrypoints);
+                        ObserveOperationEvent(snapshots[index]);
                     }
                 }
                 catch
@@ -5443,6 +5563,10 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             Entrypoints.ClientClose(Handle.Handle).ThrowIfError();
+            lock (operationGate)
+            {
+                operationFrames.Clear();
+            }
             IsClosed = true;
         }
 
@@ -5450,6 +5574,7 @@ namespace Nnrp.NativeBridge
         {
             EnsureOpen();
             Entrypoints.ClientCancel(new NnrpClientCancelRequest(Handle.Handle, frameId)).ThrowIfError();
+            ForgetOperationFrameByFrame(frameId);
         }
 
         public void CancelOperation(
@@ -5522,7 +5647,10 @@ namespace Nnrp.NativeBridge
             ReadOnlyMemory<byte> tail = default)
         {
             EnsureOpen();
-            SendEncodedRuntimeFrame(messageType, NnrpRuntimeObject.Encode(messageType, metadata, tail.Span));
+            SendEncodedRuntimeFrame(
+                messageType,
+                NnrpRuntimeObject.Encode(messageType, metadata, tail.Span),
+                RuntimeOperationId(messageType, metadata));
         }
 
         public void SendCacheInvalidate(CacheInvalidateMetadata metadata)
@@ -5615,12 +5743,27 @@ namespace Nnrp.NativeBridge
             ReadOnlyMemory<byte> tail)
         {
             EnsureOpen();
-            SendEncodedRuntimeFrame(messageType, NnrpRuntimeControl.Encode(messageType, metadata, tail.Span));
+            var operationId = RuntimeOperationId(messageType, metadata);
+            SendEncodedRuntimeFrame(
+                messageType,
+                NnrpRuntimeControl.Encode(messageType, metadata, tail.Span),
+                operationId);
+            if (operationId.HasValue
+                && operationId.Value != 0
+                && (messageType == MessageType.Cancel
+                    || messageType == MessageType.Abort
+                    || messageType == MessageType.Supersede))
+            {
+                ForgetOperationFrame(operationId.Value);
+            }
         }
 
-        private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
+        private void SendEncodedRuntimeFrame(
+            MessageType messageType,
+            ReadOnlyMemory<byte> payload,
+            ulong? operationId = null)
         {
-            var frameId = nextRuntimeFrameId;
+            var frameId = ResolveRuntimeFrameId(messageType, operationId);
             WithBorrowedView(
                 payload,
                 payloadView =>
@@ -5633,7 +5776,117 @@ namespace Nnrp.NativeBridge
                             payloadView)).ThrowIfError();
                     return true;
                 });
-            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+            if (!operationId.HasValue)
+            {
+                nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+            }
+        }
+
+        private uint ResolveRuntimeFrameId(MessageType messageType, ulong? operationId)
+        {
+            if (!operationId.HasValue)
+            {
+                return nextRuntimeFrameId;
+            }
+
+            if (operationId.Value == 0)
+            {
+                if (messageType != MessageType.Cancel
+                    && messageType != MessageType.Abort
+                    && messageType != MessageType.BudgetUpdate
+                    && messageType != MessageType.ObjectRef
+                    && messageType != MessageType.ObjectRelease)
+                {
+                    throw new InvalidOperationException(
+                        $"{messageType} requires an operation-scoped non-zero operation id.");
+                }
+
+                return 0;
+            }
+
+            lock (operationGate)
+            {
+                if (operationFrames.TryGetValue(operationId.Value, out var frameId))
+                {
+                    return frameId;
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"{messageType} references inactive operation {operationId.Value}.");
+        }
+
+        private void RememberOperationFrame(ulong operationId, uint frameId)
+        {
+            lock (operationGate)
+            {
+                operationFrames[operationId] = frameId;
+            }
+        }
+
+        private void ForgetOperationFrame(ulong operationId)
+        {
+            lock (operationGate)
+            {
+                operationFrames.Remove(operationId);
+            }
+        }
+
+        private void ForgetOperationFrameByFrame(uint frameId)
+        {
+            lock (operationGate)
+            {
+                ulong? found = null;
+                foreach (var pair in operationFrames)
+                {
+                    if (pair.Value == frameId)
+                    {
+                        found = pair.Key;
+                        break;
+                    }
+                }
+
+                if (found.HasValue)
+                {
+                    operationFrames.Remove(found.Value);
+                }
+            }
+        }
+
+        private void ObserveOperationEvent(NnrpNativeRuntimeEvent @event)
+        {
+            var operationId = @event.Diagnostic.RelatedOperationId;
+            if (@event.IsTerminalClientOperationEvidence)
+            {
+                ForgetOperationFrame(operationId);
+            }
+        }
+
+        private static ulong? RuntimeOperationId(MessageType messageType, IRuntimeControlMetadata metadata)
+        {
+            return messageType switch
+            {
+                MessageType.Cancel when metadata is ControlRequestMetadata value => value.OperationId,
+                MessageType.Abort when metadata is ControlRequestMetadata value => value.OperationId,
+                MessageType.PriorityUpdate when metadata is SchedulingMetadata value => value.OperationId,
+                MessageType.Deadline when metadata is SchedulingMetadata value => value.OperationId,
+                MessageType.ExpireAt when metadata is SchedulingMetadata value => value.OperationId,
+                MessageType.Supersede when metadata is SupersedeMetadata value => value.OldOperationId,
+                MessageType.BudgetUpdate when metadata is BudgetMetadata value => value.OperationId,
+                MessageType.RouteHint when metadata is RouteHintMetadata value => value.OperationId,
+                MessageType.ExecutionHint when metadata is RouteHintMetadata value => value.OperationId,
+                _ => null,
+            };
+        }
+
+        private static ulong? RuntimeOperationId(MessageType messageType, IRuntimeObjectMetadata metadata)
+        {
+            return messageType switch
+            {
+                MessageType.ObjectRef when metadata is ObjectReferenceMetadata value => value.OperationId,
+                MessageType.ObjectRelease when metadata is ObjectReleaseMetadata value => value.OperationId,
+                _ => null,
+            };
         }
 
         internal static void SendControl(

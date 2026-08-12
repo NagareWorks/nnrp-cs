@@ -79,6 +79,19 @@ internal static class TransportLoopbackBenchmark
     private const double MaximumWorkerIterationHeadroomSeconds = 300;
     private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
 
+    internal static bool TryGetRuntimeEvent(
+        NnrpServerEvent @event,
+        out NnrpRuntimeEvent? runtimeEvent)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+        runtimeEvent = @event.Match<NnrpRuntimeEvent?>(
+            _ => throw new InvalidOperationException(
+                "Transport benchmark received an unexpected operation submit while closing."),
+            runtime => runtime,
+            _ => null);
+        return runtimeEvent != null;
+    }
+
     internal static TransportLoopbackMeasurement Run(
         TransportId transportId,
         string artifactPath,
@@ -590,7 +603,14 @@ internal static class TransportLoopbackBenchmark
             {
                 using var closeTimeout = new CancellationTokenSource(CloseTimeout);
                 var closingClient = clientSession.DisposeAsync().AsTask();
-                var closeEvent = RuntimeEventOf(await serverSession.NextEventAsync(closeTimeout.Token));
+                NnrpRuntimeEvent? closeEvent;
+                do
+                {
+                    var serverEvent = await serverSession.NextEventAsync(closeTimeout.Token);
+                    TransportLoopbackBenchmark.TryGetRuntimeEvent(serverEvent, out closeEvent);
+                }
+                while (closeEvent == null);
+
                 if (closeEvent.Header.MessageType != MessageType.SessionClose)
                 {
                     throw new InvalidOperationException("Transport benchmark expected a SESSION_CLOSE event.");

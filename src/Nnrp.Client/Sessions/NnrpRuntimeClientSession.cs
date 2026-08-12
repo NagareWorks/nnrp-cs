@@ -346,8 +346,7 @@ namespace Nnrp.Client
         {
             EnsureOpen();
             cancellationToken.ThrowIfCancellationRequested();
-            ObserveControlSequence(controlSequence);
-            action();
+            SendSequenced(controlSequence, action);
             RememberCancelledOperation(operationId);
             return default;
         }
@@ -359,9 +358,19 @@ namespace Nnrp.Client
         {
             EnsureOpen();
             cancellationToken.ThrowIfCancellationRequested();
-            ObserveControlSequence(controlSequence);
-            action();
+            SendSequenced(controlSequence, action);
             return default;
+        }
+
+        private void SendSequenced(ulong controlSequence, Action action)
+        {
+            lock (stateGate)
+            {
+                ValidateControlSequence(controlSequence);
+                action();
+                lastControlSequence = controlSequence;
+                hasControlSequence = true;
+            }
         }
 
         private void CancelSubmittedWait(ulong operationId, CancellationToken cancellationToken)
@@ -387,19 +396,13 @@ namespace Nnrp.Client
             }
         }
 
-        private void ObserveControlSequence(ulong controlSequence)
+        private void ValidateControlSequence(ulong controlSequence)
         {
-            lock (stateGate)
+            if (hasControlSequence && controlSequence <= lastControlSequence)
             {
-                if (hasControlSequence && controlSequence <= lastControlSequence)
-                {
-                    throw new ArgumentOutOfRangeException(
-                        "metadata",
-                        "Control sequence must increase strictly within the sender.");
-                }
-
-                lastControlSequence = controlSequence;
-                hasControlSequence = true;
+                throw new ArgumentOutOfRangeException(
+                    "metadata",
+                    "Control sequence must increase strictly within the sender.");
             }
         }
 

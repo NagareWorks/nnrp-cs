@@ -71,7 +71,17 @@ namespace Nnrp.Client.Tests
             async Task CloseRolesAsync()
             {
                 var closingClient = clientSession.DisposeAsync().AsTask();
-                var closingEvent = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+                NnrpRuntimeEvent? closingEvent = null;
+                while (closingEvent == null)
+                {
+                    var serverEvent = await serverSession.NextEventAsync(timeout.Token);
+                    closingEvent = serverEvent.Match<NnrpRuntimeEvent?>(
+                        _ => throw new InvalidOperationException(
+                            "Expected SESSION_CLOSE instead of another operation submit."),
+                        runtime => runtime,
+                        _ => null);
+                }
+
                 Assert.Equal(MessageType.SessionClose, closingEvent.Header.MessageType);
                 await serverSession.DisposeAsync();
                 await closingClient;
@@ -91,7 +101,7 @@ namespace Nnrp.Client.Tests
 
             var clientTrace = new TraceContextMetadata(701, 11, 12, 13, 0, 2);
             await clientSession.SendTraceContextAsync(clientTrace, new byte[] { 4, 5 }, timeout.Token);
-            var serverTrace = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverTrace = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.TraceContext, serverTrace.Header.MessageType);
             Assert.Equal(clientTrace, serverTrace.Metadata.Get<TraceContextMetadata>());
             Assert.Equal(new byte[] { 4, 5 }, BodyOf(serverTrace).ToArray());
@@ -101,14 +111,14 @@ namespace Nnrp.Client.Tests
                 clientCapability,
                 new byte[] { 20, 21, 22 },
                 timeout.Token);
-            var serverCapability = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverCapability = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.CapabilityNegotiation, serverCapability.Header.MessageType);
             Assert.Equal(clientCapability, serverCapability.Metadata.Get<CapabilityMetadata>());
             Assert.Equal(new byte[] { 20, 21, 22 }, BodyOf(serverCapability).ToArray());
 
             var clientRoute = new RouteHintMetadata(701, 13, 1, 2, 3, 2, 0);
             await clientSession.SendRouteHintAsync(clientRoute, new byte[] { 23, 24 }, timeout.Token);
-            var serverRoute = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverRoute = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.RouteHint, serverRoute.Header.MessageType);
             Assert.Equal(clientRoute, serverRoute.Metadata.Get<RouteHintMetadata>());
             Assert.Equal(new byte[] { 23, 24 }, BodyOf(serverRoute).ToArray());
@@ -126,7 +136,7 @@ namespace Nnrp.Client.Tests
                 4,
                 2);
             await clientSession.DeclareObjectAsync(clientObject, new byte[] { 6, 7 }, timeout.Token);
-            var serverObject = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverObject = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.ObjectDeclare, serverObject.Header.MessageType);
             Assert.Equal(clientObject, serverObject.Metadata.Get<ObjectDescriptorMetadata>());
 
@@ -142,7 +152,7 @@ namespace Nnrp.Client.Tests
                 2,
                 0);
             await clientSession.ReferenceCacheAsync(clientCache, new byte[] { 8, 9 }, timeout.Token);
-            var serverCache = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverCache = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.CacheReference, serverCache.Header.MessageType);
             Assert.Equal(clientCache, serverCache.Metadata.Get<CacheReferenceMetadata>());
 
@@ -152,7 +162,7 @@ namespace Nnrp.Client.Tests
                 new byte[] { 25, 26 },
                 new byte[] { 27, 28 },
                 timeout.Token);
-            var serverDelta = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverDelta = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.ObjectDelta, serverDelta.Header.MessageType);
             Assert.Equal(clientDelta, serverDelta.Metadata.Get<ObjectDeltaMetadata>());
             var serverDeltaParts = DeltaOf(serverDelta);
@@ -166,19 +176,19 @@ namespace Nnrp.Client.Tests
                 3,
                 4);
             await clientSession.InvalidateCacheAsync(clientInvalidate, timeout.Token);
-            var serverInvalidate = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverInvalidate = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.CacheInvalidate, serverInvalidate.Header.MessageType);
             Assert.Equal(clientInvalidate, serverInvalidate.Metadata.Get<CacheInvalidateMetadata>());
 
             var progress = new ProgressMetadata(701, 1, 2, 5000, 0, 2);
             await operation.SendProgressAsync(progress, new byte[] { 10, 11 }, timeout.Token);
-            var clientProgress = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientProgress = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.Progress, clientProgress.Header.MessageType);
             Assert.Equal(progress, clientProgress.Metadata.Get<ProgressMetadata>());
 
             var partial = new PartialResultMetadata(701, 2, 3, 4, 2, 0);
             await operation.SendPartialResultAsync(partial, new byte[] { 12, 13 }, timeout.Token);
-            var clientPartial = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientPartial = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.PartialResult, clientPartial.Header.MessageType);
             Assert.Equal(partial, clientPartial.Metadata.Get<PartialResultMetadata>());
 
@@ -187,7 +197,7 @@ namespace Nnrp.Client.Tests
                 serverTraceMetadata,
                 new byte[] { 29, 30 },
                 timeout.Token);
-            var clientTraceEvent = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientTraceEvent = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.TraceContext, clientTraceEvent.Header.MessageType);
             Assert.Equal(serverTraceMetadata, clientTraceEvent.Metadata.Get<TraceContextMetadata>());
             Assert.Equal(new byte[] { 29, 30 }, BodyOf(clientTraceEvent).ToArray());
@@ -207,7 +217,7 @@ namespace Nnrp.Client.Tests
                 recoverableError,
                 new byte[] { 31, 32 },
                 timeout.Token);
-            var clientError = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientError = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.ErrorRecoverable, clientError.Header.MessageType);
             Assert.Equal(recoverableError, clientError.Metadata.Get<RecoverableErrorMetadata>());
             Assert.Equal(new byte[] { 31, 32 }, DiagnosticOf(clientError).ToArray());
@@ -217,13 +227,13 @@ namespace Nnrp.Client.Tests
                 serverObjectReference,
                 new byte[] { 14, 15 },
                 timeout.Token);
-            var clientObjectReference = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientObjectReference = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.ObjectRef, clientObjectReference.Header.MessageType);
             Assert.Equal(serverObjectReference, clientObjectReference.Metadata.Get<ObjectReferenceMetadata>());
 
             var serverCacheMiss = new CacheMissMetadata(701, 81, 2, CacheMissReason.NotFound, 3, 2);
             await serverSession.ReportCacheMissAsync(serverCacheMiss, new byte[] { 16, 17 }, timeout.Token);
-            var clientCacheMiss = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientCacheMiss = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.CacheMiss, clientCacheMiss.Header.MessageType);
             Assert.Equal(serverCacheMiss, clientCacheMiss.Metadata.Get<CacheMissMetadata>());
 
@@ -233,7 +243,7 @@ namespace Nnrp.Client.Tests
                 new byte[] { 33 },
                 new byte[] { 34, 35 },
                 timeout.Token);
-            var clientDeltaEvent = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientDeltaEvent = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.ObjectPatch, clientDeltaEvent.Header.MessageType);
             Assert.Equal(serverDeltaMetadata, clientDeltaEvent.Metadata.Get<ObjectDeltaMetadata>());
             var clientDeltaParts = DeltaOf(clientDeltaEvent);
@@ -247,7 +257,7 @@ namespace Nnrp.Client.Tests
                 3,
                 5);
             await serverSession.InvalidateCacheAsync(serverInvalidateMetadata, timeout.Token);
-            var clientInvalidateEvent = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var clientInvalidateEvent = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal(MessageType.CacheInvalidate, clientInvalidateEvent.Header.MessageType);
             Assert.Equal(
                 serverInvalidateMetadata,
@@ -285,7 +295,7 @@ namespace Nnrp.Client.Tests
             var cancelledOperation = await receiveCancelledTask;
             var cancel = new ControlRequestMetadata(702, 31, 9, RuntimeRole.Client, 0, 2);
             await clientSession.CancelAsync(cancel, new byte[] { 38, 39 }, timeout.Token);
-            var serverCancel = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+            var serverCancel = await NextServerRuntimeEventAsync(serverSession, timeout.Token);
             Assert.Equal(MessageType.Cancel, serverCancel.Header.MessageType);
             Assert.Equal(cancel, serverCancel.Metadata.Get<ControlRequestMetadata>());
             Assert.Equal(new byte[] { 38, 39 }, DiagnosticOf(serverCancel).ToArray());
@@ -308,7 +318,7 @@ namespace Nnrp.Client.Tests
                 2);
             await cancelledOperation.SendResultDropAsync(drop, new byte[] { 43, 44 }, timeout.Token);
             var cancelledResult = await clientSession.NextResultAsync(timeout.Token);
-            var postCancellationTrace = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var postCancellationTrace = await NextClientRuntimeEventAsync(clientSession, timeout.Token);
             Assert.Equal((ulong)702, cancelledResult.OperationId);
             Assert.Equal(NnrpResultTerminalState.Dropped, cancelledResult.TerminalState);
             var cancelledEvent = RuntimeEventOf(cancelledResult);
@@ -367,12 +377,40 @@ namespace Nnrp.Client.Tests
                 _ => throw new InvalidOperationException("Expected a client runtime event."));
         }
 
-        private static NnrpRuntimeEvent RuntimeEventOf(NnrpServerEvent @event)
+        private static async ValueTask<NnrpRuntimeEvent> NextClientRuntimeEventAsync(
+            NnrpClientSession session,
+            CancellationToken cancellationToken)
         {
-            return @event.Match(
-                _ => throw new InvalidOperationException("Expected a server runtime event."),
-                runtime => runtime,
-                _ => throw new InvalidOperationException("Expected a server runtime event."));
+            while (true)
+            {
+                var @event = await session.NextEventAsync(cancellationToken);
+                var runtime = @event.Match<NnrpRuntimeEvent?>(
+                    value => value,
+                    _ => null);
+                if (runtime != null)
+                {
+                    return runtime;
+                }
+            }
+        }
+
+        private static async ValueTask<NnrpRuntimeEvent> NextServerRuntimeEventAsync(
+            NnrpServerSession session,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                var @event = await session.NextEventAsync(cancellationToken);
+                var runtime = @event.Match<NnrpRuntimeEvent?>(
+                    _ => throw new InvalidOperationException(
+                        "Expected a server runtime event instead of an operation submit."),
+                    value => value,
+                    _ => null);
+                if (runtime != null)
+                {
+                    return runtime;
+                }
+            }
         }
 
         private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)

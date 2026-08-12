@@ -164,24 +164,20 @@ namespace Nnrp.Client.Tests
             using var harness = new RuntimeEntrypointHarness();
             await using var client = CreateClient(harness);
             await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
-            await session.UpdatePriorityAsync(new SchedulingMetadata(201, 7, 1, 0, 0, 0));
-            var sequenceError = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-                await session.UpdateDeadlineAsync(new SchedulingMetadata(201, 7, 0, 0, 1, 0)));
-            Assert.Equal("metadata", sequenceError.ParamName);
-            Assert.Single(harness.RuntimeFrames);
             using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
                 await session.SubmitAsync(CreateSubmit(201, 11), cancellation.Token));
 
             Assert.Single(harness.SubmitRequests);
-            Assert.Equal(2, harness.RuntimeFrames.Count);
+            Assert.Single(harness.RuntimeFrames);
             var cancel = Assert.Single(
                 harness.RuntimeFrames,
                 item => item.Request.MessageType == (uint)MessageType.Cancel);
+            Assert.Equal((uint)11, cancel.Request.FrameId);
             var decoded = NnrpRuntimeControl.Decode(MessageType.Cancel, cancel.Payload);
             Assert.Equal(
-                new ControlRequestMetadata(201, 8, 0, RuntimeRole.Client, 0, 0),
+                new ControlRequestMetadata(201, 1, 0, RuntimeRole.Client, 0, 0),
                 decoded.Metadata);
 
             harness.QueueClientOperationLifecycleEvent(NnrpOperationState.Cancelled, 201);
@@ -208,6 +204,8 @@ namespace Nnrp.Client.Tests
             var sequenceError = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
                 await session.UpdatePriorityAsync(new SchedulingMetadata(201, 1, 0, 0, 0, 0)));
             Assert.Equal("metadata", sequenceError.ParamName);
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.UpdatePriorityAsync(new SchedulingMetadata(201, 2, 0, 0, 0, 0)));
             Assert.Single(harness.RuntimeFrames);
         }
 
@@ -234,6 +232,7 @@ namespace Nnrp.Client.Tests
             await using var client = CreateClient(harness);
             await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var cancel = new ControlRequestMetadata(301, 1, 2, RuntimeRole.Client, 0, 2);
+            await session.SubmitNoWaitAsync(CreateSubmit(301, 31));
             await session.CancelAsync(cancel, new byte[] { 1, 2 });
             harness.QueueClientEvent(MessageType.ResultPush, 31, 301, SuccessPayload());
             harness.QueueClientEvent(
@@ -272,7 +271,10 @@ namespace Nnrp.Client.Tests
             Assert.Equal(drop, dropEvent.Metadata.Get<ResultDropReasonMetadata>());
             Assert.Equal(new byte[] { 3, 4 }, DiagnosticOf(dropEvent).ToArray());
             Assert.Equal(MessageType.TraceContext, trace.Header.MessageType);
-            Assert.Contains(harness.RuntimeFrames, frame => frame.Request.MessageType == (uint)MessageType.Cancel);
+            var sentCancel = Assert.Single(
+                harness.RuntimeFrames,
+                frame => frame.Request.MessageType == (uint)MessageType.Cancel);
+            Assert.Equal((uint)31, sentCancel.Request.FrameId);
         }
 
         [Fact]
@@ -495,11 +497,13 @@ namespace Nnrp.Client.Tests
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
 
-            await session.AbortAsync(new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), diagnostic);
-            await session.UpdatePriorityAsync(new SchedulingMetadata(1, 2, 3, -1, 4, 0));
-            await session.UpdateDeadlineAsync(new SchedulingMetadata(1, 3, 3, 0, 4, 0));
-            await session.ExpireAtAsync(new SchedulingMetadata(1, 4, 3, 1, 4, 0));
-            await session.SupersedeAsync(new SupersedeMetadata(1, 5, 5, NnrpResultDropReasonCode.Superseded, 0, 2), diagnostic);
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.UpdatePriorityAsync(new SchedulingMetadata(1, 1, 3, -1, 4, 0)));
+            await session.SubmitNoWaitAsync(CreateSubmit(1, 77));
+            await session.SubmitNoWaitAsync(CreateSubmit(5, 78));
+            await session.UpdatePriorityAsync(new SchedulingMetadata(1, 1, 3, -1, 4, 0));
+            await session.UpdateDeadlineAsync(new SchedulingMetadata(1, 2, 3, 0, 4, 0));
+            await session.ExpireAtAsync(new SchedulingMetadata(1, 3, 3, 1, 4, 0));
             await session.UpdateBudgetAsync(new BudgetMetadata(1, 6, 7, 8, 9, 0));
             await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
             await session.DegradeProfileAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
@@ -508,28 +512,28 @@ namespace Nnrp.Client.Tests
             await session.SendTraceContextAsync(new TraceContextMetadata(1, 2, 3, 4, 0, 3), body);
             await session.SendControlAsync(
                 MessageType.PriorityUpdate,
-                new SchedulingMetadata(1, 7, 4, 1, 8, 0));
+                new SchedulingMetadata(1, 4, 4, 1, 8, 0));
 
             await session.DeclareObjectAsync(
                 new ObjectDescriptorMetadata(1, RuntimeObjectKind.Tensor, RuntimeRole.Client, RuntimeRole.Server, 2, 3, 4, MemoryLocationHint.HostMemory, OwnershipHint.TransferOnRef, 5, 3),
                 body);
-            await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 2, 3, 4, 5, 0, 3), body);
-            await session.ReleaseObjectAsync(new ObjectReleaseMetadata(1, 2, ObjectReleaseReason.Completed, RuntimeRole.Client, 0, 2), diagnostic);
+            await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 1, 3, 4, 5, 0, 3), body);
+            await session.ReleaseObjectAsync(new ObjectReleaseMetadata(1, 1, ObjectReleaseReason.Completed, RuntimeRole.Client, 0, 2), diagnostic);
             await session.PatchObjectAsync(new ObjectDeltaMetadata(1, 2, 3, 4, 2, 0, 1), new byte[] { 8 }, new byte[] { 9, 10 });
             await session.SendObjectDeltaAsync(new ObjectDeltaMetadata(1, 3, 4, 5, 2, 0, 1), new byte[] { 8 }, new byte[] { 9, 10 });
             await session.ReferenceCacheAsync(new CacheReferenceMetadata(1, 2, 3, 4, CacheReuseScope.Session, 5, 6, 7, 3, 0), body);
             await session.ReportCacheMissAsync(new CacheMissMetadata(1, 2, 3, CacheMissReason.NotFound, 4, 2), diagnostic);
             await session.InvalidateCacheAsync(new CacheInvalidateMetadata(CacheInvalidateScope.ObjectKey, 1, 2, 3, 4));
+            await session.AbortAsync(new ControlRequestMetadata(1, 5, 1, RuntimeRole.Client, 0, 2), diagnostic);
+            await session.SupersedeAsync(new SupersedeMetadata(5, 6, 6, NnrpResultDropReasonCode.Superseded, 0, 2), diagnostic);
 
             var messageTypes = harness.RuntimeFrames.Select(frame => (MessageType)frame.Request.MessageType).ToArray();
             Assert.Equal(
                 new[]
                 {
-                    MessageType.Abort,
                     MessageType.PriorityUpdate,
                     MessageType.Deadline,
                     MessageType.ExpireAt,
-                    MessageType.Supersede,
                     MessageType.BudgetUpdate,
                     MessageType.CapabilityNegotiation,
                     MessageType.DegradeProfile,
@@ -545,8 +549,27 @@ namespace Nnrp.Client.Tests
                     MessageType.CacheReference,
                     MessageType.CacheMiss,
                     MessageType.CacheInvalidate,
+                    MessageType.Abort,
+                    MessageType.Supersede,
                 },
                 messageTypes);
+            Assert.All(
+                harness.RuntimeFrames.Where(frame =>
+                    frame.Request.MessageType == (uint)MessageType.PriorityUpdate
+                    || frame.Request.MessageType == (uint)MessageType.Deadline
+                    || frame.Request.MessageType == (uint)MessageType.ExpireAt
+                    || frame.Request.MessageType == (uint)MessageType.BudgetUpdate
+                    || frame.Request.MessageType == (uint)MessageType.RouteHint
+                    || frame.Request.MessageType == (uint)MessageType.ExecutionHint
+                    || frame.Request.MessageType == (uint)MessageType.ObjectRef
+                    || frame.Request.MessageType == (uint)MessageType.ObjectRelease
+                    || frame.Request.MessageType == (uint)MessageType.Abort),
+                frame => Assert.Equal((uint)77, frame.Request.FrameId));
+            Assert.Equal(
+                (uint)78,
+                Assert.Single(
+                    harness.RuntimeFrames,
+                    frame => frame.Request.MessageType == (uint)MessageType.Supersede).Request.FrameId);
             Assert.Throws<ArgumentException>(() =>
                 session.SendControlAsync(MessageType.Progress, new SchedulingMetadata(1, 1, 1, 0, 0, 0)));
             Assert.Throws<ArgumentException>(() =>
@@ -562,6 +585,46 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
+        public async Task SessionScopedControlsUseFrameZeroAndOperationControlsRequireAnActiveSubmit()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+
+            await session.CancelAsync(new ControlRequestMetadata(0, 1, 0, RuntimeRole.Client, 0, 0));
+            await session.AbortAsync(new ControlRequestMetadata(0, 2, 0, RuntimeRole.Client, 0, 0));
+            await session.UpdateBudgetAsync(new BudgetMetadata(0, 1, 2, 3, 4, 0));
+            await session.ReferenceObjectAsync(new ObjectReferenceMetadata(1, 0, 1, 0, 0, 0, 0));
+            await session.ReleaseObjectAsync(
+                new ObjectReleaseMetadata(1, 0, ObjectReleaseReason.Completed, RuntimeRole.Client, 0, 0));
+
+            Assert.Equal(5, harness.RuntimeFrames.Count);
+            Assert.All(harness.RuntimeFrames, frame => Assert.Equal((uint)0, frame.Request.FrameId));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.UpdatePriorityAsync(new SchedulingMetadata(0, 3, 0, 0, 0, 0)));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.SendRouteHintAsync(new RouteHintMetadata(0, 0, 0, 0, 0, 0, 0)));
+            Assert.Equal(5, harness.RuntimeFrames.Count);
+        }
+
+        [Fact]
+        public async Task TerminalReceiveRetiresTheSubmitFrameBinding()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
+
+            await session.SubmitNoWaitAsync(CreateSubmit(901, 91));
+            harness.QueueClientEvent(MessageType.ResultPush, 91, 901, SuccessPayload());
+            var result = await session.NextResultAsync();
+
+            Assert.Equal((ulong)901, result.OperationId);
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await session.UpdatePriorityAsync(new SchedulingMetadata(901, 1, 0, 0, 0, 0)));
+            Assert.Empty(harness.RuntimeFrames);
+        }
+
+        [Fact]
         public async Task GenericClientControlDispatchCoversEveryFrozenSendableType()
         {
             using var harness = new RuntimeEntrypointHarness();
@@ -569,20 +632,32 @@ namespace Nnrp.Client.Tests
             await using var session = client.OpenSession(new NnrpClientSessionOptions(requestedSessionId: 41));
             var tail = new byte[] { 1, 2 };
 
-            await session.SendControlAsync(MessageType.Cancel, new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), tail);
-            await session.SendControlAsync(MessageType.Abort, new ControlRequestMetadata(1, 2, 1, RuntimeRole.Client, 0, 2), tail);
-            await session.SendControlAsync(MessageType.PriorityUpdate, new SchedulingMetadata(1, 3, 1, 1, 2, 0));
-            await session.SendControlAsync(MessageType.Deadline, new SchedulingMetadata(1, 4, 1, 1, 2, 0));
-            await session.SendControlAsync(MessageType.ExpireAt, new SchedulingMetadata(1, 5, 1, 1, 2, 0));
-            await session.SendControlAsync(MessageType.Supersede, new SupersedeMetadata(1, 6, 6, NnrpResultDropReasonCode.Superseded, 0, 2), tail);
+            await session.SubmitNoWaitAsync(CreateSubmit(1, 71));
+            await session.SubmitNoWaitAsync(CreateSubmit(2, 72));
+            await session.SubmitNoWaitAsync(CreateSubmit(3, 73));
+            await session.SendControlAsync(MessageType.PriorityUpdate, new SchedulingMetadata(1, 1, 1, 1, 2, 0));
+            await session.SendControlAsync(MessageType.Deadline, new SchedulingMetadata(1, 2, 1, 1, 2, 0));
+            await session.SendControlAsync(MessageType.ExpireAt, new SchedulingMetadata(1, 3, 1, 1, 2, 0));
             await session.SendControlAsync(MessageType.BudgetUpdate, new BudgetMetadata(1, 7, 1, 2, 3, 0));
             await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
             await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
             await session.SendControlAsync(MessageType.RouteHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), tail);
             await session.SendControlAsync(MessageType.ExecutionHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), tail);
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);
+            await session.SendControlAsync(MessageType.Cancel, new ControlRequestMetadata(1, 4, 1, RuntimeRole.Client, 0, 2), tail);
+            await session.SendControlAsync(MessageType.Abort, new ControlRequestMetadata(2, 5, 1, RuntimeRole.Client, 0, 2), tail);
+            await session.SendControlAsync(MessageType.Supersede, new SupersedeMetadata(3, 4, 6, NnrpResultDropReasonCode.Superseded, 0, 2), tail);
 
             Assert.Equal(12, harness.RuntimeFrames.Count);
+            Assert.Equal((uint)71, harness.RuntimeFrames[0].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[1].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[2].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[3].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[6].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[7].Request.FrameId);
+            Assert.Equal((uint)71, harness.RuntimeFrames[9].Request.FrameId);
+            Assert.Equal((uint)72, harness.RuntimeFrames[10].Request.FrameId);
+            Assert.Equal((uint)73, harness.RuntimeFrames[11].Request.FrameId);
         }
 
         private static byte[] TicketBytes(
