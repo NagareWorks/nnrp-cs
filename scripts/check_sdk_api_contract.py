@@ -62,6 +62,21 @@ EXPECTED_SERVER_EVENT_PUMP = {
         "serialized and never race the native event queue"
     ),
 }
+EXPECTED_SERVER_OPERATION_INVARIANTS = [
+    "submit.header.message_type is frame_submit",
+    "submit.metadata is the frame_submit metadata variant",
+    "operation_id equals submit.metadata.operation_id",
+    "frame_id equals submit.header.frame_id",
+    "the reply capability remains valid until exactly one terminal outcome is sent or the session closes",
+]
+EXPECTED_RESULT_SUCCESS_RULE = (
+    "A successful result has terminal_state success and an event whose message type is result_push "
+    "and whose metadata variant is result_push."
+)
+EXPECTED_RESULT_NON_SUCCESS_RULE = (
+    "Cancelled, dropped, and error results preserve the terminal protocol or lifecycle event that "
+    "established the state; SDKs do not synthesize RESULT_PUSH metadata for them."
+)
 
 
 def require(condition: bool, message: str) -> None:
@@ -144,6 +159,18 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
     require(
         role_surfaces.get("serverEventPump") == EXPECTED_SERVER_EVENT_PUMP,
         "server event-pump semantics drifted",
+    )
+    types = require_mapping(contract.get("types"), "types")
+    result = require_mapping(types.get("NnrpResult"), "NnrpResult")
+    require(
+        result.get("successRule") == EXPECTED_RESULT_SUCCESS_RULE
+        and result.get("nonSuccessRule") == EXPECTED_RESULT_NON_SUCCESS_RULE,
+        "NnrpResult terminal evidence rules drifted",
+    )
+    server_operation = require_mapping(types.get("ServerOperation"), "ServerOperation")
+    require(
+        server_operation.get("invariants") == EXPECTED_SERVER_OPERATION_INVARIANTS,
+        "ServerOperation invariants drifted",
     )
 
     client_event = read_source(source_root, "src/Nnrp.Core/Runtime/NnrpClientEvent.cs")

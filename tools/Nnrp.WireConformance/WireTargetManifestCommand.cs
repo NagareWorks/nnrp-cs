@@ -323,7 +323,7 @@ public static class WireTargetManifestCommand
     private static void WriteHelp(TextWriter output)
     {
         output.WriteLine("Usage: Nnrp.WireConformance manifest [options]");
-        output.WriteLine("       Nnrp.WireConformance serve-target --manifest PATH [--artifact-root PATH]");
+        output.WriteLine("       Nnrp.WireConformance serve-target --manifest PATH --suite PATH [--artifact-root PATH]");
         output.WriteLine("  --target-name NAME");
         output.WriteLine("  --suite-version VERSION");
         output.WriteLine("  --mode suite_as_client|suite_as_server|suite_as_proxy");

@@ -71,7 +71,18 @@ namespace Nnrp.Client.Tests
             async Task CloseRolesAsync()
             {
                 var closingClient = clientSession.DisposeAsync().AsTask();
-                var closingEvent = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
+                NnrpRuntimeEvent closingEvent;
+                while (true)
+                {
+                    var candidate = await serverSession.NextEventAsync(timeout.Token);
+                    if (candidate.Kind == NnrpServerEventKind.Lifecycle)
+                    {
+                        continue;
+                    }
+
+                    closingEvent = RuntimeEventOf(candidate);
+                    break;
+                }
                 Assert.Equal(MessageType.SessionClose, closingEvent.Header.MessageType);
                 await serverSession.DisposeAsync();
                 await closingClient;
@@ -273,6 +284,9 @@ namespace Nnrp.Client.Tests
             Assert.Equal((ulong)701, result.OperationId);
             Assert.Equal(NnrpResultTerminalState.Success, result.TerminalState);
             Assert.Equal(new byte[] { 18, 19 }, BodyOf(RuntimeEventOf(result)).ToArray());
+            var completedLifecycle = LifecycleEventOf(await serverSession.NextEventAsync(timeout.Token));
+            Assert.Equal((ulong)701, completedLifecycle.OperationId);
+            Assert.Equal(NnrpOperationState.Completed, completedLifecycle.State);
 
             var cancelledRequest = NnrpSubmitRequest.CreateToken(new NnrpTokenSubmitInput(
                 new NnrpSubmitIdentity(702, 72, new NnrpSubmitHeaderContext(traceId: 7002)),
@@ -289,6 +303,9 @@ namespace Nnrp.Client.Tests
             Assert.Equal(MessageType.Cancel, serverCancel.Header.MessageType);
             Assert.Equal(cancel, serverCancel.Metadata.Get<ControlRequestMetadata>());
             Assert.Equal(new byte[] { 38, 39 }, DiagnosticOf(serverCancel).ToArray());
+            var cancelledLifecycle = LifecycleEventOf(await serverSession.NextEventAsync(timeout.Token));
+            Assert.Equal((ulong)702, cancelledLifecycle.OperationId);
+            Assert.Equal(NnrpOperationState.Cancelled, cancelledLifecycle.State);
 
             await cancelledOperation.SendPartialResultAsync(
                 new PartialResultMetadata(702, 1, 2, 3, 2, 0),
@@ -308,12 +325,15 @@ namespace Nnrp.Client.Tests
                 2);
             await cancelledOperation.SendResultDropAsync(drop, new byte[] { 43, 44 }, timeout.Token);
             var cancelledResult = await clientSession.NextResultAsync(timeout.Token);
+            var clientCancelledLifecycle = LifecycleEventOf(await clientSession.NextEventAsync(timeout.Token));
             var postCancellationTrace = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
             Assert.Equal((ulong)702, cancelledResult.OperationId);
             Assert.Equal(NnrpResultTerminalState.Dropped, cancelledResult.TerminalState);
             var cancelledEvent = RuntimeEventOf(cancelledResult);
             Assert.Equal(drop, cancelledEvent.Metadata.Get<ResultDropReasonMetadata>());
             Assert.Equal(new byte[] { 43, 44 }, DiagnosticOf(cancelledEvent).ToArray());
+            Assert.Equal((ulong)702, clientCancelledLifecycle.OperationId);
+            Assert.Equal(NnrpOperationState.Cancelled, clientCancelledLifecycle.State);
             Assert.Equal(MessageType.TraceContext, postCancellationTrace.Header.MessageType);
             Assert.Equal(
                 cancellationTrace,
@@ -367,12 +387,27 @@ namespace Nnrp.Client.Tests
                 _ => throw new InvalidOperationException("Expected a client runtime event."));
         }
 
+        private static NnrpOperationLifecycleEvent LifecycleEventOf(NnrpClientEvent @event)
+        {
+            return @event.Match(
+                _ => throw new InvalidOperationException("Expected a client lifecycle event."),
+                lifecycle => lifecycle);
+        }
+
         private static NnrpRuntimeEvent RuntimeEventOf(NnrpServerEvent @event)
         {
             return @event.Match(
                 _ => throw new InvalidOperationException("Expected a server runtime event."),
                 runtime => runtime,
                 _ => throw new InvalidOperationException("Expected a server runtime event."));
+        }
+
+        private static NnrpOperationLifecycleEvent LifecycleEventOf(NnrpServerEvent @event)
+        {
+            return @event.Match(
+                _ => throw new InvalidOperationException("Expected a server lifecycle event."),
+                _ => throw new InvalidOperationException("Expected a server lifecycle event."),
+                lifecycle => lifecycle);
         }
 
         private static ReadOnlyMemory<byte> BodyOf(NnrpRuntimeEvent @event)

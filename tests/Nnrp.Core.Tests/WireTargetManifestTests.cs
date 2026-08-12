@@ -376,6 +376,25 @@ public sealed class WireTargetManifestTests
     }
 
     [Fact]
+    public void CommandHelpDocumentsRequiredServeTargetSuite()
+    {
+        StringWriter standardOutput = new();
+        StringWriter standardError = new();
+
+        int result = WireTargetManifestCommand.Run(
+            ["--help"],
+            standardOutput,
+            standardError);
+
+        Assert.Equal(0, result);
+        Assert.Equal(string.Empty, standardError.ToString());
+        Assert.Contains(
+            "serve-target --manifest PATH --suite PATH [--artifact-root PATH]",
+            standardOutput.ToString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CommandWritesHostRouteProviderManifest()
     {
         string outputPath = Path.Combine(CreateTemporaryDirectory(), "target.json");

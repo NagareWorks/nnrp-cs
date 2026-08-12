@@ -5,6 +5,7 @@ using System.Text.Json;
 using Nnrp.BenchmarkAdapter;
 using Nnrp.Core;
 using Nnrp.Runtime;
+using Nnrp.Server;
 using BenchmarkProgram = Nnrp.BenchmarkAdapter.Program;
 using Xunit;
 
@@ -75,6 +76,43 @@ namespace Nnrp.Core.Tests
                 TransportLoopbackBenchmark.RequireBodyTail(diagnostic));
             Assert.Equal(
                 "Transport benchmark runtime-control event must carry a body tail.",
+                error.Message);
+        }
+
+        [Fact]
+        public void TransportCloseConsumesLifecycleEvidenceUntilSessionClose()
+        {
+            var lifecycle = NnrpServerEvent.FromLifecycle(
+                new NnrpOperationLifecycleEvent(42, NnrpOperationState.Completed));
+            var closeMetadata = new SessionCloseMetadata(
+                SessionCloseReason.ClientShutdown,
+                InFlightPolicy.Drain,
+                0,
+                42,
+                SessionErrorCode.None,
+                0);
+            var close = NnrpServerEvent.FromRuntime(NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.SessionClose),
+                closeMetadata.ToArray()));
+
+            Assert.False(TransportLoopbackBenchmark.ConsumeCloseEvent(lifecycle));
+            Assert.True(TransportLoopbackBenchmark.ConsumeCloseEvent(close));
+        }
+
+        [Fact]
+        public void TransportCloseRejectsUnrelatedRuntimeFrames()
+        {
+            var trace = NnrpServerEvent.FromRuntime(NnrpRuntimeEvent.Decode(
+                new RuntimeFrameHeader(MessageType.TraceContext),
+                NnrpRuntimeControl.Encode(
+                    MessageType.TraceContext,
+                    new TraceContextMetadata(1, 2, 0, 1, 0, 0))));
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                TransportLoopbackBenchmark.ConsumeCloseEvent(trace));
+
+            Assert.Equal(
+                "Transport benchmark received TraceContext while closing the session.",
                 error.Message);
         }
 

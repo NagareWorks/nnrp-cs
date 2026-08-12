@@ -351,6 +351,16 @@ internal static class TransportLoopbackBenchmark
             static _ => throw UnexpectedRuntimeControlTail(),
             static (_, _) => throw UnexpectedRuntimeControlTail());
 
+    internal static bool ConsumeCloseEvent(NnrpServerEvent @event) =>
+        @event.Match(
+            _ => throw new InvalidOperationException(
+                "Transport benchmark received a submit while closing the session."),
+            runtimeEvent => runtimeEvent.Header.MessageType == MessageType.SessionClose
+                ? true
+                : throw new InvalidOperationException(
+                    $"Transport benchmark received {runtimeEvent.Header.MessageType} while closing the session."),
+            _ => false);
+
     private static InvalidOperationException UnexpectedRuntimeControlTail() =>
         new("Transport benchmark runtime-control event must carry a body tail.");
 
@@ -590,10 +600,13 @@ internal static class TransportLoopbackBenchmark
             {
                 using var closeTimeout = new CancellationTokenSource(CloseTimeout);
                 var closingClient = clientSession.DisposeAsync().AsTask();
-                var closeEvent = RuntimeEventOf(await serverSession.NextEventAsync(closeTimeout.Token));
-                if (closeEvent.Header.MessageType != MessageType.SessionClose)
+                while (true)
                 {
-                    throw new InvalidOperationException("Transport benchmark expected a SESSION_CLOSE event.");
+                    var serverEvent = await serverSession.NextEventAsync(closeTimeout.Token);
+                    if (ConsumeCloseEvent(serverEvent))
+                    {
+                        break;
+                    }
                 }
 
                 await serverSession.DisposeAsync().AsTask().WaitAsync(closeTimeout.Token);

@@ -43,6 +43,7 @@ public static class WireTargetHostCommand
     {
         string? manifestPath = null;
         string? artifactRoot = null;
+        string? suitePath = null;
         for (int index = 0; index < args.Length; index++)
         {
             string option = args[index];
@@ -78,6 +79,14 @@ public static class WireTargetHostCommand
 
                     artifactRoot = RequirePath(value, option);
                     break;
+                case "--suite":
+                    if (suitePath is not null)
+                    {
+                        throw new ArgumentException("Duplicate option: --suite");
+                    }
+
+                    suitePath = RequirePath(value, option);
+                    break;
                 default:
                     throw new ArgumentException($"Unknown option: {option}");
             }
@@ -87,8 +96,12 @@ public static class WireTargetHostCommand
         {
             throw new ArgumentException("Missing required option: --manifest");
         }
+        if (suitePath is null)
+        {
+            throw new ArgumentException("Missing required option: --suite");
+        }
 
-        return new WireTargetHostOptions(manifestPath, artifactRoot);
+        return new WireTargetHostOptions(manifestPath, artifactRoot, suitePath);
     }
 
     private static string RequirePath(string value, string option)
@@ -102,4 +115,7 @@ public static class WireTargetHostCommand
     }
 }
 
-internal sealed record WireTargetHostOptions(string ManifestPath, string? ArtifactRoot);
+internal sealed record WireTargetHostOptions(
+    string ManifestPath,
+    string? ArtifactRoot,
+    string SuitePath);
