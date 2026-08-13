@@ -105,6 +105,8 @@ jobs:
         run: >-
           python scripts/download_nnrp_rs_artifacts.py
           --version ${{ steps.nnrp-rs.outputs.version }}
+          --workflow-run-id 31666415612
+          --workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481
           --require-abi-version 4.4.0
           --output artifacts/native
 

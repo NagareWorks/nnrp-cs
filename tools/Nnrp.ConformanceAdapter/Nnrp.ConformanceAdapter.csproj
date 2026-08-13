@@ -10,4 +10,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Core\Nnrp.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nnrp.Core.Tests" />
+  </ItemGroup>
 </Project>

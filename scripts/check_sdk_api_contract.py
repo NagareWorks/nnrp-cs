@@ -77,6 +77,58 @@ EXPECTED_RESULT_NON_SUCCESS_RULE = (
     "Cancelled, dropped, and error results preserve the terminal protocol or lifecycle event that "
     "established the state; SDKs do not synthesize RESULT_PUSH metadata for them."
 )
+EXPECTED_CSHARP_PROJECTIONS = {
+    "submitRequest": "Nnrp.Client.NnrpSubmitRequest",
+    "submitHeaderContext": "Nnrp.Client.NnrpSubmitHeaderContext",
+    "submitBuilders": [
+        "NnrpSubmitRequest.CreateTensor",
+        "NnrpSubmitRequest.CreateToken",
+        "NnrpSubmitRequest.CreateTypedPayload",
+    ],
+    "runtimeFrameHeader": "Nnrp.Runtime.RuntimeFrameHeader",
+    "runtimeEvent": "Nnrp.Runtime.NnrpRuntimeEvent",
+    "clientEvent": "Nnrp.Runtime.NnrpClientEvent",
+    "serverEvent": "Nnrp.Server.NnrpServerEvent",
+    "serverOperation": "Nnrp.Server.NnrpServerOperation",
+    "roleMethods": EXPECTED_ROLE_METHODS,
+    "operationLifecycleEvent": "Nnrp.Runtime.NnrpOperationLifecycleEvent",
+    "terminalEvent": "Nnrp.Runtime.NnrpTerminalEvent",
+    "result": "Nnrp.Client.NnrpResult",
+    "clientRoles": ["Nnrp.Client.NnrpClient", "Nnrp.Client.NnrpClientSession"],
+    "serverRoles": ["Nnrp.Server.NnrpServer", "Nnrp.Server.NnrpServerSession"],
+    "runtimeMetadataNamespace": "Nnrp.Runtime",
+    "capabilityMetadata": "Nnrp.Runtime.CapabilityMetadata",
+    "connectionLifecycle": "Nnrp.Core.NnrpConnectionLifecycle",
+    "sessionLifecycle": "Nnrp.Core.NnrpSessionLifecycle",
+    "typedPayloadDescriptor": "Nnrp.Core.TypedPayloadDescriptor",
+    "typedPayloadFrame": "Nnrp.Core.TypedPayloadFrameView",
+    "cacheObjectId": "Nnrp.Core.NnrpCacheObjectId",
+    "cacheLease": "Nnrp.Core.NnrpCacheLease",
+    "cacheLeaseResult": "Nnrp.Core.NnrpCacheLeaseResult",
+    "cachePolicyOptions": "Nnrp.Core.CachePolicyOptions",
+    "transportProviderMetadata": "Nnrp.Core.NnrpTransportProviderMetadata",
+    "transportProviderDescriptor": "Nnrp.Core.NnrpTransportProviderDescriptor",
+    "transportSelectionOptions": "Nnrp.Core.NnrpTransportSelectionOptions",
+    "transportSelection": "Nnrp.Core.NnrpTransportSelection",
+    "transportSelectionFailure": "Nnrp.Core.NnrpTransportSelectionException",
+    "applicationEndpoint": "Nnrp.Core.NnrpEndpoint",
+    "providerEndpoint": "Nnrp.Core.NnrpProviderEndpoint",
+    "clientTransportSecurity": "Nnrp.Core.NnrpTransportClientSecurity",
+    "serverTransportSecurity": "Nnrp.Core.NnrpTransportServerSecurity",
+    "clientProviderRoute": "Nnrp.Core.NnrpClientProviderRoute",
+    "serverProviderRoute": "Nnrp.Core.NnrpServerProviderRoute",
+    "schemaDescriptor": "Nnrp.Core.NnrpSchemaDescriptorHeader",
+    "schemaRegistry": "Nnrp.Core.NnrpSchemaRegistry",
+    "clientBootstrapOptions": "Nnrp.Client.NnrpClientOptions",
+    "clientSessionOptions": "Nnrp.Client.NnrpClientSessionOptions",
+    "sessionRecoveryTicket": "Nnrp.Core.NnrpSessionRecoveryTicket",
+    "sessionRecoveryTicketEncode": "NnrpSessionRecoveryTicket.ToBytes",
+    "sessionRecoveryTicketDecode": "NnrpSessionRecoveryTicket.FromBytes",
+    "serverBootstrapOptions": "Nnrp.Server.NnrpServerOptions",
+    "serverSessionOptions": "Nnrp.Server.NnrpServerSessionOptions",
+    "serverAcceptOptions": "Nnrp.Server.NnrpServerAcceptOptions",
+    "serverSessionPolicy": "Nnrp.Server.INnrpServerSessionPolicy",
+}
 
 
 def require(condition: bool, message: str) -> None:
@@ -144,13 +196,10 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
 
     language_projections = require_mapping(contract.get("languageProjections"), "languageProjections")
     projection = require_mapping(language_projections.get("csharp"), "C# language projection")
-    require(projection.get("clientEvent") == "Nnrp.Runtime.NnrpClientEvent", "C# client event projection drifted")
-    require(projection.get("serverEvent") == "Nnrp.Server.NnrpServerEvent", "C# server event projection drifted")
     require(
-        projection.get("serverOperation") == "Nnrp.Server.NnrpServerOperation",
-        "C# server operation projection drifted",
+        projection == EXPECTED_CSHARP_PROJECTIONS,
+        "C# SDK projection map drifted; update the implementation contract test with the frozen API",
     )
-    require(projection.get("roleMethods") == EXPECTED_ROLE_METHODS, "C# role method projections drifted")
     role_surfaces = require_mapping(contract.get("roleSurfaces"), "roleSurfaces")
     require(
         role_surfaces.get("clientSubmitWait") == EXPECTED_CLIENT_SUBMIT_WAIT,

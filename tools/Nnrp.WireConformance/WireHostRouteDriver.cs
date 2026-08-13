@@ -137,27 +137,55 @@ internal sealed class WireHostRouteDriver
             sessions.Add(session);
         }
 
-        foreach (NnrpServerSession session in sessions)
+        Dictionary<Task, NnrpServerSession>? pendingCloses = null;
+        try
         {
-            await using (session.ConfigureAwait(false))
+            pendingCloses = sessions.ToDictionary(
+                session => WaitForPeerCloseAsync(session, cancellationToken),
+                session => session);
+            while (pendingCloses.Count != 0)
             {
-                NnrpRuntimeEvent close = (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
-                    _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a submit event."),
-                    runtime => runtime,
-                    _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a lifecycle event."));
-                if (close.Header.MessageType != MessageType.SessionClose)
-                {
-                    throw new InvalidOperationException(
-                        $"Expected SESSION_CLOSE after host-route acceptance, got {close.Header.MessageType}.");
-                }
+                Task completed = await Task.WhenAny(pendingCloses.Keys).ConfigureAwait(false);
+                NnrpServerSession session = pendingCloses[completed];
+                await completed.ConfigureAwait(false);
+                await session.DisposeAsync().ConfigureAwait(false);
+                pendingCloses.Remove(completed);
+            }
+
+            return WireHostRouteCommand.Passed(
+                scenario.Id,
+                "success",
+                ServerEvidence(fixture, server.BoundProviderEndpoints, accepted, "accepted"),
+                "independent C# target executed the public multi-listener server API");
+        }
+        finally
+        {
+            foreach (NnrpServerSession session in sessions)
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (pendingCloses is not null && pendingCloses.Count != 0)
+            {
+                await Task.WhenAll(pendingCloses.Keys)
+                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
+    }
 
-        return WireHostRouteCommand.Passed(
-            scenario.Id,
-            "success",
-            ServerEvidence(fixture, server.BoundProviderEndpoints, accepted, "accepted"),
-            "independent C# target executed the public multi-listener server API");
+    private static async Task WaitForPeerCloseAsync(
+        NnrpServerSession session,
+        CancellationToken cancellationToken)
+    {
+        NnrpRuntimeEvent close = (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+            _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a submit event."),
+            runtime => runtime,
+            _ => throw new InvalidOperationException("Expected SESSION_CLOSE, not a lifecycle event."));
+        if (close.Header.MessageType != MessageType.SessionClose)
+        {
+            throw new InvalidOperationException(
+                $"Expected SESSION_CLOSE after host-route acceptance, got {close.Header.MessageType}.");
+        }
     }
 
     private static async Task<WireHostRouteCaseResult> RunInjectedServerAsync(

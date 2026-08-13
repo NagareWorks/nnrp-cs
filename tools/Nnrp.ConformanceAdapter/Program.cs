@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -222,6 +223,15 @@ public static class Program
                 case "l0.header.fixed_shape.golden":
                     RunHeaderFixedShapeGolden();
                     return Pass(caseId, "Common header fixed-shape golden vector matched.");
+                case "l0.body_region.prelude.golden":
+                    RunBodyRegionPreludeGolden();
+                    return Pass(caseId, "NNRP/1 body-region prelude golden vector matched.");
+                case "l0.typed_payload.frame_regions.golden":
+                    RunBaselineTypedPayloadFrameRegionsGolden();
+                    return Pass(caseId, "NNRP/1 typed-payload descriptor and frame regions matched.");
+                case "l1.typed_payload.region.pack":
+                    RunBaselineTypedPayloadRegionPack();
+                    return Pass(caseId, "NNRP/1 typed-payload regions packed without rebasing offsets.");
                 case "l0.typed_payload.descriptor.current.golden":
                     RunCurrentTypedPayloadDescriptorGolden();
                     return Pass(caseId, "Current typed payload descriptor golden vector matched.");
@@ -1228,37 +1238,154 @@ public static class Program
 
     private static void RunTypedPayloadDescriptorGolden()
     {
-        var descriptor = new TypedPayloadDescriptor(
-            PayloadKind.TokenChunk,
-            TypedPayloadDescriptor.ProfileToken,
-            descriptorFlags: 0x0002,
-            schemaId: TypedPayloadDescriptor.TokenDeltaSchemaId,
-            schemaVersion: TypedPayloadDescriptor.TokenDeltaSchemaVersion,
-            streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
-            payloadOffset: 0,
-            payloadLength: 24);
+        var expected = Convert.FromHexString("10000300040000000700000000000000");
+        var descriptor = BaselineTypedPayloadDescriptor.Parse(expected);
+        AssertTrue(descriptor.PayloadKind == PayloadKind.StructuredEvent, "Baseline descriptor lost payload_kind.");
+        AssertTrue(descriptor.ProfileId == 3, "Baseline descriptor lost profile_id.");
+        AssertTrue(descriptor.PayloadOffset == 4, "Baseline descriptor lost payload_offset.");
+        AssertTrue(descriptor.PayloadLength == 7, "Baseline descriptor lost payload_length.");
+        var actual = new byte[BaselineTypedPayloadDescriptor.DescriptorLength];
+        descriptor.Write(actual);
+        AssertTrue(actual.SequenceEqual(expected), "Baseline typed payload descriptor changed on re-emit.");
+    }
 
-        var expected = new byte[]
+    private static void RunBodyRegionPreludeGolden()
+    {
+        var expected = Convert.FromHexString(
+            "1800000010000000100000000e00000010000000050000000000000000000000");
+        AssertTrue(
+            BodyRegionPrelude.TryParse(expected, strict: true, out var prelude, out var error),
+            $"Body-region prelude strict parse failed: {error}.");
+        AssertTrue(prelude.InlineObjectBytes == 24, "Body-region prelude lost inline object bytes.");
+        AssertTrue(prelude.ObjectReferenceBytes == 16, "Body-region prelude lost object-reference bytes.");
+        AssertTrue(prelude.TypedPayloadDescriptorBytes == 16, "Body-region prelude lost descriptor bytes.");
+        AssertTrue(prelude.TypedPayloadFrameBytes == 14, "Body-region prelude lost frame bytes.");
+        AssertTrue(prelude.ExtensionDescriptorBytes == 16, "Body-region prelude lost extension descriptor bytes.");
+        AssertTrue(prelude.ExtensionPayloadBytes == 5, "Body-region prelude lost extension payload bytes.");
+        AssertTrue(prelude.ToArray().SequenceEqual(expected), "Body-region prelude re-emitted bytes changed.");
+    }
+
+    private static void RunBaselineTypedPayloadFrameRegionsGolden()
+    {
+        var descriptorRegion = Convert.FromHexString(
+            "02000100000000000300000000000000" +
+            "04000200030000000200000000000000" +
+            "08000300050000000500000000000000" +
+            "100004000a0000000300000000000000");
+        var payloadRegion = Encoding.UTF8.GetBytes("tokauvideoevt");
+
+        var descriptors = ParseBaselineTypedPayloadRegion(descriptorRegion, payloadRegion);
+        AssertTrue(descriptors.Length == 4, "Baseline descriptor region returned the wrong frame count.");
+        AssertTrue(descriptors[0].PayloadKind == PayloadKind.TokenChunk, "Baseline token frame kind changed.");
+        AssertTrue(descriptors[1].PayloadKind == PayloadKind.AudioChunk, "Baseline audio frame kind changed.");
+        AssertTrue(descriptors[2].PayloadKind == PayloadKind.VideoChunk, "Baseline video frame kind changed.");
+        AssertTrue(descriptors[3].PayloadKind == PayloadKind.StructuredEvent, "Baseline event frame kind changed.");
+        AssertTrue(WriteBaselineTypedPayloadRegion(descriptors).SequenceEqual(descriptorRegion), "Baseline descriptor bytes changed on re-emit.");
+    }
+
+    private static void RunBaselineTypedPayloadRegionPack()
+    {
+        var payloadRegion = Encoding.UTF8.GetBytes("tokevent");
+        var descriptors = new[]
         {
-            0x02, 0x00,
-            0x02, 0x02,
-            0x01, 0x10, 0x00, 0x00,
-            0x03, 0x00, 0x00, 0x00,
-            0x02, 0x00,
-            0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x18, 0x00, 0x00, 0x00,
+            new BaselineTypedPayloadDescriptor(PayloadKind.TokenChunk, 2, 0, 3),
+            new BaselineTypedPayloadDescriptor(PayloadKind.StructuredEvent, 2, 3, 5),
         };
 
-        AssertTrue(descriptor.ToArray().SequenceEqual(expected), "Typed payload descriptor bytes did not match the 24-byte layout.");
-        AssertTrue(TypedPayloadDescriptor.TryParse(expected, strict: true, out var parsed, out var error), $"Typed payload descriptor parse failed: {error}.");
-        AssertTrue(parsed.Equals(descriptor), "Typed payload descriptor did not round-trip the golden vector.");
+        var encoded = WriteBaselineTypedPayloadRegion(descriptors);
+        var decoded = ParseBaselineTypedPayloadRegion(encoded, payloadRegion);
+        AssertTrue(decoded.SequenceEqual(descriptors), "Baseline typed-payload pack changed descriptor fields.");
+        AssertTrue(decoded[0].PayloadOffset == 0 && decoded[1].PayloadOffset == 3, "Baseline typed-payload pack rebased offsets.");
+    }
 
-        expected[3] = 0x10;
+    private static BaselineTypedPayloadDescriptor[] ParseBaselineTypedPayloadRegion(
+        ReadOnlySpan<byte> descriptorRegion,
+        ReadOnlySpan<byte> payloadRegion)
+    {
         AssertTrue(
-            !TypedPayloadDescriptor.TryParse(expected, strict: true, out _, out error)
-            && error == NnrpParseError.NonZeroReservedField,
-            "Typed payload descriptor accepted unknown descriptor flag bits.");
+            descriptorRegion.Length % BaselineTypedPayloadDescriptor.DescriptorLength == 0,
+            "Baseline descriptor region length is not a multiple of 16 bytes.");
+        var descriptors = new BaselineTypedPayloadDescriptor[
+            descriptorRegion.Length / BaselineTypedPayloadDescriptor.DescriptorLength];
+        uint nextOffset = 0;
+        for (var index = 0; index < descriptors.Length; index += 1)
+        {
+            var source = descriptorRegion.Slice(
+                index * BaselineTypedPayloadDescriptor.DescriptorLength,
+                BaselineTypedPayloadDescriptor.DescriptorLength);
+            var descriptor = BaselineTypedPayloadDescriptor.Parse(source);
+            ulong payloadEnd = (ulong)descriptor.PayloadOffset + descriptor.PayloadLength;
+            AssertTrue(payloadEnd <= (ulong)payloadRegion.Length, "Baseline descriptor points outside the frame region.");
+            AssertTrue(descriptor.PayloadOffset == nextOffset, "Baseline descriptor regions must be contiguous.");
+            descriptors[index] = descriptor;
+            nextOffset = (uint)payloadEnd;
+        }
+
+        AssertTrue(nextOffset == payloadRegion.Length, "Baseline descriptor regions must exactly cover the frame region.");
+
+        return descriptors;
+    }
+
+    internal static void ValidateBaselineTypedPayloadRegion(byte[] descriptorRegion, byte[] payloadRegion)
+    {
+        ArgumentNullException.ThrowIfNull(descriptorRegion);
+        ArgumentNullException.ThrowIfNull(payloadRegion);
+        ParseBaselineTypedPayloadRegion(descriptorRegion, payloadRegion);
+    }
+
+    private static byte[] WriteBaselineTypedPayloadRegion(IReadOnlyList<BaselineTypedPayloadDescriptor> descriptors)
+    {
+        var destination = new byte[checked(descriptors.Count * BaselineTypedPayloadDescriptor.DescriptorLength)];
+        for (var index = 0; index < descriptors.Count; index += 1)
+        {
+            descriptors[index].Write(destination.AsSpan(index * BaselineTypedPayloadDescriptor.DescriptorLength));
+        }
+
+        return destination;
+    }
+
+    private readonly record struct BaselineTypedPayloadDescriptor(
+        PayloadKind PayloadKind,
+        ushort ProfileId,
+        uint PayloadOffset,
+        uint PayloadLength)
+    {
+        public const int DescriptorLength = 16;
+
+        public static BaselineTypedPayloadDescriptor Parse(ReadOnlySpan<byte> source)
+        {
+            AssertTrue(source.Length >= DescriptorLength, "Baseline descriptor source is shorter than 16 bytes.");
+            var payloadKind = (PayloadKind)source[0];
+            AssertTrue(IsSingleBaselinePayloadKind(payloadKind), $"Unsupported baseline payload kind: {source[0]}.");
+            AssertTrue(source[1] == 0, "Baseline descriptor reserved byte is non-zero.");
+            var profileId = BinaryPrimitives.ReadUInt16LittleEndian(source.Slice(2, 2));
+            AssertTrue(BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(12, 4)) == 0, "Baseline descriptor reserved word is non-zero.");
+            return new BaselineTypedPayloadDescriptor(
+                payloadKind,
+                profileId,
+                BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(4, 4)),
+                BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(8, 4)));
+        }
+
+        public void Write(Span<byte> destination)
+        {
+            AssertTrue(destination.Length >= DescriptorLength, "Baseline descriptor destination is shorter than 16 bytes.");
+            AssertTrue(IsSingleBaselinePayloadKind(PayloadKind), $"Unsupported baseline payload kind: {PayloadKind}.");
+            destination[..DescriptorLength].Clear();
+            destination[0] = checked((byte)PayloadKind);
+            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(2, 2), ProfileId);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(4, 4), PayloadOffset);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(8, 4), PayloadLength);
+        }
+
+        private static bool IsSingleBaselinePayloadKind(PayloadKind payloadKind) =>
+            payloadKind is PayloadKind.Tensor
+                or PayloadKind.TokenChunk
+                or PayloadKind.AudioChunk
+                or PayloadKind.VideoChunk
+                or PayloadKind.StructuredEvent
+                or PayloadKind.ToolDelta
+                or PayloadKind.OpaqueBytes;
     }
 
     private static void RunCurrentTypedPayloadDescriptorGolden()

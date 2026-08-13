@@ -381,6 +381,7 @@ namespace Nnrp.Server.Tests
             var tcp = Listener(TransportId.Tcp);
             var websocket = Listener(TransportId.WebSocket);
             tcp.EnqueueWouldBlock();
+            tcp.EnqueueAccepted();
             websocket.EnqueueAccepted();
             await using var listeners = new NnrpServerTransportListenerSet(new[] { tcp, websocket });
 
@@ -391,7 +392,7 @@ namespace Nnrp.Server.Tests
                     timeoutMilliseconds: 100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
-            Assert.Equal(1, tcp.ReleaseCount);
+            Assert.Equal(0, tcp.ReleaseCount);
             Assert.Equal(0, websocket.ReleaseCount);
             Assert.Equal(1, tcp.AcceptCount);
             Assert.Equal(1, websocket.AcceptCount);
@@ -399,6 +400,18 @@ namespace Nnrp.Server.Tests
             Assert.Equal((uint)100, websocket.LastPollTimeoutMilliseconds);
             Assert.Equal((ulong)41, websocket.LastAcceptOptions!.SessionId);
             Assert.Equal((uint)3, websocket.LastAcceptOptions.SessionGeneration);
+
+            using var pendingTcp = await listeners.AcceptAsync(
+                new NnrpServerAcceptOptions(
+                    sessionId: 42,
+                    sessionGeneration: 4,
+                    timeoutMilliseconds: 100));
+
+            Assert.Equal(TransportId.Tcp, pendingTcp.ActiveTransportId);
+            Assert.Equal(2, tcp.AcceptCount);
+            Assert.Equal(1, websocket.AcceptCount);
+            Assert.Equal((ulong)42, tcp.LastAcceptOptions!.SessionId);
+            Assert.Equal((uint)4, tcp.LastAcceptOptions.SessionGeneration);
         }
 
         [Fact]
@@ -413,7 +426,7 @@ namespace Nnrp.Server.Tests
             using var accepted = await listeners.AcceptAsync(new NnrpServerAcceptOptions(timeoutMilliseconds: 100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
-            Assert.Equal(2, tcp.ReleaseCount);
+            Assert.Equal(1, tcp.ReleaseCount);
         }
 
         [Fact]
@@ -437,21 +450,21 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
-        public async Task PendingAcceptReleaseFailureClosesSetAndAcceptedSession()
+        public async Task TimeoutPendingAcceptReleaseFailureClosesSet()
         {
             var tcp = Listener(TransportId.Tcp);
             var websocket = Listener(TransportId.WebSocket);
             tcp.ReleaseFailure = new InvalidOperationException("release failed");
             tcp.EnqueueWouldBlock();
-            websocket.EnqueueAccepted();
+            websocket.EnqueueWouldBlock();
             await using var listeners = new NnrpServerTransportListenerSet(new[] { tcp, websocket });
 
             var error = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await listeners.AcceptAsync(new NnrpServerAcceptOptions(timeoutMilliseconds: 100)));
+                await listeners.AcceptAsync(new NnrpServerAcceptOptions(timeoutMilliseconds: 5)));
 
             Assert.Equal("release failed", error.Message);
             Assert.True(listeners.IsClosed);
-            Assert.Equal(1, websocket.SessionCloseCount);
+            Assert.Equal(0, websocket.SessionCloseCount);
         }
 
         [Fact]

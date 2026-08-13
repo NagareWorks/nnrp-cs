@@ -17,7 +17,11 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(self.workflow.count("1.0.0-preview.4.22"), 2)
         self.assertNotIn("1.0.0-preview.4.15", self.workflow)
         self.assertIn("--require-abi-version 4.4.0", self.workflow)
-        self.assertNotIn("--workflow-run-id", self.workflow)
+        self.assertIn("--workflow-run-id 31666415612", self.workflow)
+        self.assertIn(
+            "--workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481",
+            self.workflow,
+        )
 
     def test_verifies_packed_nuget_boundaries_before_bundling_or_publishing(self):
         canonical_index = self.workflow.index("Canonicalize NuGet package archives")
