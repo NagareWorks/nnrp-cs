@@ -87,12 +87,7 @@ def contract() -> dict[str, object]:
     return {
         "contractVersion": 15,
         "languageProjections": {
-            "csharp": {
-                "clientEvent": "Nnrp.Runtime.NnrpClientEvent",
-                "serverEvent": "Nnrp.Server.NnrpServerEvent",
-                "serverOperation": "Nnrp.Server.NnrpServerOperation",
-                "roleMethods": copy.deepcopy(FROZEN_ROLE_METHODS),
-            }
+            "csharp": copy.deepcopy(CHECKER.EXPECTED_CSHARP_PROJECTIONS),
         },
         "roleSurfaces": {
             "clientSubmitWait": copy.deepcopy(FROZEN_CLIENT_SUBMIT_WAIT),
@@ -187,6 +182,14 @@ class CheckSdkApiContractTests(unittest.TestCase):
         value = contract()
         del value["languageProjections"]
         with self.assertRaisesRegex(SystemExit, "languageProjections is missing or invalid"):
+            self.check(value)
+
+    def test_rejects_complete_csharp_projection_drift(self) -> None:
+        value = contract()
+        projections = cast(dict[str, object], value["languageProjections"])
+        csharp = cast(dict[str, object], projections["csharp"])
+        csharp["typedPayloadFrame"] = "Nnrp.Core.LegacyTypedPayloadFrame"
+        with self.assertRaisesRegex(SystemExit, "C# SDK projection map drifted"):
             self.check(value)
 
     def test_rejects_missing_role_surfaces_with_clean_diagnostic(self) -> None:

@@ -20,9 +20,14 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("Run suite-owned conformance action", workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: ff905fa5e47526e0e86d6b9c9db0f585a3d4dc0a",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: 95daf385184312c13d66fa18a7e1ecf0b6ff4558",
             workflow,
         )
+        self.assertIn(
+            "NNRP_DOC_SOURCE_COMMIT: dcd36a73ef74f62a23575c1a06fe0eb9f3a0bcbb",
+            workflow,
+        )
+        self.assertEqual(1, workflow.count("ref: ${{ env.NNRP_DOC_SOURCE_COMMIT }}"))
         self.assertEqual(4, workflow.count("ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}"))
 
     def test_package_validation_canonicalizes_archives_before_inspection(self) -> None:
@@ -40,10 +45,10 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("native-artifacts:", workflow)
         self.assertIn("--version 1.0.0-preview.4.22", workflow)
         self.assertIn("--require-abi-version 4.4.0", workflow)
-        self.assertIn("--workflow-run-id 30862254352", workflow)
-        self.assertIn("--workflow-head-sha 784a4a354f4e6a73798248f93cf574bd7a5af829", workflow)
-        self.assertIn("NNRP_RS_SOURCE_COMMIT: 445e2e09ea41dbe9fbdcdf9433a7dfa27bedd7af", workflow)
-        self.assertIn("NNRP_RS_CI_RUN_ID: '31626506480'", workflow)
+        self.assertIn("--workflow-run-id 31666415612", workflow)
+        self.assertIn("--workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
+        self.assertIn("NNRP_RS_SOURCE_COMMIT: 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
+        self.assertIn("NNRP_RS_CI_RUN_ID: '31666390775'", workflow)
         self.assertEqual(4, workflow.count("Download final nnrp-rs CI artifacts"))
         self.assertEqual(4, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
         self.assertEqual(4, workflow.count("Verify final nnrp-rs CI source"))

@@ -71,6 +71,7 @@ namespace Nnrp.Server
         private readonly List<NnrpAcceptedServerTransportSession> acceptedSessions =
             new List<NnrpAcceptedServerTransportSession>();
         private readonly INnrpServerTransportListener[] listeners;
+        private int nextListenerIndex;
 
         internal NnrpServerTransportListenerSet(IEnumerable<INnrpServerTransportListener> listeners)
         {
@@ -111,8 +112,10 @@ namespace Nnrp.Server
                 while (true)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    foreach (var listener in listeners)
+                    for (var offset = 0; offset < listeners.Length; offset++)
                     {
+                        var listenerIndex = (nextListenerIndex + offset) % listeners.Length;
+                        var listener = listeners[listenerIndex];
                         var pollTimeout = RemainingPollTimeout(options.TimeoutMilliseconds, elapsed);
                         if (pollTimeout == 0)
                         {
@@ -147,17 +150,8 @@ namespace Nnrp.Server
                                     "The accepted transport does not match the listener that produced it.");
                             }
 
-                            try
-                            {
-                                ReleasePendingAccepts(listener);
-                            }
-                            catch
-                            {
-                                accepted.Dispose();
-                                throw;
-                            }
-
                             acceptedSessions.Add(accepted);
+                            nextListenerIndex = (listenerIndex + 1) % listeners.Length;
                             return accepted;
                         }
                         catch (NnrpNativeWouldBlockException)
