@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
 import json
 import tempfile
 import unittest
@@ -16,21 +17,95 @@ if SPEC is None or SPEC.loader is None:
 CHECKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECKER)
 
+FROZEN_ROLE_METHODS = {
+    "client.open_session": "OpenSessionAsync",
+    "client.resume_session": "ResumeSessionAsync",
+    "client_session.recovery_ticket": "GetRecoveryTicket",
+    "client_session.next_event": "NextEventAsync",
+    "server.accept": "AcceptAsync",
+    "server_session.next_event": "NextEventAsync",
+    "server_session.receive_submit": "ReceiveSubmitAsync",
+    "server_operation.send_result": "SendResultAsync",
+    "server_operation.send_result_drop": "SendResultDropAsync",
+    "server_operation.send_progress": "SendProgressAsync",
+    "server_operation.send_partial_result": "SendPartialResultAsync",
+}
+FROZEN_CLIENT_SUBMIT_WAIT = {
+    "scopeRule": "These rules apply when an SDK exposes a cancellable or time-bounded submit-and-wait convenience.",
+    "preDispatchCancellationRule": (
+        "Cancellation before FRAME_SUBMIT dispatch fails the local wait and emits no submit or cancellation frame."
+    ),
+    "postDispatchCancellationRule": (
+        "Cancellation after FRAME_SUBMIT dispatch fails the local wait with the language-native cancellation error "
+        "and sends CANCEL for the submitted operation."
+    ),
+    "timeoutRule": (
+        "A time-bounded submit wait sends DEADLINE before dispatch; expiry fails the local wait with the "
+        "language-native timeout error and sends CANCEL for the submitted operation."
+    ),
+    "lifecycleRule": (
+        "The local lifecycle event produced by caller cancellation or wait expiry remains observable through the "
+        "client event pump and must not race the same submit wait into a successful NnrpResult return. A terminal "
+        "lifecycle initiated independently by the peer may complete the submit wait as NnrpResult evidence."
+    ),
+}
+FROZEN_SERVER_EVENT_PUMP = {
+    "canonicalOperation": "server_session.next_event",
+    "submitConvenience": "server_session.receive_submit",
+    "orderingRule": "next_event delivers every server event in per-session wire order without filtering",
+    "submitRule": (
+        "receive_submit is a selective convenience that may skip non-submit events only by retaining them in the "
+        "same session queue; it must never discard, decode-and-forget, or acknowledge them"
+    ),
+    "ownershipRule": (
+        "a FRAME_SUBMIT event becomes one ServerOperation before it is exposed to the application, so consuming the "
+        "canonical event pump never loses the reply capability"
+    ),
+    "concurrencyRule": (
+        "one session has one serialized receive source; concurrent receive calls are rejected or serialized and "
+        "never race the native event queue"
+    ),
+}
+FROZEN_SERVER_OPERATION_INVARIANTS = [
+    "submit.header.message_type is frame_submit",
+    "submit.metadata is the frame_submit metadata variant",
+    "operation_id equals submit.metadata.operation_id",
+    "frame_id equals submit.header.frame_id",
+    "the reply capability remains valid until exactly one terminal outcome is sent or the session closes",
+]
+FROZEN_RESULT_SUCCESS_RULE = (
+    "A successful result has terminal_state success and an event whose message type is result_push "
+    "and whose metadata variant is result_push."
+)
+FROZEN_RESULT_NON_SUCCESS_RULE = (
+    "Cancelled, dropped, and error results preserve the terminal protocol or lifecycle event that "
+    "established the state; SDKs do not synthesize RESULT_PUSH metadata for them."
+)
+
 
 def contract() -> dict[str, object]:
     return {
-        "contractVersion": CHECKER.EXPECTED_CONTRACT_VERSION,
+        "contractVersion": 15,
         "languageProjections": {
             "csharp": {
                 "clientEvent": "Nnrp.Runtime.NnrpClientEvent",
                 "serverEvent": "Nnrp.Server.NnrpServerEvent",
                 "serverOperation": "Nnrp.Server.NnrpServerOperation",
-                "roleMethods": CHECKER.EXPECTED_ROLE_METHODS,
+                "roleMethods": copy.deepcopy(FROZEN_ROLE_METHODS),
             }
         },
         "roleSurfaces": {
-            "clientSubmitWait": CHECKER.EXPECTED_CLIENT_SUBMIT_WAIT,
-            "serverEventPump": CHECKER.EXPECTED_SERVER_EVENT_PUMP,
+            "clientSubmitWait": copy.deepcopy(FROZEN_CLIENT_SUBMIT_WAIT),
+            "serverEventPump": copy.deepcopy(FROZEN_SERVER_EVENT_PUMP),
+        },
+        "types": {
+            "NnrpResult": {
+                "successRule": FROZEN_RESULT_SUCCESS_RULE,
+                "nonSuccessRule": FROZEN_RESULT_NON_SUCCESS_RULE,
+            },
+            "ServerOperation": {
+                "invariants": copy.deepcopy(FROZEN_SERVER_OPERATION_INVARIANTS),
+            },
         },
     }
 
@@ -45,6 +120,27 @@ class CheckSdkApiContractTests(unittest.TestCase):
     def test_accepts_frozen_v15_role_contract_and_sources(self) -> None:
         self.check(contract())
 
+    def test_contract_fixture_does_not_share_nested_mutable_state(self) -> None:
+        first = contract()
+        first_role_surfaces = cast(dict[str, object], first["roleSurfaces"])
+        first_submit_wait = cast(dict[str, object], first_role_surfaces["clientSubmitWait"])
+        first_submit_wait["timeoutRule"] = "mutated"
+        first_types = cast(dict[str, object], first["types"])
+        first_server_operation = cast(dict[str, object], first_types["ServerOperation"])
+        first_invariants = cast(list[str], first_server_operation["invariants"])
+        first_invariants.clear()
+
+        second = contract()
+        second_role_surfaces = cast(dict[str, object], second["roleSurfaces"])
+        second_submit_wait = cast(dict[str, object], second_role_surfaces["clientSubmitWait"])
+        self.assertEqual(FROZEN_CLIENT_SUBMIT_WAIT["timeoutRule"], second_submit_wait["timeoutRule"])
+        second_types = cast(dict[str, object], second["types"])
+        second_server_operation = cast(dict[str, object], second_types["ServerOperation"])
+        self.assertEqual(
+            FROZEN_SERVER_OPERATION_INVARIANTS,
+            second_server_operation["invariants"],
+        )
+
     def test_rejects_contract_version_drift(self) -> None:
         value = contract()
         value["contractVersion"] = 14
@@ -56,10 +152,35 @@ class CheckSdkApiContractTests(unittest.TestCase):
         role_surfaces = value["roleSurfaces"]
         self.assertIsInstance(role_surfaces, dict)
         role_surfaces = cast(dict[str, object], role_surfaces)
-        server_event_pump = dict(CHECKER.EXPECTED_SERVER_EVENT_PUMP)
+        server_event_pump = dict(FROZEN_SERVER_EVENT_PUMP)
         server_event_pump["ownershipRule"] = "submit events may be decoded without an operation owner"
         role_surfaces["serverEventPump"] = server_event_pump
         with self.assertRaisesRegex(SystemExit, "server event-pump semantics drifted"):
+            self.check(value)
+
+    def test_rejects_client_submit_wait_drift(self) -> None:
+        value = contract()
+        role_surfaces = cast(dict[str, object], value["roleSurfaces"])
+        client_submit_wait = dict(FROZEN_CLIENT_SUBMIT_WAIT)
+        client_submit_wait["timeoutRule"] = "expiry returns success"
+        role_surfaces["clientSubmitWait"] = client_submit_wait
+        with self.assertRaisesRegex(SystemExit, "client submit-wait semantics drifted"):
+            self.check(value)
+
+    def test_rejects_server_operation_invariant_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        operation = cast(dict[str, object], types["ServerOperation"])
+        operation["invariants"] = FROZEN_SERVER_OPERATION_INVARIANTS[:-1]
+        with self.assertRaisesRegex(SystemExit, "ServerOperation invariants drifted"):
+            self.check(value)
+
+    def test_rejects_result_terminal_evidence_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        result = cast(dict[str, object], types["NnrpResult"])
+        result["nonSuccessRule"] = "synthesize result_push metadata"
+        with self.assertRaisesRegex(SystemExit, "NnrpResult terminal evidence rules drifted"):
             self.check(value)
 
     def test_rejects_missing_language_projections_with_clean_diagnostic(self) -> None:

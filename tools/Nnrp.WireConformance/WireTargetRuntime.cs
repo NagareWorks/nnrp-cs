@@ -36,7 +36,12 @@ internal interface IWireTargetServerSession : IAsyncDisposable
 {
     ValueTask<IWireTargetOperation> ReceiveSubmitAsync(CancellationToken cancellationToken);
 
+    ValueTask<WireTargetOperationEvent> NextOperationEventAsync(
+        CancellationToken cancellationToken);
+
     ValueTask<WireTargetReceivedEvent> NextEventAsync(CancellationToken cancellationToken);
+
+    ValueTask<WireTargetLifecycleEvent> NextLifecycleAsync(CancellationToken cancellationToken);
 
     ValueTask SendTraceContextAsync(
         TraceContextMetadata metadata,
@@ -47,6 +52,31 @@ internal interface IWireTargetServerSession : IAsyncDisposable
         CacheMissMetadata metadata,
         ReadOnlyMemory<byte> diagnostic,
         CancellationToken cancellationToken);
+}
+
+internal readonly record struct WireTargetLifecycleEvent(
+    ulong OperationId,
+    NnrpOperationState State);
+
+internal sealed record WireTargetOperationEvent
+{
+    private WireTargetOperationEvent(
+        WireTargetReceivedEvent? runtime,
+        WireTargetLifecycleEvent? lifecycle)
+    {
+        Runtime = runtime;
+        Lifecycle = lifecycle;
+    }
+
+    internal WireTargetReceivedEvent? Runtime { get; }
+
+    internal WireTargetLifecycleEvent? Lifecycle { get; }
+
+    internal static WireTargetOperationEvent FromRuntime(WireTargetReceivedEvent runtime) =>
+        new(runtime ?? throw new ArgumentNullException(nameof(runtime)), null);
+
+    internal static WireTargetOperationEvent FromLifecycle(WireTargetLifecycleEvent lifecycle) =>
+        new(null, lifecycle);
 }
 
 internal interface IWireTargetOperation
@@ -244,6 +274,24 @@ internal sealed class NnrpWireTargetServerSession(NnrpServerSession session) : I
             WireTargetReceivedEvent.FromRuntime,
             _ => throw new InvalidOperationException(
                 "Wire target expected a runtime event but received an operation lifecycle event."));
+
+    public async ValueTask<WireTargetOperationEvent> NextOperationEventAsync(
+        CancellationToken cancellationToken) =>
+        (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+            _ => throw new InvalidOperationException(
+                "Wire target expected a runtime or lifecycle event but received FRAME_SUBMIT."),
+            runtime => WireTargetOperationEvent.FromRuntime(
+                WireTargetReceivedEvent.FromRuntime(runtime)),
+            lifecycle => WireTargetOperationEvent.FromLifecycle(
+                new WireTargetLifecycleEvent(lifecycle.OperationId, lifecycle.State)));
+
+    public async ValueTask<WireTargetLifecycleEvent> NextLifecycleAsync(CancellationToken cancellationToken) =>
+        (await session.NextEventAsync(cancellationToken).ConfigureAwait(false)).Match(
+            _ => throw new InvalidOperationException(
+                "Wire target expected an operation lifecycle event but received FRAME_SUBMIT."),
+            _ => throw new InvalidOperationException(
+                "Wire target expected an operation lifecycle event but received a runtime event."),
+            lifecycle => new WireTargetLifecycleEvent(lifecycle.OperationId, lifecycle.State));
 
     public ValueTask SendTraceContextAsync(
         TraceContextMetadata metadata,

@@ -167,8 +167,16 @@ function Assert-CompleteWireReport {
         [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
     $scenarios = @($plan.scenarios)
     $results = @($report.results)
-    if ($scenarios.Count -ne 6) {
-        throw "Expected six frozen runtime-control wire scenarios, selected $($scenarios.Count)."
+    if ($scenarios.Count -eq 0) {
+        throw "Wire plan did not select any runtime-control scenarios."
+    }
+
+    $requiredScenarioIds = @("wire.control.cancel-abort.client")
+    $actualScenarioIds = @($scenarios | ForEach-Object { [string]$_.id })
+    foreach ($requiredScenarioId in $requiredScenarioIds) {
+        if ($actualScenarioIds -notcontains $requiredScenarioId) {
+            throw "Wire plan is missing required runtime-control scenario $requiredScenarioId."
+        }
     }
 
     $expectedModes = @("suite_as_client", "suite_as_proxy", "suite_as_server")
@@ -368,6 +376,8 @@ $startInfo.ArgumentList.Add("--manifest")
 $startInfo.ArgumentList.Add($targetManifest)
 $startInfo.ArgumentList.Add("--artifact-root")
 $startInfo.ArgumentList.Add($stagedNativeRoot)
+$startInfo.ArgumentList.Add("--suite")
+$startInfo.ArgumentList.Add($suite)
 $startInfo.WorkingDirectory = $repositoryRoot
 $startInfo.UseShellExecute = $false
 $startInfo.RedirectStandardOutput = $true

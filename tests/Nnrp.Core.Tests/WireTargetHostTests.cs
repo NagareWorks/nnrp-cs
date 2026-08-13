@@ -18,15 +18,45 @@ namespace Nnrp.Core.Tests;
 public sealed class WireTargetHostTests
 {
     [Fact]
+    public async Task HostRejectsRootedScenarioManifestPaths()
+    {
+        using TemporaryDirectory temporary = new();
+        string externalManifest = Path.Combine(Path.GetTempPath(), $"nnrp-cases-{Guid.NewGuid():N}.json");
+        string suitePath = WriteSuiteManifest(temporary.Path, externalManifest);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => new WireTargetHost(new FakeWireTargetSdk(0)).RunAsync(
+            new WireTargetHostOptions(
+                Path.Combine(temporary.Path, "target.json"),
+                Path.Combine(temporary.Path, "native-root"),
+                suitePath)));
+    }
+
+    [Fact]
+    public async Task HostRejectsScenarioManifestTraversal()
+    {
+        using TemporaryDirectory temporary = new();
+        string suiteDirectory = Path.Combine(temporary.Path, "suite");
+        Directory.CreateDirectory(suiteDirectory);
+        string suitePath = WriteSuiteManifest(suiteDirectory, "../outside.json");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => new WireTargetHost(new FakeWireTargetSdk(0)).RunAsync(
+            new WireTargetHostOptions(
+                Path.Combine(temporary.Path, "target.json"),
+                Path.Combine(temporary.Path, "native-root"),
+                suitePath)));
+    }
+
+    [Fact]
     public async Task HostRunsAllFrozenFrameScenariosAndWritesAtomicManifest()
     {
         using TemporaryDirectory temporary = new();
         string artifactRoot = Path.Combine(temporary.Path, "native-root");
         string manifestPath = Path.Combine(temporary.Path, "target.json");
+        string suitePath = WriteSuite(temporary.Path, includeDeadlineBeforeSubmit: true);
         FakeWireTargetSdk sdk = new(connectFailures: 1);
 
         await new WireTargetHost(sdk).RunAsync(
-            new WireTargetHostOptions(manifestPath, artifactRoot));
+            new WireTargetHostOptions(manifestPath, artifactRoot, suitePath));
 
         Assert.Equal(artifactRoot, sdk.ValidatedArtifactRoot);
         Assert.Equal(
@@ -36,6 +66,16 @@ public sealed class WireTargetHostTests
             new[] { TransportId.Tcp, TransportId.Tcp, TransportId.WebSocket },
             sdk.ConnectAttempts);
         Assert.All(sdk.Operations, operation => Assert.True(operation.TerminalSent));
+        Assert.Equal(
+            new[]
+            {
+                NnrpResultDropReasonCode.PeerCancelled,
+                NnrpResultDropReasonCode.Superseded,
+                NnrpResultDropReasonCode.PeerCancelled,
+            },
+            sdk.Operations
+                .Where(operation => operation.DropReasonCode.HasValue)
+                .Select(operation => operation.DropReasonCode!.Value));
         Assert.All(sdk.ServerSessions, session => Assert.True(session.Disposed));
         Assert.All(sdk.ClientSessions, session => Assert.True(session.Disposed));
         Assert.False(File.Exists($"{manifestPath}.tmp"));
@@ -56,10 +96,15 @@ public sealed class WireTargetHostTests
     {
         using TemporaryDirectory temporary = new();
         WireTargetHostOptions options = WireTargetHostCommand.Parse(
-            ["--manifest", Path.Combine(temporary.Path, "target.json"), "--artifact-root", temporary.Path]);
+            [
+                "--manifest", Path.Combine(temporary.Path, "target.json"),
+                "--artifact-root", temporary.Path,
+                "--suite", Path.Combine(temporary.Path, "suite.json"),
+            ]);
 
         Assert.Equal(Path.Combine(temporary.Path, "target.json"), options.ManifestPath);
         Assert.Equal(temporary.Path, options.ArtifactRoot);
+        Assert.Equal(Path.Combine(temporary.Path, "suite.json"), options.SuitePath);
         Assert.Throws<ArgumentException>(() => WireTargetHostCommand.Parse([]));
         Assert.Throws<ArgumentException>(() => WireTargetHostCommand.Parse(["--manifest"]));
         Assert.Throws<ArgumentException>(() => WireTargetHostCommand.Parse(["--other", "value"]));
@@ -84,21 +129,67 @@ public sealed class WireTargetHostTests
     }
 
     [Fact]
+    public void OperationEventsExposeExactlyOneVariant()
+    {
+        WireTargetReceivedEvent runtimeEvent = new(MessageType.SessionClose);
+        WireTargetLifecycleEvent lifecycleEvent = new(41, NnrpOperationState.Cancelled);
+
+        WireTargetOperationEvent runtime = WireTargetOperationEvent.FromRuntime(runtimeEvent);
+        WireTargetOperationEvent lifecycle = WireTargetOperationEvent.FromLifecycle(lifecycleEvent);
+
+        Assert.Same(runtimeEvent, runtime.Runtime);
+        Assert.Null(runtime.Lifecycle);
+        Assert.Null(lifecycle.Runtime);
+        Assert.Equal(lifecycleEvent, lifecycle.Lifecycle);
+        Assert.Throws<ArgumentNullException>(() => WireTargetOperationEvent.FromRuntime(null!));
+    }
+
+    [Fact]
     public async Task CancelHandlerRejectsAnotherOperationIdentity()
     {
         FakeOperation operation = new(41, 4);
         FakeServerSession session = new(
             operation,
+            [],
+            operationEvents:
             [
-                new WireTargetReceivedEvent(
-                    MessageType.Cancel,
-                    new ControlRequestMetadata(42, 1, 1, RuntimeRole.Client, 0, 0)),
+                WireTargetOperationEvent.FromRuntime(
+                    new WireTargetReceivedEvent(
+                        MessageType.Cancel,
+                        new ControlRequestMetadata(42, 1, 1, RuntimeRole.Client, 0, 0))),
+                WireTargetOperationEvent.FromLifecycle(
+                    new WireTargetLifecycleEvent(41, NnrpOperationState.Cancelled)),
             ]);
 
         InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => WireTargetHost.HandleCancelAsync(session, CancellationToken.None));
 
         Assert.Contains("another operation", error.Message, StringComparison.Ordinal);
+        Assert.True(session.Disposed);
+    }
+
+    [Fact]
+    public async Task CancelHandlerReportsObservedLifecycleIdentityAndState()
+    {
+        FakeOperation operation = new(41, 4);
+        FakeServerSession session = new(
+            operation,
+            [],
+            operationEvents:
+            [
+                WireTargetOperationEvent.FromRuntime(
+                    new WireTargetReceivedEvent(
+                        MessageType.Cancel,
+                        new ControlRequestMetadata(41, 1, 1, RuntimeRole.Client, 0, 0))),
+                WireTargetOperationEvent.FromLifecycle(
+                    new WireTargetLifecycleEvent(42, NnrpOperationState.Completed)),
+            ]);
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => WireTargetHost.HandleCancelAsync(session, CancellationToken.None));
+
+        Assert.Contains("expected Cancelled for operation 41", error.Message, StringComparison.Ordinal);
+        Assert.Contains("received Completed for operation 42", error.Message, StringComparison.Ordinal);
         Assert.True(session.Disposed);
     }
 
@@ -191,7 +282,8 @@ public sealed class WireTargetHostTests
             ListenTransports.Add(transportId);
             Queue<IWireTargetServerSession> sessions = transportId switch
             {
-                TransportId.Tcp => new Queue<IWireTargetServerSession>([CreateCancelSession(101)]),
+                TransportId.Tcp => new Queue<IWireTargetServerSession>(
+                    [CreateCancelSession(101), CreateDeadlineSession()]),
                 TransportId.Quic => new Queue<IWireTargetServerSession>(
                     [CreatePrioritySession(201), CreateCacheSession(202)]),
                 TransportId.Ipc => new Queue<IWireTargetServerSession>([CreateCancelSession(301)]),
@@ -223,14 +315,18 @@ public sealed class WireTargetHostTests
         private FakeServerSession CreateCancelSession(ulong operationId)
         {
             FakeOperation operation = Track(new FakeOperation(operationId, (uint)operationId));
+            WireTargetOperationEvent runtime = WireTargetOperationEvent.FromRuntime(
+                new WireTargetReceivedEvent(
+                    MessageType.Cancel,
+                    new ControlRequestMetadata(operationId, 1, 1, RuntimeRole.Client, 0, 0)));
+            WireTargetOperationEvent lifecycle = WireTargetOperationEvent.FromLifecycle(
+                new WireTargetLifecycleEvent(operationId, NnrpOperationState.Cancelled));
             return Track(new FakeServerSession(
                 operation,
-                [
-                    new WireTargetReceivedEvent(
-                        MessageType.Cancel,
-                        new ControlRequestMetadata(operationId, 1, 1, RuntimeRole.Client, 0, 0)),
-                    new WireTargetReceivedEvent(MessageType.SessionClose),
-                ]));
+                [new WireTargetReceivedEvent(MessageType.SessionClose)],
+                operationEvents: operationId == 101
+                    ? [runtime, lifecycle]
+                    : [lifecycle, runtime]));
         }
 
         private FakeServerSession CreatePrioritySession(ulong operationId)
@@ -246,7 +342,24 @@ public sealed class WireTargetHostTests
                         MessageType.ExpireAt,
                         new SchedulingMetadata(operationId, 2, 10, 0, 1, 0)),
                     new WireTargetReceivedEvent(MessageType.SessionClose),
-                ]));
+                ],
+                [new WireTargetLifecycleEvent(operationId, NnrpOperationState.Superseded)],
+                lifecycleExpectedAfterTerminal: true));
+        }
+
+        private FakeServerSession CreateDeadlineSession()
+        {
+            FakeOperation operation = Track(new FakeOperation(151, 1));
+            return Track(new FakeServerSession(
+                operation,
+                [
+                    new WireTargetReceivedEvent(
+                        MessageType.Deadline,
+                        new SchedulingMetadata(151, 1, 0, 0, 4_000_000_000_000, 0)),
+                    new WireTargetReceivedEvent(MessageType.SessionClose),
+                ],
+                [new WireTargetLifecycleEvent(151, NnrpOperationState.Completed)],
+                lifecycleExpectedAfterTerminal: true));
         }
 
         private FakeServerSession CreateCacheSession(ulong operationId)
@@ -275,7 +388,9 @@ public sealed class WireTargetHostTests
                             0,
                             0)),
                     new WireTargetReceivedEvent(MessageType.SessionClose),
-                ]));
+                ],
+                [new WireTargetLifecycleEvent(operationId, NnrpOperationState.Completed)],
+                lifecycleExpectedAfterTerminal: true));
         }
 
         private static FakeClientSession CreateProgressSession() => new(
@@ -327,9 +442,14 @@ public sealed class WireTargetHostTests
 
     private sealed class FakeServerSession(
         FakeOperation operation,
-        IEnumerable<WireTargetReceivedEvent> events) : IWireTargetServerSession
+        IEnumerable<WireTargetReceivedEvent> events,
+        IEnumerable<WireTargetLifecycleEvent>? lifecycleEvents = null,
+        bool? lifecycleExpectedAfterTerminal = null,
+        IEnumerable<WireTargetOperationEvent>? operationEvents = null) : IWireTargetServerSession
     {
         private readonly Queue<WireTargetReceivedEvent> events = new(events);
+        private readonly Queue<WireTargetLifecycleEvent> lifecycleEvents = new(lifecycleEvents ?? []);
+        private readonly Queue<WireTargetOperationEvent> operationEvents = new(operationEvents ?? []);
 
         internal bool Disposed { get; private set; }
 
@@ -343,6 +463,25 @@ public sealed class WireTargetHostTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(events.Dequeue());
+        }
+
+        public ValueTask<WireTargetOperationEvent> NextOperationEventAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.False(operation.TerminalSent);
+            return ValueTask.FromResult(operationEvents.Dequeue());
+        }
+
+        public ValueTask<WireTargetLifecycleEvent> NextLifecycleAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (lifecycleExpectedAfterTerminal is bool expected)
+            {
+                Assert.Equal(expected, operation.TerminalSent);
+            }
+
+            return ValueTask.FromResult(lifecycleEvents.Dequeue());
         }
 
         public ValueTask SendTraceContextAsync(
@@ -380,6 +519,8 @@ public sealed class WireTargetHostTests
 
         internal bool TerminalSent { get; private set; }
 
+        internal NnrpResultDropReasonCode? DropReasonCode { get; private set; }
+
         public ValueTask SendResultAsync(
             ResultPushMetadata metadata,
             ReadOnlyMemory<byte> body,
@@ -398,6 +539,7 @@ public sealed class WireTargetHostTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal(OperationId, metadata.OperationId);
+            DropReasonCode = metadata.DropReasonCode;
             TerminalSent = true;
             return default;
         }
@@ -461,5 +603,39 @@ public sealed class WireTargetHostTests
         {
             Directory.Delete(Path, true);
         }
+    }
+
+    private static string WriteSuite(string directory, bool includeDeadlineBeforeSubmit)
+    {
+        string casesPath = Path.Combine(directory, "cases.json");
+        string suitePath = Path.Combine(directory, "suite.json");
+        string[] ids = includeDeadlineBeforeSubmit
+            ? ["wire.control.cancel-abort.client", "wire.control.deadline-before-submit.client"]
+            : ["wire.control.cancel-abort.client"];
+        File.WriteAllText(
+            casesPath,
+            JsonSerializer.Serialize(new
+            {
+                scenarios = ids.Select(id => new { id }).ToArray(),
+            }));
+        File.WriteAllText(
+            suitePath,
+            JsonSerializer.Serialize(new
+            {
+                scenario_manifests = new[] { "cases.json" },
+            }));
+        return suitePath;
+    }
+
+    private static string WriteSuiteManifest(string directory, string scenarioManifest)
+    {
+        string suitePath = Path.Combine(directory, "suite.json");
+        File.WriteAllText(
+            suitePath,
+            JsonSerializer.Serialize(new
+            {
+                scenario_manifests = new[] { scenarioManifest },
+            }));
+        return suitePath;
     }
 }

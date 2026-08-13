@@ -1,5 +1,10 @@
 name: CI
 
+env:
+  NNRP_CONFORMANCE_SOURCE_COMMIT: ff905fa5e47526e0e86d6b9c9db0f585a3d4dc0a
+  NNRP_RS_SOURCE_COMMIT: 445e2e09ea41dbe9fbdcdf9433a7dfa27bedd7af
+  NNRP_RS_CI_RUN_ID: '31626506480'
+
 on:
   push:
     branches:
@@ -208,6 +213,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
+          ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}
           path: nnrp-conformance-action
           fetch-depth: 1
 
@@ -375,7 +381,6 @@ jobs:
   native-e2e:
     needs:
       - changes
-      - native-artifacts
     if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
@@ -397,11 +402,40 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Download coordinated native artifacts
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify final nnrp-rs CI source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+            --repo "${{ github.repository_owner }}/nnrp-rs" `
+            --json headSha,status,conclusion | ConvertFrom-Json
+          if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
+              -or $run.status -ne 'completed' `
+              -or $run.conclusion -ne 'success') {
+            throw "nnrp-rs CI run does not match the frozen successful source commit."
+          }
+
+      - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coordinated-native-artifacts
-          path: artifacts/native
+          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/nnrp-rs-ci
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository_owner }}/nnrp-rs
+          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+
+      - name: Stage final native runtime artifacts
+        run: >-
+          python scripts/stage_nnrp_rs_ci_artifacts.py
+          --input artifacts/nnrp-rs-ci
+          --output artifacts/native
+          --require-abi-version 4.4.0
 
       - name: Resolve live native artifact paths
         shell: pwsh
@@ -472,7 +506,6 @@ jobs:
   native-e2e-windows-x86:
     needs:
       - changes
-      - native-artifacts
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: windows-latest
     env:
@@ -491,11 +524,40 @@ jobs:
           dotnet-version: 8.0.x
           architecture: x86
 
-      - name: Download coordinated native artifacts
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify final nnrp-rs CI source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+            --repo "${{ github.repository_owner }}/nnrp-rs" `
+            --json headSha,status,conclusion | ConvertFrom-Json
+          if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
+              -or $run.status -ne 'completed' `
+              -or $run.conclusion -ne 'success') {
+            throw "nnrp-rs CI run does not match the frozen successful source commit."
+          }
+
+      - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coordinated-native-artifacts
-          path: artifacts/native
+          name: nnrp-ffi-native-Windows-X86
+          path: artifacts/nnrp-rs-ci
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository_owner }}/nnrp-rs
+          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+
+      - name: Stage final native runtime artifacts
+        run: >-
+          python scripts/stage_nnrp_rs_ci_artifacts.py
+          --input artifacts/nnrp-rs-ci
+          --output artifacts/native
+          --require-abi-version 4.4.0
 
       - name: Resolve x86 live native artifact paths
         shell: pwsh
@@ -549,7 +611,6 @@ jobs:
   wire-host-route-e2e:
     needs:
       - changes
-      - native-artifacts
     if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
@@ -567,6 +628,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
+          ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}
           path: nnrp-conformance-wire
           fetch-depth: 1
 
@@ -578,11 +640,40 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Download coordinated native artifacts
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify final nnrp-rs CI source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+            --repo "${{ github.repository_owner }}/nnrp-rs" `
+            --json headSha,status,conclusion | ConvertFrom-Json
+          if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
+              -or $run.status -ne 'completed' `
+              -or $run.conclusion -ne 'success') {
+            throw "nnrp-rs CI run does not match the frozen successful source commit."
+          }
+
+      - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coordinated-native-artifacts
-          path: artifacts/native
+          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/nnrp-rs-ci
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository_owner }}/nnrp-rs
+          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+
+      - name: Stage final native runtime artifacts
+        run: >-
+          python scripts/stage_nnrp_rs_ci_artifacts.py
+          --input artifacts/nnrp-rs-ci
+          --output artifacts/native
+          --require-abi-version 4.4.0
 
       - name: Run independent host-route wire E2E
         shell: pwsh
@@ -603,7 +694,6 @@ jobs:
   wire-runtime-e2e:
     needs:
       - changes
-      - native-artifacts
     if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
@@ -621,6 +711,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
+          ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}
           path: nnrp-conformance-wire
           fetch-depth: 1
 
@@ -632,11 +723,40 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Download coordinated native artifacts
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Verify final nnrp-rs CI source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+            --repo "${{ github.repository_owner }}/nnrp-rs" `
+            --json headSha,status,conclusion | ConvertFrom-Json
+          if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
+              -or $run.status -ne 'completed' `
+              -or $run.conclusion -ne 'success') {
+            throw "nnrp-rs CI run does not match the frozen successful source commit."
+          }
+
+      - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: coordinated-native-artifacts
-          path: artifacts/native
+          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/nnrp-rs-ci
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository_owner }}/nnrp-rs
+          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+
+      - name: Stage final native runtime artifacts
+        run: >-
+          python scripts/stage_nnrp_rs_ci_artifacts.py
+          --input artifacts/nnrp-rs-ci
+          --output artifacts/native
+          --require-abi-version 4.4.0
 
       - name: Run independent runtime-frame wire E2E
         shell: pwsh
@@ -721,6 +841,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ${{ github.repository_owner }}/nnrp-conformance
+          ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}
           path: nnrp-conformance-action
           fetch-depth: 1
 

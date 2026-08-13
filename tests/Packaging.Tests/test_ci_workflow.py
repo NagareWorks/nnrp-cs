@@ -19,6 +19,11 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("Expected exactly one capability manifest", workflow)
         self.assertIn("Run suite-owned conformance action", workflow)
         self.assertIn("- conformance", workflow)
+        self.assertIn(
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: ff905fa5e47526e0e86d6b9c9db0f585a3d4dc0a",
+            workflow,
+        )
+        self.assertEqual(4, workflow.count("ref: ${{ env.NNRP_CONFORMANCE_SOURCE_COMMIT }}"))
 
     def test_package_validation_canonicalizes_archives_before_inspection(self) -> None:
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -37,12 +42,22 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("--require-abi-version 4.4.0", workflow)
         self.assertIn("--workflow-run-id 30862254352", workflow)
         self.assertIn("--workflow-head-sha 784a4a354f4e6a73798248f93cf574bd7a5af829", workflow)
+        self.assertIn("NNRP_RS_SOURCE_COMMIT: 445e2e09ea41dbe9fbdcdf9433a7dfa27bedd7af", workflow)
+        self.assertIn("NNRP_RS_CI_RUN_ID: '31626506480'", workflow)
+        self.assertEqual(4, workflow.count("Download final nnrp-rs CI artifacts"))
+        self.assertEqual(4, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
+        self.assertEqual(4, workflow.count("Verify final nnrp-rs CI source"))
+        self.assertEqual(
+            4,
+            workflow.count("nnrp-rs CI run does not match the frozen successful source commit."),
+        )
         self.assertIn("coordinated-native-artifacts", workflow)
         self.assertNotIn("scripts/package_native_artifacts.py", workflow)
         self.assertIn("native-e2e:", workflow)
         self.assertIn("os: [ubuntu-latest, macos-latest, windows-latest]", workflow)
         self.assertIn("native-e2e-windows-x86:", workflow)
         self.assertIn("architecture: x86", workflow)
+        self.assertIn("name: nnrp-ffi-native-Windows-X86", workflow)
         self.assertNotIn("--rid win-x86", workflow)
         self.assertNotIn("--transport websocket", workflow)
         self.assertIn("transport-tcp/win-x86/nnrp_ffi.dll", workflow)
@@ -95,6 +110,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("wire-run", harness)
         self.assertIn("validate-wire-results", harness)
         self.assertIn("Assert-CompleteWireReport", harness)
+        self.assertIn('$requiredScenarioIds = @("wire.control.cancel-abort.client")', harness)
         self.assertIn("timestamp_us", harness)
         self.assertIn("evidence_paths", harness)
         self.assertIn("EvidenceRoot", harness)

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
 using Nnrp.Client;
 using Nnrp.Core;
 using Nnrp.NativeBridge;
@@ -16,6 +17,8 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
     private const ulong CacheKeyHigh = 1_234_605_616_436_508_552;
     private const ulong CacheKeyLow = 11_072_869_122_414_935_808;
     private const ulong ProgressOperationId = 301;
+    private const ulong DeadlineOperationId = 151;
+    private const string DeadlineBeforeSubmitScenario = "wire.control.deadline-before-submit.client";
     private const int ConnectAttempts = 100;
     private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromMilliseconds(50);
     private static readonly byte[] RequestBody = Encoding.UTF8.GetBytes("wire-external-request");
@@ -33,6 +36,9 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         Directory.CreateDirectory(manifestDirectory);
 
         string artifactRoot = options.ArtifactRoot ?? NnrpNativeArtifact.DefaultArtifactRoot;
+        bool requiresDeadlineBeforeSubmit = SuiteDeclaresScenario(
+            options.SuitePath,
+            DeadlineBeforeSubmitScenario);
         sdk.ValidateArtifacts(artifactRoot);
         WireTargetSecurity security = CreateSecurity(manifestDirectory);
         string tcpAddress = ReserveTcpAddress();
@@ -80,6 +86,12 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
 
             await HandleCancelAsync(await tcpAccept.ConfigureAwait(false), cancellationToken)
                 .ConfigureAwait(false);
+            if (requiresDeadlineBeforeSubmit)
+            {
+                await HandleDeadlineBeforeSubmitAsync(
+                    await tcpServer.AcceptAsync(cancellationToken).ConfigureAwait(false),
+                    cancellationToken).ConfigureAwait(false);
+            }
             await tcpServer.DisposeAsync().ConfigureAwait(false);
             tcpServer = null;
 
@@ -131,9 +143,12 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         {
             IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
                 .ConfigureAwait(false);
-            WireTargetReceivedEvent cancel = Expect(
-                await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
-                MessageType.Cancel);
+            WireTargetReceivedEvent cancel = await ExpectOperationRuntimeAndLifecycleAsync(
+                session,
+                MessageType.Cancel,
+                operation.OperationId,
+                NnrpOperationState.Cancelled,
+                cancellationToken).ConfigureAwait(false);
             ControlRequestMetadata metadata = cancel.GetMetadata<ControlRequestMetadata>();
             if (metadata.OperationId != operation.OperationId)
             {
@@ -186,11 +201,55 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
                 new ResultDropReasonMetadata(
                     operation.OperationId,
                     1,
-                    NnrpResultDropReasonCode.DeadlineExpired,
+                    NnrpResultDropReasonCode.Superseded,
                     RuntimeRole.Server,
                     0,
                     0),
                 ReadOnlyMemory<byte>.Empty,
+                cancellationToken).ConfigureAwait(false);
+            await ExpectLifecycleAsync(
+                session,
+                operation.OperationId,
+                NnrpOperationState.Superseded,
+                cancellationToken).ConfigureAwait(false);
+            _ = Expect(
+                await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
+                MessageType.SessionClose);
+        }
+    }
+
+    internal static async Task HandleDeadlineBeforeSubmitAsync(
+        IWireTargetServerSession session,
+        CancellationToken cancellationToken)
+    {
+        await using (session.ConfigureAwait(false))
+        {
+            SchedulingMetadata deadline = Expect(
+                await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
+                MessageType.Deadline).GetMetadata<SchedulingMetadata>();
+            if (deadline.OperationId != DeadlineOperationId
+                || deadline.DeadlineUnixMs != 4_000_000_000_000)
+            {
+                throw new InvalidOperationException(
+                    "Pre-submit deadline metadata does not match the frozen scenario.");
+            }
+
+            IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (operation.OperationId != deadline.OperationId || operation.FrameId != 1)
+            {
+                throw new InvalidOperationException(
+                    "Pre-submit deadline and FRAME_SUBMIT identities do not match.");
+            }
+
+            await operation.SendResultAsync(
+                SuccessfulResultMetadata(),
+                ResponseBody,
+                cancellationToken).ConfigureAwait(false);
+            await ExpectLifecycleAsync(
+                session,
+                operation.OperationId,
+                NnrpOperationState.Completed,
                 cancellationToken).ConfigureAwait(false);
             _ = Expect(
                 await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
@@ -229,24 +288,86 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
             ReadOnlyMemory<byte>.Empty,
             cancellationToken).ConfigureAwait(false);
         await operation.SendResultAsync(
-            new ResultPushMetadata(
-                ResultStatusCode.Success,
-                ResultFlags.None,
-                TypedPayloadProfileId.Token.Value,
-                PayloadKind.TokenChunk,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                (uint)ResponseBody.Length),
+            SuccessfulResultMetadata(),
             ResponseBody,
+            cancellationToken).ConfigureAwait(false);
+        await ExpectLifecycleAsync(
+            session,
+            operation.OperationId,
+            NnrpOperationState.Completed,
             cancellationToken).ConfigureAwait(false);
         _ = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
             MessageType.SessionClose);
+    }
+
+    private static async ValueTask ExpectLifecycleAsync(
+        IWireTargetServerSession session,
+        ulong operationId,
+        NnrpOperationState state,
+        CancellationToken cancellationToken)
+    {
+        WireTargetLifecycleEvent lifecycle = await session.NextLifecycleAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (lifecycle.OperationId != operationId || lifecycle.State != state)
+        {
+            throw new InvalidOperationException(
+                $"Expected operation {operationId} lifecycle {state}, got "
+                + $"operation {lifecycle.OperationId} lifecycle {lifecycle.State}.");
+        }
+    }
+
+    private static async ValueTask<WireTargetReceivedEvent>
+        ExpectOperationRuntimeAndLifecycleAsync(
+            IWireTargetServerSession session,
+            MessageType messageType,
+            ulong operationId,
+            NnrpOperationState state,
+            CancellationToken cancellationToken)
+    {
+        WireTargetReceivedEvent? runtime = null;
+        bool lifecycleObserved = false;
+        for (int index = 0; index < 2; index++)
+        {
+            WireTargetOperationEvent candidate = await session
+                .NextOperationEventAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (candidate.Runtime is WireTargetReceivedEvent runtimeEvent)
+            {
+                if (runtime is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Wire target observed more than one {messageType} runtime event.");
+                }
+
+                runtime = Expect(runtimeEvent, messageType);
+                continue;
+            }
+
+            if (candidate.Lifecycle is not WireTargetLifecycleEvent lifecycle)
+            {
+                throw new InvalidOperationException(
+                    $"Wire target expected {state} for operation {operationId}, " +
+                    "but the operation event did not contain lifecycle evidence.");
+            }
+
+            if (lifecycle.OperationId != operationId || lifecycle.State != state)
+            {
+                throw new InvalidOperationException(
+                    $"Wire target expected {state} for operation {operationId}, " +
+                    $"but received {lifecycle.State} for operation {lifecycle.OperationId}.");
+            }
+
+            lifecycleObserved = true;
+        }
+
+        if (runtime is null || !lifecycleObserved)
+        {
+            throw new InvalidOperationException(
+                $"Wire target did not observe both {messageType} and {state}.");
+        }
+
+        return runtime;
     }
 
     internal async Task HandleProgressClientAsync(
@@ -375,6 +496,62 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         }
 
         return received;
+    }
+
+    private static ResultPushMetadata SuccessfulResultMetadata() => new(
+        ResultStatusCode.Success,
+        ResultFlags.None,
+        TypedPayloadProfileId.Token.Value,
+        PayloadKind.TokenChunk,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        (uint)ResponseBody.Length);
+
+    private static bool SuiteDeclaresScenario(string suitePath, string scenarioId)
+    {
+        string resolvedSuitePath = Path.GetFullPath(suitePath);
+        string suiteDirectory = Path.GetDirectoryName(resolvedSuitePath)
+            ?? throw new InvalidOperationException("Wire suite path has no parent directory.");
+        using JsonDocument suite = JsonDocument.Parse(File.ReadAllBytes(resolvedSuitePath));
+        JsonElement manifests = suite.RootElement.GetProperty("scenario_manifests");
+        foreach (JsonElement manifest in manifests.EnumerateArray())
+        {
+            string relativePath = manifest.GetString()
+                ?? throw new InvalidOperationException("Wire suite contains a null scenario manifest path.");
+            if (Path.IsPathRooted(relativePath))
+            {
+                throw new InvalidDataException(
+                    "Wire suite scenario manifest paths must be relative to the suite directory.");
+            }
+
+            string scenarioPath = Path.GetFullPath(Path.Combine(suiteDirectory, relativePath));
+            string suiteRelativePath = Path.GetRelativePath(suiteDirectory, scenarioPath);
+            if (Path.IsPathRooted(suiteRelativePath)
+                || suiteRelativePath.Equals("..", StringComparison.Ordinal)
+                || suiteRelativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || suiteRelativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Wire suite scenario manifest paths must remain within the suite directory.");
+            }
+
+            using JsonDocument scenarios = JsonDocument.Parse(File.ReadAllBytes(scenarioPath));
+            if (scenarios.RootElement.GetProperty("scenarios").EnumerateArray().Any(
+                scenario => string.Equals(
+                    scenario.GetProperty("id").GetString(),
+                    scenarioId,
+                    StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static WireTargetSecurity CreateSecurity(string manifestDirectory)
