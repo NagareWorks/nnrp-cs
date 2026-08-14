@@ -161,7 +161,7 @@ namespace Nnrp.Transport.WebSocket.Tests
 
             Assert.Equal(TransportId.WebSocket, serverSession.ActiveTransportId);
             var clientClose = Task.Factory.StartNew(
-                clientSession.Close,
+                () => Assert.True(client.CloseSession(70)),
                 CancellationToken.None,
                 TaskCreationOptions.LongRunning,
                 TaskScheduler.Default);

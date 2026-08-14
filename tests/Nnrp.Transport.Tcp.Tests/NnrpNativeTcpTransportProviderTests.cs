@@ -89,7 +89,7 @@ namespace Nnrp.Transport.Tcp.Tests
             Assert.Equal(new byte[] { 11 }, decoded.Tail.ToArray());
 
             var clientClose = Task.Factory.StartNew(
-                clientSession.Close,
+                () => Assert.True(client.CloseSession(70)),
                 CancellationToken.None,
                 TaskCreationOptions.LongRunning,
                 TaskScheduler.Default);

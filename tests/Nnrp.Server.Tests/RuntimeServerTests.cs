@@ -161,6 +161,47 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
+        public async Task SendResultRejectsInvalidFrozenMetadataBeforeNativeDispatch()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            var nativeSession = CreateNativeSession(harness);
+            var listener = new TestListener(nativeSession);
+            await using var server = new NnrpServer(
+                new NnrpServerOptions(NnrpEndpoint.Parse("nnrp://localhost/runtime/default")),
+                new NnrpServerTransportListenerSet(new[] { listener }));
+            await using var session = await server.AcceptAsync();
+
+            harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 42, 406, SubmitPayload(406)));
+            var operation = await session.ReceiveSubmitAsync();
+            var invalid = new ResultPushMetadata(
+                statusCode: ResultStatusCode.Success,
+                resultFlags: ResultFlags.Stale,
+                sectionCount: 1,
+                tileCount: 1,
+                activeProfileId: 1,
+                inferenceMilliseconds: 1,
+                queueMilliseconds: 1,
+                serverTotalMilliseconds: 2,
+                tileBaseId: 0,
+                tileIndexBytes: 0,
+                resultClass: ResultClass.StaleReuse,
+                appliedBudgetPolicy: BudgetPolicy.AllowStaleReuse,
+                reusedFrameId: 0,
+                coveredTileCount: 1,
+                droppedTileCount: 0,
+                payloadKindBitmap: PayloadKind.Tensor,
+                payloadFrameCount: 0);
+
+            var error = await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await operation.SendResultAsync(invalid));
+            Assert.Equal("metadata", error.ParamName);
+            Assert.Empty(harness.ServerResults);
+
+            await operation.SendResultAsync(SuccessMetadata(), new byte[] { 9 });
+            Assert.Single(harness.ServerResults);
+        }
+
+        [Fact]
         public async Task TypedServerMethodsUseOneNativeFrameEach()
         {
             using var harness = new RuntimeEntrypointHarness();

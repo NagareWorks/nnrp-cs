@@ -547,7 +547,11 @@ public sealed class WireTargetHostTests
 
     private sealed class FakeClient(FakeClientSession session) : IWireTargetClient
     {
-        public IWireTargetClientSession OpenSession() => session;
+        public ValueTask<IWireTargetClientSession> OpenSessionAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IWireTargetClientSession>(session);
+        }
 
         public ValueTask DisposeAsync() => default;
     }

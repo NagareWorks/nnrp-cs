@@ -89,7 +89,7 @@ namespace Nnrp.Transport.Ipc.Tests
 
                 Assert.Equal(TransportId.Ipc, serverSession.ActiveTransportId);
                 var clientClose = Task.Factory.StartNew(
-                    clientSession.Close,
+                    () => Assert.True(client.CloseSession(70)),
                     CancellationToken.None,
                     TaskCreationOptions.LongRunning,
                     TaskScheduler.Default);

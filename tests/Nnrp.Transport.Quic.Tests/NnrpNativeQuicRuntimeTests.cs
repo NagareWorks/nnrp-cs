@@ -98,7 +98,7 @@ namespace Nnrp.Transport.Quic.Tests
 
                     Assert.Equal((ulong)71, serverSession.Handle.Handle.Id);
                     var clientClose = Task.Factory.StartNew(
-                        clientSession.Close,
+                        () => Assert.True(client.CloseSession(70)),
                         CancellationToken.None,
                         TaskCreationOptions.LongRunning,
                         TaskScheduler.Default);

@@ -383,7 +383,8 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
             providerEndpoint,
             security,
             cancellationToken).ConfigureAwait(false);
-        await using IWireTargetClientSession session = client.OpenSession();
+        await using IWireTargetClientSession session = await client.OpenSessionAsync(
+            cancellationToken).ConfigureAwait(false);
         ulong operationId = await session.SubmitNoWaitAsync(
             NnrpSubmitRequest.CreateToken(new NnrpTokenSubmitInput(
                 new NnrpSubmitIdentity(

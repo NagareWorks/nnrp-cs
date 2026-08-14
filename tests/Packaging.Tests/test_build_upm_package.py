@@ -107,6 +107,9 @@ class UpmPackageMetadataTests(unittest.TestCase):
             },
             "tools/Nnrp.ConformanceAdapter/Nnrp.ConformanceAdapter.csproj": {
                 "src/Nnrp.Core/Nnrp.Core.csproj",
+                "src/Nnrp.NativeBridge/Nnrp.NativeBridge.csproj",
+                "src/Nnrp.Transport.Quic/Nnrp.Transport.Quic.csproj",
+                "src/Nnrp.Transport.Tcp/Nnrp.Transport.Tcp.csproj",
             },
         }
 

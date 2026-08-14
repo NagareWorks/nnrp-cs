@@ -104,6 +104,7 @@ namespace Nnrp.Core.Tests
             var descriptor = Descriptor(TransportId.Tcp, NnrpTransportProviderKind.NativeDynamic);
 
             Assert.Equal("TCP", descriptor.Name);
+            Assert.Equal(TransportId.Tcp, descriptor.TransportId);
             Assert.Equal("1.0.0-preview.4", descriptor.Version);
             Assert.True(descriptor.Available);
             Assert.Equal("runtimes/win-x64/native/nnrp_ffi_tcp.dll", descriptor.LibraryPath);
@@ -370,10 +371,11 @@ namespace Nnrp.Core.Tests
                 Array.Empty<TransportId>(),
                 Array.Empty<NnrpTransportCandidateReadiness>(),
                 (TransportPolicy)255));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionOptions(
+            var zeroFrameRequest = new NnrpTransportSelectionOptions(
                 Array.Empty<TransportId>(),
                 Array.Empty<NnrpTransportCandidateReadiness>(),
-                requestedMaxFrameBytes: 0));
+                requestedMaxFrameBytes: 0);
+            Assert.Equal((ulong)0, zeroFrameRequest.RequestedMaxFrameBytes);
             Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionOptions(
                 new[] { TransportId.Unspecified },
                 Array.Empty<NnrpTransportCandidateReadiness>()));
@@ -416,6 +418,7 @@ namespace Nnrp.Core.Tests
                 NnrpTransportSelectionErrorCode.ForcedTransportUnavailable,
                 "forced provider unavailable",
                 TransportPolicy.ForceTcp,
+                TransportId.Tcp,
                 candidates);
 
             candidates[0] = new NnrpTransportCandidate(
@@ -429,6 +432,7 @@ namespace Nnrp.Core.Tests
 
             Assert.Equal(NnrpTransportSelectionErrorCode.ForcedTransportUnavailable, error.Code);
             Assert.Equal(TransportPolicy.ForceTcp, error.Policy);
+            Assert.Equal(TransportId.Tcp, error.TransportId);
             Assert.Same(candidate, Assert.Single(error.Candidates));
             Assert.Equal("forced provider unavailable", error.Diagnostic);
             Assert.Equal(error.Diagnostic, error.Message);
@@ -445,6 +449,10 @@ namespace Nnrp.Core.Tests
                 NnrpTransportSelectionErrorCode.NoViableTransport,
                 "invalid policy",
                 (TransportPolicy)255));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new NnrpTransportSelectionException(
+                NnrpTransportSelectionErrorCode.NoViableTransport,
+                "invalid transport",
+                transportId: TransportId.Unspecified));
             Assert.Throws<ArgumentException>(() => new NnrpTransportSelectionException(
                 NnrpTransportSelectionErrorCode.NoViableTransport,
                 "invalid candidates",

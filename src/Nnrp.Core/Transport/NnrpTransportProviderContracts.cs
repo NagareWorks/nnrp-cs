@@ -546,6 +546,7 @@ namespace Nnrp.Core
             NnrpTransportSelectionErrorCode code,
             string diagnostic,
             TransportPolicy? policy = null,
+            TransportId? transportId = null,
             IEnumerable<NnrpTransportCandidate>? candidates = null)
             : base(diagnostic)
         {
@@ -564,6 +565,11 @@ namespace Nnrp.Core
                 throw new ArgumentOutOfRangeException(nameof(policy));
             }
 
+            if (transportId.HasValue)
+            {
+                NnrpTransportProviderDescriptor.ValidateTransportId(transportId.Value);
+            }
+
             var ownedCandidates = candidates?.ToArray() ?? Array.Empty<NnrpTransportCandidate>();
             if (ownedCandidates.Any(candidate => candidate == null))
             {
@@ -572,6 +578,7 @@ namespace Nnrp.Core
 
             Code = code;
             Policy = policy;
+            TransportId = transportId;
             Candidates = Array.AsReadOnly(ownedCandidates);
             Diagnostic = diagnostic;
         }
@@ -579,6 +586,8 @@ namespace Nnrp.Core
         public NnrpTransportSelectionErrorCode Code { get; }
 
         public TransportPolicy? Policy { get; }
+
+        public TransportId? TransportId { get; }
 
         public IReadOnlyList<NnrpTransportCandidate> Candidates { get; }
 
@@ -602,11 +611,6 @@ namespace Nnrp.Core
             if (!Enum.IsDefined(typeof(TransportPolicy), policy))
             {
                 throw new ArgumentOutOfRangeException(nameof(policy));
-            }
-
-            if (requestedMaxFrameBytes == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(requestedMaxFrameBytes));
             }
 
             if (candidateReadiness == null)

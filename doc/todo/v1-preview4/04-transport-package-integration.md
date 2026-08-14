@@ -7,7 +7,7 @@
   - [x] `NnrpTransportProviderLimits(MaxFrameBytes)`.
   - [x] `NnrpTransportProviderLimitation` with every frozen limitation value.
   - [x] `NnrpTransportProviderMetadata(Id, Cost, PreferenceRank, Limits, Limitations)`.
-  - [x] `NnrpTransportProviderDescriptor(Name, Version, TransportId, Kind, Available, LibraryPath, Metadata, Diagnostic)`.
+  - [x] `NnrpTransportProviderDescriptor(Name, Version, TransportId, Kind, Available, LibraryPath, Metadata, Diagnostic)`, with provider-owned `Name` kept distinct from protocol `TransportId`.
   - [x] `NnrpTransportCandidateReadiness(TransportId, ProviderId, RouteResolved, SecuritySatisfied, Diagnostic)`.
   - [x] `NnrpTransportProbeState`.
   - [x] `NnrpTransportProbeMetrics(SampleCount, SuccessCount, MedianThroughputBytesPerSecond, MedianRttMicroseconds)`.
@@ -16,7 +16,7 @@
   - [x] `NnrpTransportCandidate`.
   - [x] `NnrpTransportSelection`.
   - [x] `NnrpTransportSelectionErrorCode` and `NnrpTransportSelectionException`.
-  - [x] `NnrpTransportSelectionOptions` with policy, peer support, minimum frame bytes, and probe requirements.
+  - [x] `NnrpTransportSelectionOptions` with policy, peer support, requested maximum frame bytes, readiness, and probe evidence.
 - [x] Add endpoint and security contracts in `Nnrp.Core`.
   - [x] Parse only `nnrp://` and `nnrps://` as `NnrpEndpoint` application endpoints.
   - [x] Preserve the authority, path, query, and secure intent of `NnrpEndpoint`.

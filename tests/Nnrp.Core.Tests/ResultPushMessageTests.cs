@@ -74,6 +74,7 @@ namespace Nnrp.Core.Tests
                 tileBaseId: 0,
                 tileIndexBytes: (uint)tileIndexBytes,
                 resultClass: ResultClass.Partial,
+                reusedFrameId: 0x5A,
                 coveredTileCount: 1,
                 droppedTileCount: 1);
 

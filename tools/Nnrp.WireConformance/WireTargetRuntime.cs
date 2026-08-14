@@ -98,7 +98,7 @@ internal interface IWireTargetOperation
 
 internal interface IWireTargetClient : IAsyncDisposable
 {
-    IWireTargetClientSession OpenSession();
+    ValueTask<IWireTargetClientSession> OpenSessionAsync(CancellationToken cancellationToken);
 }
 
 internal interface IWireTargetClientSession : IAsyncDisposable
@@ -329,8 +329,9 @@ internal sealed class NnrpWireTargetOperation(NnrpServerOperation operation) : I
 
 internal sealed class NnrpWireTargetClient(NnrpClient client) : IWireTargetClient
 {
-    public IWireTargetClientSession OpenSession() =>
-        new NnrpWireTargetClientSession(client.OpenSession());
+    public async ValueTask<IWireTargetClientSession> OpenSessionAsync(CancellationToken cancellationToken) =>
+        new NnrpWireTargetClientSession(
+            await client.OpenSessionAsync(cancellationToken: cancellationToken).ConfigureAwait(false));
 
     public ValueTask DisposeAsync() => client.DisposeAsync();
 }
