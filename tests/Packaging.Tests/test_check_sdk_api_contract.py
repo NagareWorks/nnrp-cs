@@ -101,6 +101,23 @@ def contract() -> dict[str, object]:
             "ServerOperation": {
                 "invariants": copy.deepcopy(FROZEN_SERVER_OPERATION_INVARIANTS),
             },
+            "TransportProbeObservation": {
+                "stateConstraint": ["succeeded", "failed"],
+            },
+            "TransportProviderDescriptor": {
+                "nameSemantics": (
+                    "provider-owned package or display name; protocol transport identity is "
+                    "transport_id and selection must not derive it from name"
+                ),
+            },
+            "TransportSelectionOptions": {
+                "peerSupportedTransportsSemantics": (
+                    "set; duplicates have no effect and input order is not semantically significant"
+                ),
+                "requestedMaxFrameBytesZeroRule": (
+                    "zero is a valid requested size and must not be rejected or treated as absent"
+                ),
+            },
         },
     }
 
@@ -135,6 +152,38 @@ class CheckSdkApiContractTests(unittest.TestCase):
             FROZEN_SERVER_OPERATION_INVARIANTS,
             second_server_operation["invariants"],
         )
+
+    def test_rejects_transport_probe_observation_state_constraint_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        observation = cast(dict[str, object], types["TransportProbeObservation"])
+        observation["stateConstraint"] = ["succeeded", "failed", "not-run"]
+        with self.assertRaisesRegex(SystemExit, "TransportProbeObservation state constraint drifted"):
+            self.check(value)
+
+    def test_rejects_transport_selection_peer_set_semantics_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        selection = cast(dict[str, object], types["TransportSelectionOptions"])
+        selection["peerSupportedTransportsSemantics"] = "ordered list"
+        with self.assertRaisesRegex(SystemExit, "TransportSelectionOptions peer transport semantics drifted"):
+            self.check(value)
+
+    def test_rejects_transport_provider_name_semantics_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        descriptor = cast(dict[str, object], types["TransportProviderDescriptor"])
+        descriptor["nameSemantics"] = "provider name is transport identity"
+        with self.assertRaisesRegex(SystemExit, "TransportProviderDescriptor name semantics drifted"):
+            self.check(value)
+
+    def test_rejects_transport_selection_zero_frame_rule_drift(self) -> None:
+        value = contract()
+        types = cast(dict[str, object], value["types"])
+        selection = cast(dict[str, object], types["TransportSelectionOptions"])
+        selection["requestedMaxFrameBytesZeroRule"] = "zero means absent"
+        with self.assertRaisesRegex(SystemExit, "TransportSelectionOptions zero frame-size rule drifted"):
+            self.check(value)
 
     def test_rejects_contract_version_drift(self) -> None:
         value = contract()
@@ -191,6 +240,41 @@ class CheckSdkApiContractTests(unittest.TestCase):
         csharp["typedPayloadFrame"] = "Nnrp.Core.LegacyTypedPayloadFrame"
         with self.assertRaisesRegex(SystemExit, "C# SDK projection map drifted"):
             self.check(value)
+
+        value = contract()
+        projections = cast(dict[str, object], value["languageProjections"])
+        csharp = cast(dict[str, object], projections["csharp"])
+        codecs = cast(dict[str, object], csharp["baselineMetadataCodecs"])
+        del codecs["ObjectReferenceBlock"]
+        with self.assertRaisesRegex(SystemExit, "C# SDK projection map drifted"):
+            self.check(value)
+
+    def test_rejects_missing_csharp_baseline_metadata_codec_surface(self) -> None:
+        source = """
+namespace Nnrp.Core
+{
+    public readonly struct ExampleMetadata
+    {
+        public byte[] ToArray() => [];
+        public static bool TryParse(System.ReadOnlySpan<byte> source, out ExampleMetadata metadata)
+        {
+            metadata = default;
+            return true;
+        }
+    }
+}
+"""
+        CHECKER.require_csharp_baseline_metadata_codec(source, "ExampleMetadata")
+
+        without_try_parse = source.replace("public static bool TryParse", "private static bool TryParse")
+        with self.assertRaisesRegex(
+            SystemExit,
+            "C# baseline metadata codec ExampleMetadata.TryParse is missing",
+        ):
+            CHECKER.require_csharp_baseline_metadata_codec(
+                without_try_parse,
+                "ExampleMetadata",
+            )
 
     def test_rejects_missing_role_surfaces_with_clean_diagnostic(self) -> None:
         value = contract()
@@ -276,6 +360,30 @@ namespace Nnrp.NativeBridge
             "SendProgress",
             "ProgressMetadata",
         )
+
+    def test_removed_compatibility_method_check_ignores_signature_whitespace(self) -> None:
+        source = """
+namespace Nnrp.Client
+{
+    public sealed class NnrpClient
+    {
+        public virtual
+            NnrpClientSession
+            OpenSession (
+                NnrpClientSessionOptions options)
+        {
+            throw new System.NotImplementedException();
+        }
+    }
+}
+"""
+        with self.assertRaisesRegex(SystemExit, "removed compatibility method: OpenSession"):
+            CHECKER.require_no_public_method_name(
+                source,
+                "public sealed class NnrpClient",
+                "NnrpClient",
+                "OpenSession",
+            )
 
     def test_forbidden_native_method_check_ignores_signature_whitespace(self) -> None:
         source = """

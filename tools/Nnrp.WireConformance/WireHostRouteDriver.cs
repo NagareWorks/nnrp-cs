@@ -65,7 +65,8 @@ internal sealed class WireHostRouteDriver
             client = await NnrpClient.ConnectAsync(
                 clientOptions,
                 cancellationToken).ConfigureAwait(false);
-            session = client.OpenSession();
+            session = await client.OpenSessionAsync(
+                cancellationToken: cancellationToken).ConfigureAwait(false);
             return WireHostRouteCommand.Passed(
                 scenario.Id,
                 "success",

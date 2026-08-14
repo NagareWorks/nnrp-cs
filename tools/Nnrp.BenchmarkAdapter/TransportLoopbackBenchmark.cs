@@ -451,7 +451,8 @@ internal static class TransportLoopbackBenchmark
                         ForcePolicy(transportId),
                         new[] { configuration.ProviderFactory() }),
                     timeout.Token);
-                clientSession = client.OpenSession();
+                clientSession = await client.OpenSessionAsync(
+                    cancellationToken: timeout.Token).ConfigureAwait(false);
                 serverSession = await accepting;
                 return new LoopbackSession(
                     configuration.IpcSocketPath,

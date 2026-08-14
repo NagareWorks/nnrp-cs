@@ -26,17 +26,19 @@ namespace Nnrp.Client.Tests
                 typeof(CancellationToken));
             AssertMethod(
                 typeof(NnrpClient),
-                nameof(NnrpClient.OpenSession),
-                typeof(NnrpClientSession),
+                nameof(NnrpClient.OpenSessionAsync),
+                typeof(ValueTask<NnrpClientSession>),
                 isStatic: false,
-                typeof(NnrpClientSessionOptions));
+                typeof(NnrpClientSessionOptions),
+                typeof(CancellationToken));
             AssertMethod(
                 typeof(NnrpClient),
-                nameof(NnrpClient.ResumeSession),
-                typeof(NnrpClientSession),
+                nameof(NnrpClient.ResumeSessionAsync),
+                typeof(ValueTask<NnrpClientSession>),
                 isStatic: false,
                 typeof(NnrpSessionRecoveryTicket),
-                typeof(NnrpClientSessionOptions));
+                typeof(NnrpClientSessionOptions),
+                typeof(CancellationToken));
 
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitAsync), typeof(ValueTask<NnrpResult>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));
             AssertMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SubmitNoWaitAsync), typeof(ValueTask<ulong>), false, typeof(NnrpSubmitRequest), typeof(CancellationToken));

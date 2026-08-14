@@ -385,7 +385,8 @@ namespace Nnrp.Server
                     forced.HasValue
                         ? $"Forced transport is not installed: {forced.Value}."
                         : "No transport provider is installed for the server listener set.",
-                    options.TransportPolicy);
+                    options.TransportPolicy,
+                    transportId: forced);
             }
 
             var plans = new List<ListenerPlan>(allowed.Length);
@@ -463,7 +464,8 @@ namespace Nnrp.Server
                     : NnrpTransportSelectionErrorCode.InvalidEvidence,
                 diagnostic,
                 policy,
-                candidates);
+                transportId: ForcedTransport(policy),
+                candidates: candidates);
         }
 
         [ExcludeFromCodeCoverage]

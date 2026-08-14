@@ -442,15 +442,9 @@ namespace Nnrp.Core
                 return false;
             }
 
-            if (metadata.ResultClass == ResultClass.StaleReuse)
-            {
-                if (metadata.ReusedFrameId == 0)
-                {
-                    error = NnrpParseError.InvalidMessageLayout;
-                    return false;
-                }
-            }
-            else if (metadata.ReusedFrameId != 0)
+            var hasStaleSemantics = metadata.ResultClass == ResultClass.StaleReuse
+                || (metadata.ResultFlags & ResultFlags.Stale) != 0;
+            if (hasStaleSemantics != (metadata.ReusedFrameId != 0))
             {
                 error = NnrpParseError.InvalidMessageLayout;
                 return false;

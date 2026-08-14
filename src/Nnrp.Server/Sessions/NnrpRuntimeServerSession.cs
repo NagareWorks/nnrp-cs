@@ -50,10 +50,22 @@ namespace Nnrp.Server
             ReadOnlyMemory<byte> body = default,
             CancellationToken cancellationToken = default)
         {
+            var encodedMetadata = metadata.ToArray();
+            if (!ResultPushMetadata.TryParse(
+                    encodedMetadata,
+                    strict: true,
+                    out _,
+                    out var validationError))
+            {
+                throw new ArgumentException(
+                    $"RESULT_PUSH metadata violates the frozen wire contract: {validationError}.",
+                    nameof(metadata));
+            }
+
             BeginTerminal(cancellationToken);
             try
             {
-                session.SendResult(operation, Join(metadata.ToArray(), body));
+                session.SendResult(operation, Join(encodedMetadata, body));
                 return default;
             }
             catch

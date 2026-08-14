@@ -9,6 +9,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nnrp.Core\Nnrp.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.NativeBridge\Nnrp.NativeBridge.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.Quic\Nnrp.Transport.Quic.csproj" />
+    <ProjectReference Include="..\..\src\Nnrp.Transport.Tcp\Nnrp.Transport.Tcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>

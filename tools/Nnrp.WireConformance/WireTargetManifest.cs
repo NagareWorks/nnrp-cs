@@ -355,6 +355,7 @@ public sealed class WireTargetManifestBuilder
     {
         bool endpointUsesTls = name switch
         {
+            NnrpPreview4CapabilityTokens.TransportTcp => security is not null,
             NnrpPreview4CapabilityTokens.TransportQuic => true,
             NnrpPreview4CapabilityTokens.TransportWebSocket => endpoint.StartsWith("wss://", StringComparison.OrdinalIgnoreCase),
             _ => false,
@@ -365,8 +366,7 @@ public sealed class WireTargetManifestBuilder
             throw new ArgumentException("QUIC wire conformance transport requires TLS.");
         }
 
-        if ((name == NnrpPreview4CapabilityTokens.TransportTcp ||
-             name == NnrpPreview4CapabilityTokens.TransportIpc) && tls)
+        if (name == NnrpPreview4CapabilityTokens.TransportIpc && tls)
         {
             throw new ArgumentException($"{name} wire conformance transport does not use TLS.");
         }

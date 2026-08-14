@@ -25,11 +25,11 @@ namespace Nnrp.Core.Tests
                     "evidence_dir": "artifacts/evidence"
                   },
                   "cases": [
-                    { "id": "l0.header.fixed_shape.golden", "layer": "L0", "status": "mandatory", "feature": "header", "required_capabilities": [], "description": "Header." },
-                    { "id": "l0.body_region.prelude.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Body regions." },
-                    { "id": "l0.typed_payload.frame_regions.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed frame regions." },
+                    { "id": "l0.header.fixed_shape.golden", "layer": "L0", "status": "mandatory", "feature": "header", "required_capabilities": [], "description": "Header.", "parameters": { "header_hex": "4e4e525001001028210000003000000000100000070000000b0000000200000015cd5b0700000000" } },
+                    { "id": "l0.body_region.prelude.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Body regions.", "parameters": { "metadata_hex": "1800000018000000180000000e00000010000000050000000000000000000000" } },
+                    { "id": "l0.typed_payload.frame_regions.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed frame regions.", "parameters": { "descriptor_region_hex": "020001000000000003000000000000000400020003000000020000000000000008000300050000000500000000000000100004000a0000000300000000000000", "payload_hex": "746f6b6175766964656f657674" } },
                     { "id": "l1.typed_payload.region.pack", "layer": "L1", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed region packing." },
-                    { "id": "l0.typed_payload.descriptor.current.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed payload descriptor." },
+                    { "id": "l0.typed_payload.descriptor.current.golden", "layer": "L0", "status": "mandatory", "feature": "payload.typed", "required_capabilities": ["payload.typed"], "description": "Typed payload descriptor.", "parameters": { "descriptor_hex": "020002020110000003000000020000000800000018000000" } },
                     { "id": "l1.control.cancel-abort", "layer": "L1", "status": "mandatory", "feature": "control.cancel_abort", "required_capabilities": ["control.cancel_abort"], "description": "Cancel." },
                     { "id": "l1.control.priority-deadline", "layer": "L1", "status": "mandatory", "feature": "control.priority_deadline", "required_capabilities": ["control.priority_update"], "description": "Scheduling." },
                     { "id": "l1.control.progress-backpressure", "layer": "L1", "status": "mandatory", "feature": "control.progress_backpressure", "required_capabilities": ["control.progress_partial"], "description": "Progress." },
@@ -81,7 +81,18 @@ namespace Nnrp.Core.Tests
                 .EnumerateArray()
                 .Select(item => item.GetString() ?? string.Empty)
                 .ToArray();
-            Assert.Equal(NnrpPreview4CapabilityTokens.AllCapabilities, supports);
+            Assert.Equal(new[]
+            {
+                "handshake.basic",
+                "session.open_close",
+                "session.resume",
+                "flow_update",
+                "frame_submit.tensor.inline",
+                "result_push.basic",
+                "cache.lifecycle",
+                "transport.tcp",
+                "transport.quic",
+            }.Concat(NnrpPreview4CapabilityTokens.AllCapabilities), supports);
         }
 
         [Fact]
@@ -98,6 +109,92 @@ namespace Nnrp.Core.Tests
             Assert.Contains("nnrp-1-preview4", error.Message, StringComparison.Ordinal);
         }
 
+        [Theory]
+        [InlineData("{}")]
+        [InlineData("{\"header_hex\":\"4e4e525001001028210000003000000000100000070000000b0000000200000015cd5b0700000000\",\"legacy\":true}")]
+        public void BuildResultsJsonRejectsMissingOrExtraFrozenParameters(string parameters)
+        {
+            var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(
+                $$"""
+                {
+                  "protocol_version": "nnrp-1-preview4",
+                  "cases": [
+                    {
+                      "id": "l0.header.fixed_shape.golden",
+                      "parameters": {{parameters}}
+                    }
+                  ]
+                }
+                """));
+
+            Assert.Contains("parameters must equal [header_hex]", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BuildResultsJsonRejectsParametersForCasesWithoutFrozenParameters()
+        {
+            var error = Assert.Throws<ArgumentException>(() => AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview4",
+                  "cases": [
+                    {
+                      "id": "l1.handshake.basic",
+                      "parameters": { "legacy": true }
+                    }
+                  ]
+                }
+                """));
+
+            Assert.Contains("parameters must equal []", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BuildResultsJsonConsumesSuiteOwnedFrozenVector()
+        {
+            var reportJson = AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview4",
+                  "cases": [
+                    {
+                      "id": "l0.body_region.prelude.golden",
+                      "parameters": {
+                        "metadata_hex": "1900000018000000180000000e00000010000000050000000000000000000000"
+                      }
+                    }
+                  ]
+                }
+                """);
+
+            using var document = JsonDocument.Parse(reportJson);
+            var result = document.RootElement.GetProperty("results").EnumerateArray().Single();
+            Assert.Equal("fail", result.GetProperty("outcome").GetString());
+            Assert.Contains("inline object bytes", result.GetProperty("message").GetString(), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void BuildResultsJsonRejectsNonHexFrozenVector()
+        {
+            var reportJson = AdapterProgram.BuildResultsJson(
+                """
+                {
+                  "protocol_version": "nnrp-1-preview4",
+                  "cases": [
+                    {
+                      "id": "l0.header.fixed_shape.golden",
+                      "parameters": { "header_hex": "not-hex" }
+                    }
+                  ]
+                }
+                """);
+
+            using var document = JsonDocument.Parse(reportJson);
+            var result = document.RootElement.GetProperty("results").EnumerateArray().Single();
+            Assert.Equal("error", result.GetProperty("outcome").GetString());
+            Assert.Contains("hexadecimal string", result.GetProperty("message").GetString(), StringComparison.Ordinal);
+        }
+
         [Fact]
         public void BuildResultsJsonExecutesSupportedCases()
         {
@@ -107,7 +204,7 @@ namespace Nnrp.Core.Tests
                   "protocol_version": "nnrp-1-preview4",
                   "cases": [
                     { "id": "l0.header.roundtrip.basic" },
-                    { "id": "l0.header.fixed_shape.golden" },
+                    { "id": "l0.header.fixed_shape.golden", "parameters": { "header_hex": "4e4e525001001028210000003000000000100000070000000b0000000200000015cd5b0700000000" } },
                     { "id": "l0.header.invalid_length.reject" },
                     { "id": "l0.header.length_mismatch.reject" },
                     { "id": "l1.handshake.basic" },
@@ -126,7 +223,7 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.frame_submit.tensor.inline.routing.validation" },
                     { "id": "l1.result_push.basic.terminal.validation" },
                     { "id": "l2.result_push.basic.event_pump.single_terminal.validation" },
-                    { "id": "l0.flow_update.packet.golden" },
+                    { "id": "l0.flow_update.packet.golden", "parameters": { "packet_hex": "4e4e5250010017280000000020000000000000001500000000000000000006000d000000000000000104020000000100000000000000000000000000280000000500000003000000" } },
                     { "id": "l0.flow_update.connection.packet.golden" },
                     { "id": "l0.flow_update.operation.packet.golden" },
                     { "id": "l0.flow_update.reserved_flags.reject" },
@@ -142,7 +239,7 @@ namespace Nnrp.Core.Tests
                     { "id": "l1.operation.lifecycle.waiting_tool.validation" },
                     { "id": "l1.operation.lifecycle.terminal_resolution.validation" },
                     { "id": "l1.operation.cancel_scope.validation" },
-                    { "id": "l0.typed_payload.descriptor.golden" },
+                    { "id": "l0.typed_payload.descriptor.golden", "parameters": { "descriptor_hex": "10000300040000000700000000000000" } },
                     { "id": "l1.typed_payload.descriptor.validation" },
                     { "id": "l2.payload.typed.buffer_ownership.relative_region.validation" },
                     { "id": "l2.payload.typed.callback_polling.descriptor_consistency.validation" },

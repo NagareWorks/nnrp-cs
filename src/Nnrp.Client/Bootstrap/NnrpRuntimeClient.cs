@@ -61,10 +61,14 @@ namespace Nnrp.Client
             }
         }
 
-        public NnrpClientSession OpenSession(NnrpClientSessionOptions? options = null)
+        public ValueTask<NnrpClientSession> OpenSessionAsync(
+            NnrpClientSessionOptions? options = null,
+            CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             lock (gate)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 EnsureOpen();
                 var configured = options ?? sessionDefaults ?? new NnrpClientSessionOptions();
                 var nativeSession = connection.OpenSession(
@@ -83,21 +87,24 @@ namespace Nnrp.Client
                     configured.CacheHints);
                 var session = new NnrpClientSession(this, nativeSession, configured);
                 sessions.Add(session);
-                return session;
+                return new ValueTask<NnrpClientSession>(session);
             }
         }
 
-        public NnrpClientSession ResumeSession(
+        public ValueTask<NnrpClientSession> ResumeSessionAsync(
             NnrpSessionRecoveryTicket ticket,
-            NnrpClientSessionOptions? options = null)
+            NnrpClientSessionOptions? options = null,
+            CancellationToken cancellationToken = default)
         {
             if (ticket == null)
             {
                 throw new ArgumentNullException(nameof(ticket));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             lock (gate)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 EnsureOpen();
                 var configured = options ?? sessionDefaults ?? new NnrpClientSessionOptions();
                 var resumeTokenBytes = Math.Max(
@@ -132,7 +139,7 @@ namespace Nnrp.Client
                     out _);
                 var session = new NnrpClientSession(this, nativeSession, resolved);
                 sessions.Add(session);
-                return session;
+                return new ValueTask<NnrpClientSession>(session);
             }
         }
 

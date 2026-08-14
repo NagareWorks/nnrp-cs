@@ -18,13 +18,14 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertEqual("nnrp-1-preview4", manifest["protocol_version"])
         self.assertIn("Expected exactly one capability manifest", workflow)
         self.assertIn("Run suite-owned conformance action", workflow)
+        self.assertIn('require-complete-capability-coverage: "true"', workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: 95daf385184312c13d66fa18a7e1ecf0b6ff4558",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: 0ae3bd5d8ecaa387822888868e8676f0a3596bcd",
             workflow,
         )
         self.assertIn(
-            "NNRP_DOC_SOURCE_COMMIT: dcd36a73ef74f62a23575c1a06fe0eb9f3a0bcbb",
+            "NNRP_DOC_SOURCE_COMMIT: 3439ded0d318bd736f6485b17f2563fae77627bf",
             workflow,
         )
         self.assertEqual(1, workflow.count("ref: ${{ env.NNRP_DOC_SOURCE_COMMIT }}"))
@@ -49,11 +50,11 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("--workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
         self.assertIn("NNRP_RS_SOURCE_COMMIT: 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
         self.assertIn("NNRP_RS_CI_RUN_ID: '31666390775'", workflow)
-        self.assertEqual(4, workflow.count("Download final nnrp-rs CI artifacts"))
-        self.assertEqual(4, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
-        self.assertEqual(4, workflow.count("Verify final nnrp-rs CI source"))
+        self.assertEqual(5, workflow.count("Download final nnrp-rs CI artifacts"))
+        self.assertEqual(5, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
+        self.assertEqual(5, workflow.count("Verify final nnrp-rs CI source"))
         self.assertEqual(
-            4,
+            5,
             workflow.count("nnrp-rs CI run does not match the frozen successful source commit."),
         )
         self.assertIn("coordinated-native-artifacts", workflow)

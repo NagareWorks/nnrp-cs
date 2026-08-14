@@ -57,7 +57,7 @@ namespace Nnrp.Client.Tests
                     transportPolicy: TransportPolicy.ForceIpc,
                     transports: new[] { clientProvider }),
                 timeout.Token);
-            await using var clientSession = client.OpenSession();
+            await using var clientSession = await client.OpenSessionAsync();
             await using var serverSession = await acceptTask;
 
             Assert.Equal(TransportId.Ipc, client.ActiveTransportId);

@@ -1,9 +1,16 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nnrp.Core;
+using Nnrp.NativeBridge;
 using Nnrp.Runtime;
+using Nnrp.Transport.Quic;
+using Nnrp.Transport.Tcp;
+using NnrpCacheObjectId = Nnrp.Core.NnrpCacheObjectId;
+using NnrpSchemaDescriptorHeader = Nnrp.Core.NnrpSchemaDescriptorHeader;
 
 namespace Nnrp.ConformanceAdapter;
 
@@ -13,6 +20,22 @@ public static class Program
     private const string DefaultImplementationName = "nnrp-cs";
     private const string SupportedProtocolVersion = "nnrp-1-preview4";
     private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+    private static readonly IReadOnlyDictionary<string, string[]> FrozenCaseParameterKeys =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["l0.header.fixed_shape.golden"] = ["header_hex"],
+            ["l0.control.client_hello.golden"] = ["metadata_hex"],
+            ["l0.control.session_patch_ack.golden"] = ["metadata_hex"],
+            ["l0.flow_update.packet.golden"] = ["packet_hex"],
+            ["l0.result_hint.packet.golden"] = ["packet_hex"],
+            ["l0.frame_submit.metadata.golden"] = ["metadata_hex"],
+            ["l0.result_push.metadata.golden"] = ["metadata_hex"],
+            ["l0.body_region.prelude.golden"] = ["metadata_hex"],
+            ["l0.object_reference.block.golden"] = ["metadata_hex"],
+            ["l0.typed_payload.descriptor.golden"] = ["descriptor_hex"],
+            ["l0.typed_payload.frame_regions.golden"] = ["descriptor_region_hex", "payload_hex"],
+            ["l0.typed_payload.descriptor.current.golden"] = ["descriptor_hex"],
+        };
 
     private static int Main(string[] args)
     {
@@ -109,7 +132,7 @@ public static class Program
     private static AdapterCaseResultsReport BuildResultsReport(string rawPlan)
     {
         var plan = ReadExecutionPlan(rawPlan);
-        var cases = plan.Cases.Select(planCase => RunCase(planCase.Id)).ToList();
+        var cases = plan.Cases.Select(RunCase).ToList();
 
         return new AdapterCaseResultsReport
         {
@@ -170,7 +193,7 @@ public static class Program
         var id = GetRequiredString(element, "id");
         if (!requireSuiteMetadata)
         {
-            return new AdapterPlanCase(id);
+            return new AdapterPlanCase(id, ParseCaseParameters(element, id));
         }
 
         ValidateEnumValue(GetRequiredString(element, "layer"), "layer", ["L0", "L1", "L2", "L3", "L4"]);
@@ -188,7 +211,42 @@ public static class Program
             }
         }
 
-        return new AdapterPlanCase(id);
+        return new AdapterPlanCase(id, ParseCaseParameters(element, id));
+    }
+
+    private static IReadOnlyDictionary<string, JsonElement> ParseCaseParameters(JsonElement element, string caseId)
+    {
+        var parameters = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (element.TryGetProperty("parameters", out var parameterElement))
+        {
+            if (parameterElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ArgumentException($"Adapter execution plan case '{caseId}' parameters must be a JSON object.");
+            }
+
+            foreach (var property in parameterElement.EnumerateObject())
+            {
+                if (!parameters.TryAdd(property.Name, property.Value.Clone()))
+                {
+                    throw new ArgumentException(
+                        $"Adapter execution plan case '{caseId}' contains duplicate parameter '{property.Name}'.");
+                }
+            }
+        }
+
+        var expectedKeys = FrozenCaseParameterKeys.TryGetValue(caseId, out var keys)
+            ? keys
+            : Array.Empty<string>();
+        var actualKeys = parameters.Keys.OrderBy(static key => key, StringComparer.Ordinal).ToArray();
+        var sortedExpectedKeys = expectedKeys.OrderBy(static key => key, StringComparer.Ordinal).ToArray();
+        if (!actualKeys.SequenceEqual(sortedExpectedKeys, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Adapter execution plan case '{caseId}' parameters must equal [{string.Join(", ", sortedExpectedKeys)}], " +
+                $"got [{string.Join(", ", actualKeys)}].");
+        }
+
+        return parameters;
     }
 
     private static void ValidateEnumValue(string value, string propertyName, IReadOnlyCollection<string> allowedValues)
@@ -211,8 +269,9 @@ public static class Program
             : Path.GetFullPath(artifactPath, Path.GetDirectoryName(Path.GetFullPath(planPath)) ?? Directory.GetCurrentDirectory());
     }
 
-    private static AdapterCaseResult RunCase(string caseId)
+    private static AdapterCaseResult RunCase(AdapterPlanCase planCase)
     {
+        var caseId = planCase.Id;
         try
         {
             switch (caseId)
@@ -221,19 +280,39 @@ public static class Program
                     RunHeaderRoundtrip();
                     return Pass(caseId, "Common header strict parse and re-emit roundtrip passed.");
                 case "l0.header.fixed_shape.golden":
-                    RunHeaderFixedShapeGolden();
+                    RunHeaderFixedShapeGolden(HexParameter(planCase, "header_hex"));
                     return Pass(caseId, "Common header fixed-shape golden vector matched.");
+                case "l0.control.client_hello.golden":
+                    RunClientHelloGolden(HexParameter(planCase, "metadata_hex"));
+                    return Pass(caseId, "CLIENT_HELLO metadata matched the canonical NNRP/1 vector.");
+                case "l0.control.session_patch_ack.golden":
+                    RunSessionPatchAckGolden(HexParameter(planCase, "metadata_hex"));
+                    return Pass(caseId, "SESSION_PATCH_ACK metadata matched the canonical NNRP/1 vector.");
+                case "l0.result_hint.packet.golden":
+                    RunResultHintGolden(HexParameter(planCase, "packet_hex"));
+                    return Pass(caseId, "RESULT_HINT packet matched the canonical NNRP/1 vector.");
+                case "l0.frame_submit.metadata.golden":
+                    RunFrameSubmitMetadataGolden(HexParameter(planCase, "metadata_hex"));
+                    return Pass(caseId, "FRAME_SUBMIT metadata matched the canonical NNRP/1 vector.");
+                case "l0.result_push.metadata.golden":
+                    RunResultPushMetadataGolden(HexParameter(planCase, "metadata_hex"));
+                    return Pass(caseId, "RESULT_PUSH metadata matched the canonical NNRP/1 vector.");
                 case "l0.body_region.prelude.golden":
-                    RunBodyRegionPreludeGolden();
+                    RunBodyRegionPreludeGolden(HexParameter(planCase, "metadata_hex"));
                     return Pass(caseId, "NNRP/1 body-region prelude golden vector matched.");
+                case "l0.object_reference.block.golden":
+                    RunObjectReferenceBlockGolden(HexParameter(planCase, "metadata_hex"));
+                    return Pass(caseId, "Cache-backed object-reference block matched the canonical NNRP/1 vector.");
                 case "l0.typed_payload.frame_regions.golden":
-                    RunBaselineTypedPayloadFrameRegionsGolden();
+                    RunBaselineTypedPayloadFrameRegionsGolden(
+                        HexParameter(planCase, "descriptor_region_hex"),
+                        HexParameter(planCase, "payload_hex"));
                     return Pass(caseId, "NNRP/1 typed-payload descriptor and frame regions matched.");
                 case "l1.typed_payload.region.pack":
                     RunBaselineTypedPayloadRegionPack();
                     return Pass(caseId, "NNRP/1 typed-payload regions packed without rebasing offsets.");
                 case "l0.typed_payload.descriptor.current.golden":
-                    RunCurrentTypedPayloadDescriptorGolden();
+                    RunCurrentTypedPayloadDescriptorGolden(HexParameter(planCase, "descriptor_hex"));
                     return Pass(caseId, "Current typed payload descriptor golden vector matched.");
                 case "l1.control.cancel-abort":
                     RunPreview4CancelAbort();
@@ -313,13 +392,43 @@ public static class Program
                 case "l1.result_push.basic.terminal.validation":
                     RunBasicResultPush();
                     return Pass(caseId, "RESULT_PUSH terminal validation passed.");
+                case "l1.frame_submit.message.parse_emit":
+                    RunInlineTensorSubmit();
+                    return Pass(caseId, "FRAME_SUBMIT parse and emit validation passed.");
+                case "l1.result_push.message.parse_emit":
+                    RunBasicResultPush();
+                    return Pass(caseId, "RESULT_PUSH parse and emit validation passed.");
+                case "l1.result_push.object_reference.resolve":
+                    RunResultPushObjectReferenceResolve();
+                    return Pass(caseId, "RESULT_PUSH object-reference resolution and cache-miss validation passed.");
                 case "l2.result_push.basic.event_pump.single_terminal.validation":
                     RunSingleTerminalEventDelivery();
                     return Pass(caseId, "RESULT_PUSH single terminal delivery validation passed.");
                 case "l0.flow_update.packet.golden":
+                    RunFlowUpdatePacketGolden(HexParameter(planCase, "packet_hex"));
+                    return Pass(caseId, "FLOW_UPDATE packet matched the canonical NNRP/1 vector.");
+                case "l1.flow_update.metadata.validation":
                 case "l1.flow_update.session.scope.validation":
                     RunSessionFlowUpdate();
                     return Pass(caseId, "FLOW_UPDATE session-scope validation passed.");
+                case "l1.result_hint.metadata.validation":
+                    RunResultHintValidation();
+                    return Pass(caseId, "RESULT_HINT metadata validation passed.");
+                case "l1.cache.lifecycle.roundtrip":
+                    RunBaselineCacheLifecycleRoundtrip();
+                    return Pass(caseId, "CACHE_PUT, CACHE_ACK, and CACHE_INVALIDATE metadata round-tripped.");
+                case "l1.transport_probe.metadata.roundtrip":
+                    RunTransportProbeMetadataRoundtrip();
+                    return Pass(caseId, "TRANSPORT_PROBE and TRANSPORT_PROBE_ACK metadata round-tripped.");
+                case "l3.transport.probe.selection":
+                    RunTransportProbeSelection();
+                    return Pass(caseId, "Transport probe selection preferred the lower-latency viable provider.");
+                case "l3.transport.tcp.session_smoke":
+                    RunNativeTcpSessionSmoke();
+                    return Pass(caseId, "TCP provider carried a real client/server session lifecycle.");
+                case "l3.transport.quic.session_smoke":
+                    RunNativeQuicSessionSmoke();
+                    return Pass(caseId, "QUIC provider carried a real secure client/server session lifecycle.");
                 case "l0.flow_update.connection.packet.golden":
                 case "l1.flow_update.connection.scope.validation":
                     RunConnectionFlowUpdate();
@@ -357,7 +466,7 @@ public static class Program
                     RunOperationCancelScope();
                     return Pass(caseId, "Operation cancel scope validation passed.");
                 case "l0.typed_payload.descriptor.golden":
-                    RunTypedPayloadDescriptorGolden();
+                    RunTypedPayloadDescriptorGolden(HexParameter(planCase, "descriptor_hex"));
                     return Pass(caseId, "Typed payload descriptor golden vector matched.");
                 case "l1.typed_payload.descriptor.validation":
                     RunTypedPayloadDescriptorValidation();
@@ -648,10 +757,8 @@ public static class Program
         AssertTrue(bytes.AsSpan().SequenceEqual(reEmitted), "Common header re-emitted bytes changed.");
     }
 
-    private static void RunHeaderFixedShapeGolden()
+    private static void RunHeaderFixedShapeGolden(byte[] expected)
     {
-        var expected = Convert.FromHexString(
-            "4e4e5250010010282100000003020100060504004433221188776655aa99ccbb0807060504030201");
         AssertTrue(
             NnrpHeader.TryParse(expected, NnrpHeaderParseOptions.Strict, out var header, out var parseError),
             $"Common header fixed-shape golden vector failed strict parsing: {parseError}.");
@@ -661,14 +768,366 @@ public static class Program
         AssertTrue(
             header.Flags == (HeaderFlags.AckRequired | HeaderFlags.Keyframe),
             "Common header lost flags.");
-        AssertTrue(header.MetaLength == 0x00010203, "Common header lost meta_len.");
-        AssertTrue(header.BodyLength == 0x00040506, "Common header lost body_len.");
-        AssertTrue(header.SessionId == 0x11223344, "Common header lost session_id.");
-        AssertTrue(header.FrameId == 0x55667788, "Common header lost frame_id.");
-        AssertTrue(header.ViewId == 0x99AA, "Common header lost view_id.");
-        AssertTrue(header.RouteId == 0xBBCC, "Common header lost route_id.");
-        AssertTrue(header.TraceId == 0x0102030405060708, "Common header lost trace_id.");
+        AssertTrue(header.MetaLength == 48, "Common header lost meta_len.");
+        AssertTrue(header.BodyLength == 4096, "Common header lost body_len.");
+        AssertTrue(header.SessionId == 7, "Common header lost session_id.");
+        AssertTrue(header.FrameId == 11, "Common header lost frame_id.");
+        AssertTrue(header.ViewId == 2, "Common header lost view_id.");
+        AssertTrue(header.RouteId == 0, "Common header lost route_id.");
+        AssertTrue(header.TraceId == 123_456_789, "Common header lost trace_id.");
         AssertTrue(header.ToArray().AsSpan().SequenceEqual(expected), "Common header re-emitted golden bytes changed.");
+    }
+
+    private static void RunClientHelloGolden(byte[] expected)
+    {
+        AssertTrue(
+            ClientHelloMetadata.TryParse(expected, out var metadata, out var error),
+            $"CLIENT_HELLO golden metadata failed to parse: {error}.");
+        AssertTrue(metadata.ToArray().SequenceEqual(expected), "CLIENT_HELLO golden metadata changed on re-emit.");
+    }
+
+    private static void RunSessionPatchAckGolden(byte[] expected)
+    {
+        AssertTrue(
+            SessionPatchAckMetadata.TryParse(expected, out var metadata, out var error),
+            $"SESSION_PATCH_ACK golden metadata failed to parse: {error}.");
+        AssertTrue(metadata.ToArray().SequenceEqual(expected), "SESSION_PATCH_ACK golden metadata changed on re-emit.");
+    }
+
+    private static void RunResultHintGolden(byte[] expected)
+    {
+        AssertTrue(
+            NnrpFramedMessage.TryParse(expected, NnrpHeaderParseOptions.Strict, out var framed, out var frameError),
+            $"RESULT_HINT golden packet failed to parse: {frameError}.");
+        AssertTrue(framed.Header.MessageType == MessageType.ResultHint, "RESULT_HINT golden packet changed message type.");
+        AssertTrue(
+            ResultHintMetadata.TryParse(framed.Metadata.Span, strict: true, out var metadata, out var metadataError),
+            $"RESULT_HINT golden metadata failed to parse: {metadataError}.");
+        AssertTrue(metadata.Reason == ResultHintReason.BudgetExceeded, "RESULT_HINT golden packet lost budget_exceeded.");
+        AssertTrue(framed.ToArray().SequenceEqual(expected), "RESULT_HINT golden packet changed on re-emit.");
+    }
+
+    private static void RunFrameSubmitMetadataGolden(byte[] expected)
+    {
+        AssertTrue(
+            FrameSubmitMetadata.TryParse(expected, strict: true, out var metadata, out var error),
+            $"FRAME_SUBMIT golden metadata failed to parse: {error}.");
+        AssertTrue(metadata.ToArray().SequenceEqual(expected), "FRAME_SUBMIT golden metadata changed on re-emit.");
+    }
+
+    private static void RunResultPushMetadataGolden(byte[] expected)
+    {
+        AssertTrue(
+            ResultPushMetadata.TryParse(expected, strict: true, out var metadata, out var error),
+            $"RESULT_PUSH golden metadata failed to parse: {error}.");
+        AssertTrue(metadata.ToArray().SequenceEqual(expected), "RESULT_PUSH golden metadata changed on re-emit.");
+    }
+
+    private static void RunObjectReferenceBlockGolden(byte[] expected)
+    {
+        AssertTrue(
+            ObjectReferenceBlock.TryParse(expected, out var block, out var error),
+            $"Object-reference golden block failed to parse: {error}.");
+        AssertTrue(block.ToArray().SequenceEqual(expected), "Object-reference golden block changed on re-emit.");
+    }
+
+    private static void RunResultHintValidation()
+    {
+        var expected = Convert.FromHexString("02000000020000000200000014000000");
+        AssertTrue(
+            ResultHintMetadata.TryParse(expected, strict: true, out var metadata, out var error),
+            $"RESULT_HINT metadata failed to parse: {error}.");
+        AssertTrue(metadata.ToArray().SequenceEqual(expected), "RESULT_HINT metadata changed on re-emit.");
+
+        var invalid = expected.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(invalid.AsSpan(8, sizeof(uint)), 99);
+        AssertTrue(
+            !ResultHintMetadata.TryParse(invalid, strict: true, out _, out _),
+            "RESULT_HINT accepted an unknown reason code.");
+    }
+
+    private static void RunBaselineCacheLifecycleRoundtrip()
+    {
+        AssertMetadataRoundTrip<CachePutMetadata>(
+            Convert.FromHexString("010000000100000004030201000000000807060500000000983a0000000800000300000003000000"),
+            CachePutMetadata.TryParse,
+            static value => value.ToArray(),
+            "CACHE_PUT");
+        AssertMetadataRoundTrip<CacheAckMetadata>(
+            Convert.FromHexString("010000000000000004030201000000000807060500000000983a0000002000000000000000000000"),
+            CacheAckMetadata.TryParse,
+            static value => value.ToArray(),
+            "CACHE_ACK");
+        AssertMetadataRoundTrip<CacheInvalidateMetadata>(
+            Convert.FromHexString("0300000001000000040302010000000008070605000000000200000000000000"),
+            CacheInvalidateMetadata.TryParse,
+            static value => value.ToArray(),
+            "CACHE_INVALIDATE");
+    }
+
+    private static void RunTransportProbeMetadataRoundtrip()
+    {
+        var probe = new TransportProbeMetadata(7, 1_200, 100_000);
+        AssertMetadataRoundTrip<TransportProbeMetadata>(
+            probe.ToArray(), TransportProbeMetadata.TryParse, static value => value.ToArray(), "TRANSPORT_PROBE");
+        var acknowledgement = new TransportProbeAckMetadata(7, 0, 100_800);
+        AssertMetadataRoundTrip<TransportProbeAckMetadata>(
+            acknowledgement.ToArray(),
+            TransportProbeAckMetadata.TryParse,
+            static value => value.ToArray(),
+            "TRANSPORT_PROBE_ACK");
+    }
+
+    private static void RunTransportProbeSelection()
+    {
+        var tcp = new NnrpNativeTcpTransportProvider(RequiredNativeArtifact("NNRP_NATIVE_TCP_ARTIFACT_PATH"));
+        var quic = new NnrpNativeQuicTransportProvider(RequiredNativeArtifact("NNRP_NATIVE_QUIC_ARTIFACT_PATH"));
+        var providers = new INnrpNativeTransportProvider[] { tcp, quic };
+        var registry = new NnrpNativeTransportRegistry(providers);
+        var readiness = providers.Select(provider => new NnrpTransportCandidateReadiness(
+            provider.Descriptor.TransportId,
+            provider.Descriptor.Metadata.Id,
+            routeResolved: true,
+            securitySatisfied: true));
+        var observations = new[]
+        {
+            SucceededProbe(tcp, 1_500),
+            SucceededProbe(quic, 800),
+        };
+        var selection = registry.Resolve(new NnrpTransportSelectionOptions(
+            new[] { TransportId.Tcp, TransportId.Quic },
+            readiness,
+            TransportPolicy.Auto,
+            probeObservations: observations));
+        AssertTrue(selection.SelectedProvider.TransportId == TransportId.Quic, "Probe selection did not prefer lower-latency QUIC.");
+
+        var fallback = registry.Resolve(new NnrpTransportSelectionOptions(
+            new[] { TransportId.Tcp, TransportId.Quic },
+            providers.Select(provider => new NnrpTransportCandidateReadiness(
+                provider.Descriptor.TransportId,
+                provider.Descriptor.Metadata.Id,
+                routeResolved: true,
+                securitySatisfied: true)),
+            TransportPolicy.PreferQuic,
+            probeObservations: new[]
+            {
+                SucceededProbe(tcp, 1_500),
+                new NnrpTransportProbeObservation(
+                    TransportId.Quic,
+                    quic.Descriptor.Metadata.Id,
+                    NnrpTransportProbeState.Failed,
+                    diagnostic: "conformance failure injection"),
+            }));
+        AssertTrue(fallback.SelectedProvider.TransportId == TransportId.Tcp, "Failed QUIC probe did not fall back to TCP.");
+    }
+
+    private static NnrpTransportProbeObservation SucceededProbe(INnrpNativeTransportProvider provider, ulong rttMicroseconds)
+    {
+        return new NnrpTransportProbeObservation(
+            provider.Descriptor.TransportId,
+            provider.Descriptor.Metadata.Id,
+            NnrpTransportProbeState.Succeeded,
+            new NnrpTransportProbeMetrics(2, 2, 512_000, rttMicroseconds));
+    }
+
+    private delegate bool MetadataParser<T>(ReadOnlySpan<byte> source, out T metadata, out NnrpParseError error);
+
+    private static void AssertMetadataRoundTrip<T>(
+        byte[] expected,
+        MetadataParser<T> parser,
+        Func<T, byte[]> encoder,
+        string name)
+    {
+        AssertTrue(parser(expected, out var metadata, out var error), $"{name} metadata failed to parse: {error}.");
+        AssertTrue(encoder(metadata).SequenceEqual(expected), $"{name} metadata changed on re-emit.");
+    }
+
+    private static void RunResultPushObjectReferenceResolve()
+    {
+        var packet = CreateReferencedResultPacket(out var cacheStore);
+        AssertTrue(
+            ResultPushMessage.TryParse(packet, cacheStore, out var resolved, out var error),
+            $"Referenced RESULT_PUSH did not resolve: {error}.");
+        AssertTrue(resolved.TileIds.Span.SequenceEqual(new ushort[] { 20, 21 }), "Resolved RESULT_PUSH lost tile ids.");
+        AssertTrue(resolved.Sections.Length == 1, "Resolved RESULT_PUSH lost its tensor section.");
+        AssertTrue(
+            !ResultPushMessage.TryParse(packet, out _, out _),
+            "Referenced RESULT_PUSH parsed without the required cache objects.");
+    }
+
+    private static byte[] CreateReferencedResultPacket(out NnrpCacheStore cacheStore)
+    {
+        var section = CreateResultSection(2);
+        var sectionTable = section.ToArray();
+        var tileIndexPayload = TileIndexBlockCodec.Encode(
+            new ushort[] { 20, 21 },
+            TileIndexMode.RawUInt16,
+            tileBaseId: 20);
+        var objectReferenceRegion = BodyCodec.PackObjectReferenceRegion(
+            BodyCodec.BuildObjectReferenceBlock(CacheObjectKind.TileIndexBlock, 1, 100, 200),
+            BodyCodec.BuildObjectReferenceBlock(CacheObjectKind.TensorSectionTable, 1, 101, 201));
+        var typedDescriptor = new TypedPayloadDescriptor(
+            PayloadKind.ToolDelta,
+            descriptorFlags: 0,
+            profileId: 9,
+            payloadOffset: 0,
+            payloadLength: 3,
+            reserved: 0);
+        var body = BodyCodec.Pack(
+            objectReferenceRegion: objectReferenceRegion,
+            typedPayloadDescriptorRegion: typedDescriptor.ToArray(),
+            typedPayloadFrameRegion: new byte[] { 0x41, 0x42, 0x43 });
+        var metadata = new ResultPushMetadata(
+            ResultStatusCode.Success,
+            ResultFlags.None,
+            sectionCount: 1,
+            tileCount: 2,
+            activeProfileId: 7,
+            inferenceMilliseconds: 12,
+            queueMilliseconds: 3,
+            serverTotalMilliseconds: 15,
+            tileBaseId: 20,
+            tileIndexBytes: (uint)tileIndexPayload.Length,
+            resultClass: ResultClass.Complete,
+            appliedBudgetPolicy: BudgetPolicy.None,
+            reusedFrameId: 0,
+            coveredTileCount: 2,
+            droppedTileCount: 0,
+            payloadKindBitmap: PayloadKind.Tensor | PayloadKind.ToolDelta,
+            payloadFrameCount: 1);
+        var framed = new NnrpFramedMessage(
+            new NnrpHeader(
+                NnrpHeader.CurrentVersionMajor,
+                NnrpHeader.CurrentWireFormat,
+                MessageType.ResultPush,
+                HeaderFlags.None,
+                ResultPushMetadata.CurrentMetadataLength,
+                (uint)body.Length,
+                sessionId: 12,
+                frameId: 13,
+                viewId: 0,
+                routeId: 0,
+                traceId: 14),
+            metadata.ToArray(),
+            body);
+
+        cacheStore = new NnrpCacheStore();
+        AssertTrue(cacheStore.TryPut(
+            new Nnrp.Core.NnrpCacheObjectId(1, 100, 200, CacheObjectKind.TileIndexBlock),
+            tileIndexPayload,
+            ttlMilliseconds: 60_000).IsSuccess, "Tile-index cache fixture was rejected.");
+        AssertTrue(cacheStore.TryPut(
+            new Nnrp.Core.NnrpCacheObjectId(1, 101, 201, CacheObjectKind.TensorSectionTable),
+            sectionTable,
+            ttlMilliseconds: 60_000).IsSuccess, "Tensor-section cache fixture was rejected.");
+        return framed.ToArray();
+    }
+
+    private static void RunNativeTcpSessionSmoke()
+    {
+        RunNativeTcpSessionSmokeAsync().GetAwaiter().GetResult();
+    }
+
+    private static async Task RunNativeTcpSessionSmokeAsync()
+    {
+        var provider = new NnrpNativeTcpTransportProvider(RequiredNativeArtifact("NNRP_NATIVE_TCP_ARTIFACT_PATH"));
+        var endpoint = NnrpEndpoint.Parse("nnrp://127.0.0.1:0");
+        await using var listener = await provider.ListenAsync(new NnrpTransportListenOptions(
+            endpoint,
+            NnrpProviderEndpoint.Parse("tcp://127.0.0.1:0")));
+        await RunNativeSessionLifecycle(provider, endpoint, listener);
+    }
+
+    private static void RunNativeQuicSessionSmoke()
+    {
+        RunNativeQuicSessionSmokeAsync().GetAwaiter().GetResult();
+    }
+
+    private static async Task RunNativeQuicSessionSmokeAsync()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+        var subjectAlternativeName = new SubjectAlternativeNameBuilder();
+        subjectAlternativeName.AddDnsName("localhost");
+        request.CertificateExtensions.Add(subjectAlternativeName.Build());
+        using var certificate = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow.AddMinutes(10));
+        var certificateDer = certificate.Export(X509ContentType.Cert);
+        var privateKeyPkcs8Der = rsa.ExportPkcs8PrivateKey();
+
+        var provider = new NnrpNativeQuicTransportProvider(RequiredNativeArtifact("NNRP_NATIVE_QUIC_ARTIFACT_PATH"));
+        var endpoint = NnrpEndpoint.Parse("nnrps://localhost:0");
+        await using var listener = await provider.ListenAsync(new NnrpTransportListenOptions(
+            endpoint,
+            NnrpProviderEndpoint.Parse("quic://127.0.0.1:0"),
+            new NnrpTransportServerSecurity(certificateDer, privateKeyPkcs8Der)));
+        await RunNativeSessionLifecycle(
+            provider,
+            endpoint,
+            listener,
+            new NnrpTransportClientSecurity("localhost", certificateDer));
+    }
+
+    private static async Task RunNativeSessionLifecycle(
+        INnrpNativeTransportProvider provider,
+        NnrpEndpoint endpoint,
+        NnrpTransportListener listener,
+        NnrpTransportClientSecurity? security = null)
+    {
+        using var server = NnrpNativeRuntimeServer.Bind(listener, new NnrpNativeRuntimeServerHostOptions(50, 1));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var acceptStarted = new ManualResetEventSlim();
+        var acceptTask = Task.Factory.StartNew(
+            () => AcceptNativeSession(server, timeout.Token, acceptStarted),
+            timeout.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        AssertTrue(acceptStarted.Wait(TimeSpan.FromSeconds(5)), "Native server did not begin accepting a session.");
+        await using var connection = await provider.ConnectAsync(new NnrpTransportConnectOptions(
+            endpoint,
+            listener.BoundEndpoint,
+            security,
+            timeoutMilliseconds: 5_000));
+        using var client = NnrpNativeRuntimeConnectionHost.Open(connection, new NnrpNativeRuntimeConnectionHostOptions(60, 1));
+        var clientSession = client.OpenSession(new NnrpNativeRuntimeSessionOptions(70, 1, 2, 0x1001, 3));
+        var serverSession = await acceptTask;
+        clientSession.SendTraceContext(
+            new TraceContextMetadata(101, 201, 301, 1, 0, 1),
+            new byte[] { 11 });
+        var events = serverSession.AwaitEvents(timeoutMilliseconds: 5_000);
+        AssertTrue(events.Count == 1 && events[0].MessageType == (uint)MessageType.TraceContext,
+            "Native session did not carry the trace-context event.");
+        var clientClose = Task.Factory.StartNew(
+            () => AssertTrue(client.CloseSession(70), "Native client session was not registered for close."),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        var closeEvents = serverSession.AwaitEvents(timeoutMilliseconds: 5_000);
+        AssertTrue(closeEvents.Count == 1 && closeEvents[0].MessageType == (uint)MessageType.SessionClose,
+            "Native session did not carry SESSION_CLOSE.");
+        serverSession.Close();
+        await clientClose;
+    }
+
+    private static NnrpNativeRuntimeServerSession AcceptNativeSession(
+        NnrpNativeRuntimeServer server,
+        CancellationToken cancellationToken,
+        ManualResetEventSlim started)
+    {
+        started.Set();
+        cancellationToken.ThrowIfCancellationRequested();
+        return server.AcceptSession(71, 1, timeoutMilliseconds: 10_000);
+    }
+
+    private static string RequiredNativeArtifact(string variableName)
+    {
+        var artifactPath = Environment.GetEnvironmentVariable(variableName);
+        AssertTrue(!string.IsNullOrWhiteSpace(artifactPath), $"{variableName} is required for L3 conformance.");
+        AssertTrue(File.Exists(artifactPath), $"Native artifact does not exist: {artifactPath}.");
+        return artifactPath!;
     }
 
     private static void RunHeaderLengthReject()
@@ -1039,6 +1498,14 @@ public static class Program
         AssertTrue(terminalCount == 1, "Basic result delivery did not produce exactly one terminal result.");
     }
 
+    private static void RunFlowUpdatePacketGolden(byte[] expected)
+    {
+        AssertTrue(
+            FlowUpdateMessage.TryParse(expected, out var message, out var error),
+            $"FLOW_UPDATE golden packet failed to parse: {error}.");
+        AssertTrue(message.ToArray().SequenceEqual(expected), "FLOW_UPDATE golden packet changed on re-emit.");
+    }
+
     private static void RunSessionFlowUpdate()
     {
         var message = CreateSessionFlowUpdate();
@@ -1236,9 +1703,8 @@ public static class Program
         AssertTrue(sessionCancelled.SequenceEqual(new uint[] { 10, 11, 12, 20, 30 }), "Session-scope cancel did not cover all live operations.");
     }
 
-    private static void RunTypedPayloadDescriptorGolden()
+    private static void RunTypedPayloadDescriptorGolden(byte[] expected)
     {
-        var expected = Convert.FromHexString("10000300040000000700000000000000");
         var descriptor = BaselineTypedPayloadDescriptor.Parse(expected);
         AssertTrue(descriptor.PayloadKind == PayloadKind.StructuredEvent, "Baseline descriptor lost payload_kind.");
         AssertTrue(descriptor.ProfileId == 3, "Baseline descriptor lost profile_id.");
@@ -1249,31 +1715,22 @@ public static class Program
         AssertTrue(actual.SequenceEqual(expected), "Baseline typed payload descriptor changed on re-emit.");
     }
 
-    private static void RunBodyRegionPreludeGolden()
+    private static void RunBodyRegionPreludeGolden(byte[] expected)
     {
-        var expected = Convert.FromHexString(
-            "1800000010000000100000000e00000010000000050000000000000000000000");
         AssertTrue(
             BodyRegionPrelude.TryParse(expected, strict: true, out var prelude, out var error),
             $"Body-region prelude strict parse failed: {error}.");
         AssertTrue(prelude.InlineObjectBytes == 24, "Body-region prelude lost inline object bytes.");
-        AssertTrue(prelude.ObjectReferenceBytes == 16, "Body-region prelude lost object-reference bytes.");
-        AssertTrue(prelude.TypedPayloadDescriptorBytes == 16, "Body-region prelude lost descriptor bytes.");
+        AssertTrue(prelude.ObjectReferenceBytes == 24, "Body-region prelude lost object-reference bytes.");
+        AssertTrue(prelude.TypedPayloadDescriptorBytes == 24, "Body-region prelude lost descriptor bytes.");
         AssertTrue(prelude.TypedPayloadFrameBytes == 14, "Body-region prelude lost frame bytes.");
         AssertTrue(prelude.ExtensionDescriptorBytes == 16, "Body-region prelude lost extension descriptor bytes.");
         AssertTrue(prelude.ExtensionPayloadBytes == 5, "Body-region prelude lost extension payload bytes.");
         AssertTrue(prelude.ToArray().SequenceEqual(expected), "Body-region prelude re-emitted bytes changed.");
     }
 
-    private static void RunBaselineTypedPayloadFrameRegionsGolden()
+    private static void RunBaselineTypedPayloadFrameRegionsGolden(byte[] descriptorRegion, byte[] payloadRegion)
     {
-        var descriptorRegion = Convert.FromHexString(
-            "02000100000000000300000000000000" +
-            "04000200030000000200000000000000" +
-            "08000300050000000500000000000000" +
-            "100004000a0000000300000000000000");
-        var payloadRegion = Encoding.UTF8.GetBytes("tokauvideoevt");
-
         var descriptors = ParseBaselineTypedPayloadRegion(descriptorRegion, payloadRegion);
         AssertTrue(descriptors.Length == 4, "Baseline descriptor region returned the wrong frame count.");
         AssertTrue(descriptors[0].PayloadKind == PayloadKind.TokenChunk, "Baseline token frame kind changed.");
@@ -1388,7 +1845,7 @@ public static class Program
                 or PayloadKind.OpaqueBytes;
     }
 
-    private static void RunCurrentTypedPayloadDescriptorGolden()
+    private static void RunCurrentTypedPayloadDescriptorGolden(byte[] expected)
     {
         var descriptor = new TypedPayloadDescriptor(
             PayloadKind.TokenChunk,
@@ -1399,16 +1856,6 @@ public static class Program
             streamSemantics: TypedPayloadDescriptor.StreamSemanticsAppend,
             payloadOffset: 8,
             payloadLength: 24);
-        var expected = new byte[]
-        {
-            0x02, 0x00, 0x02, 0x02,
-            0x01, 0x10, 0x00, 0x00,
-            0x03, 0x00, 0x00, 0x00,
-            0x02, 0x00, 0x00, 0x00,
-            0x08, 0x00, 0x00, 0x00,
-            0x18, 0x00, 0x00, 0x00,
-        };
-
         AssertTrue(descriptor.ToArray().SequenceEqual(expected), "Current typed payload descriptor bytes changed.");
         AssertTrue(
             TypedPayloadDescriptor.TryParse(expected, strict: true, out var parsed, out var error),
@@ -1972,9 +2419,9 @@ public static class Program
         AssertTrue(failure.ToCacheErrorCode() == expectedCode, $"Cache error mapping changed for {name}.");
     }
 
-    private static NnrpCacheObjectId CreateCacheObjectId()
+    private static Nnrp.Core.NnrpCacheObjectId CreateCacheObjectId()
     {
-        return new NnrpCacheObjectId(7, 0x11223344, 0x55667788, CacheObjectKind.PromptSegment);
+        return new Nnrp.Core.NnrpCacheObjectId(7, 0x11223344, 0x55667788, CacheObjectKind.PromptSegment);
     }
 
     private static NnrpCacheLease CreateCacheLease(CacheLeaseOwnerScope ownerScope)
@@ -2003,14 +2450,14 @@ public static class Program
         AssertTrue(frames.Frames.Span[0].Descriptor.IsStandardDeltaSchema, "Token delta schema binding was not preserved.");
     }
 
-    private static NnrpSchemaDescriptorHeader CreateSchemaDescriptor(
+    private static Nnrp.Core.NnrpSchemaDescriptorHeader CreateSchemaDescriptor(
         uint schemaId,
         uint schemaVersion,
         ushort profileId,
         ushort schemaFlags,
         ulong schemaHash)
     {
-        return new NnrpSchemaDescriptorHeader(
+        return new Nnrp.Core.NnrpSchemaDescriptorHeader(
             schemaId,
             schemaVersion,
             profileId,
@@ -2375,6 +2822,28 @@ public static class Program
         return property;
     }
 
+    private static byte[] HexParameter(AdapterPlanCase planCase, string name)
+    {
+        if (!planCase.Parameters.TryGetValue(name, out var value)
+            || value.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            throw new ArgumentException(
+                $"Adapter execution plan case '{planCase.Id}' parameter '{name}' must be a non-empty hexadecimal string.");
+        }
+
+        try
+        {
+            return Convert.FromHexString(value.GetString()!);
+        }
+        catch (FormatException error)
+        {
+            throw new ArgumentException(
+                $"Adapter execution plan case '{planCase.Id}' parameter '{name}' must be a hexadecimal string.",
+                error);
+        }
+    }
+
     private sealed record AdapterOptions(string PlanPath, string? OutputPath);
 
     private sealed record AdapterExecutionPlan(
@@ -2384,7 +2853,7 @@ public static class Program
 
     private sealed record AdapterPlanArtifacts(string ResultsPath, string EvidenceDirectory);
 
-    private sealed record AdapterPlanCase(string Id);
+    private sealed record AdapterPlanCase(string Id, IReadOnlyDictionary<string, JsonElement> Parameters);
 
     private sealed class AdapterCaseResultsReport
     {

@@ -78,6 +78,22 @@ public sealed class WireTargetManifestTests
         Assert.EndsWith(Environment.NewLine, File.ReadAllText(outputPath));
     }
 
+    [Fact]
+    public void BuildAcceptsTcpTlsSecurity()
+    {
+        WireTargetManifest manifest = new WireTargetManifestBuilder(FullSupport()).Build(
+            "nnrp-cs",
+            "0.1.0",
+            [WireTargetModes.SuiteAsClient],
+            [new WireTargetTransport("tcp", "127.0.0.1:19091", true, Security)],
+            [NnrpPreview4CapabilityTokens.ControlCancelAbort]);
+
+        WireTargetTransport transport = Assert.Single(manifest.WireConformance.Transports);
+        Assert.Equal("tcp", transport.Name);
+        Assert.True(transport.Tls);
+        Assert.Equal(Security, transport.Security);
+    }
+
     [Theory]
     [InlineData("", "0.1.0", 1, 1)]
     [InlineData("target", "", 1, 1)]
@@ -514,7 +530,6 @@ public sealed class WireTargetManifestTests
         new[] { new WireTargetTransport("tcp", "127.0.0.1:1"), new WireTargetTransport("tcp", "127.0.0.1:2") },
         new[] { new WireTargetTransport("quic", "127.0.0.1:1") },
         new[] { new WireTargetTransport("quic", "127.0.0.1:1", true) },
-        new[] { new WireTargetTransport("tcp", "127.0.0.1:1", true, Security) },
         new[] { new WireTargetTransport("tcp", "127.0.0.1:1", false, Security) },
         new[] { new WireTargetTransport("websocket", "http://127.0.0.1:1") },
         new[] { new WireTargetTransport("websocket", "ws://127.0.0.1:1", true, Security) },

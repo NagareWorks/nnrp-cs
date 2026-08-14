@@ -60,7 +60,7 @@ using Nnrp.Core;
 await using var client = await NnrpClient.ConnectAsync(
     new NnrpClientOptions(NnrpEndpoint.Parse("nnrp://runtime.example/session/default")),
     cancellationToken);
-await using var session = client.OpenSession();
+await using var session = await client.OpenSessionAsync();
 var result = await session.SubmitAsync(request, cancellationToken);
 ```
 

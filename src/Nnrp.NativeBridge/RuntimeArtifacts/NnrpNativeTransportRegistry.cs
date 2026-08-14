@@ -357,14 +357,15 @@ namespace Nnrp.NativeBridge
                     NnrpTransportSelectionErrorCode.ForcedTransportUnavailable,
                     diagnostic,
                     policy,
-                    candidates);
+                    transportId: forced.Value,
+                    candidates: candidates);
             }
 
             return new NnrpTransportSelectionException(
                 NnrpTransportSelectionErrorCode.NoViableTransport,
                 "No viable transport provider remains after applying policy and evidence.",
                 policy,
-                candidates);
+                candidates: candidates);
         }
 
         private static NnrpTransportSelectionException InvalidEvidence(string diagnostic)

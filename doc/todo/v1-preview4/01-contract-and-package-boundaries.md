@@ -45,7 +45,7 @@
   - [x] Add `NnrpServerProviderRoute` and an immutable `TransportId`-keyed server route dictionary.
   - [x] Add `NnrpClientOptions` and `NnrpClientSessionOptions` with the frozen endpoint, route set, policy, and session fields.
   - [x] Add `NnrpClient.ConnectAsync(NnrpClientOptions, CancellationToken)`.
-  - [x] Add `NnrpClient.OpenSession(NnrpClientSessionOptions)`.
+  - [x] Add `NnrpClient.OpenSessionAsync(NnrpClientSessionOptions?, CancellationToken)`.
   - [x] Add `NnrpServerOptions` with the frozen endpoint, route set, policy, and session defaults, plus `NnrpServerAcceptOptions` with only the public timeout field; keep native handles and generations internal.
   - [x] Add `NnrpServer.ListenAsync(NnrpServerOptions, CancellationToken)`.
   - [x] Add `NnrpServer.AcceptAsync(NnrpServerAcceptOptions, CancellationToken)`.
