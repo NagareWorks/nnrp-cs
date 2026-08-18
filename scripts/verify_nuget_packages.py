@@ -255,76 +255,94 @@ def write_smoke_nuget_config(path: Path, package_root: Path) -> None:
 
 
 def smoke_install(package_root: Path, version: str) -> None:
-    with tempfile.TemporaryDirectory(prefix="nnrp-cs-package-smoke-") as temp_dir:
-        root = Path(temp_dir)
-        nuget_config = root / "NuGet.Config"
-        write_smoke_nuget_config(nuget_config, package_root)
-        projects = {
-            "ClientSmoke": [
-                "Nnrp.Client",
-                "Nnrp.Transport.Tcp",
-                "Nnrp.Transport.Quic",
-                "Nnrp.Transport.Ipc",
-                "Nnrp.Transport.WebSocket",
-            ],
-            "ServerSmoke": [
-                "Nnrp.Server",
-                "Nnrp.Transport.Tcp",
-                "Nnrp.Transport.Quic",
-                "Nnrp.Transport.Ipc",
-                "Nnrp.Transport.WebSocket",
-            ],
-        }
-        for project_name, package_ids in projects.items():
-            project_root = root / project_name
-            project_root.mkdir()
-            references = "\n".join(
-                f'    <PackageReference Include="{package_id}" Version="{version}" />'
-                for package_id in package_ids
-            )
-            (project_root / f"{project_name}.csproj").write_text(
-                "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
-                "  <PropertyGroup>\n"
-                "    <OutputType>Exe</OutputType>\n"
-                "    <TargetFramework>net8.0</TargetFramework>\n"
-                "  </PropertyGroup>\n"
-                "  <ItemGroup>\n"
-                f"{references}\n"
-                "  </ItemGroup>\n"
-                "</Project>\n",
-                encoding="utf-8",
-            )
-            role_type = (
-                "Nnrp.Client.NnrpClientOptions"
-                if project_name == "ClientSmoke"
-                else "Nnrp.Server.NnrpServerOptions"
-            )
-            (project_root / "Program.cs").write_text(
-                "using System;\n"
-                f'Console.WriteLine(typeof({role_type}).Assembly.GetName().Name);\n'
-                "Console.WriteLine(typeof(Nnrp.Transport.Tcp.NnrpNativeTcpTransportProvider).Assembly.GetName().Name);\n"
-                "Console.WriteLine(typeof(Nnrp.Transport.Quic.NnrpNativeQuicTransportProvider).Assembly.GetName().Name);\n"
-                "Console.WriteLine(typeof(Nnrp.Transport.Ipc.NnrpNativeIpcTransportProvider).Assembly.GetName().Name);\n"
-                "Console.WriteLine(typeof(Nnrp.Transport.WebSocket.NnrpNativeWebSocketTransportProvider).Assembly.GetName().Name);\n",
-                encoding="utf-8",
-            )
-            subprocess.run(
-                [
-                    "dotnet",
-                    "restore",
-                    str(project_root),
-                    "--configfile",
-                    str(nuget_config),
-                    "--packages",
-                    str(root / ".nuget" / "packages"),
-                    "--no-http-cache",
+    temporary_root = package_root.parent / ".tmp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="nnrp-cs-package-smoke-",
+            dir=temporary_root,
+        ) as temp_dir:
+            root = Path(temp_dir)
+            nuget_config = root / "NuGet.Config"
+            write_smoke_nuget_config(nuget_config, package_root)
+            projects = {
+                "ClientSmoke": [
+                    "Nnrp.Client",
+                    "Nnrp.Transport.Tcp",
+                    "Nnrp.Transport.Quic",
+                    "Nnrp.Transport.Ipc",
+                    "Nnrp.Transport.WebSocket",
                 ],
-                check=True,
-            )
-            subprocess.run(
-                ["dotnet", "build", str(project_root), "--no-restore", "--configuration", "Release"],
-                check=True,
-            )
+                "ServerSmoke": [
+                    "Nnrp.Server",
+                    "Nnrp.Transport.Tcp",
+                    "Nnrp.Transport.Quic",
+                    "Nnrp.Transport.Ipc",
+                    "Nnrp.Transport.WebSocket",
+                ],
+            }
+            for project_name, package_ids in projects.items():
+                project_root = root / project_name
+                project_root.mkdir()
+                references = "\n".join(
+                    f'    <PackageReference Include="{package_id}" Version="{version}" />'
+                    for package_id in package_ids
+                )
+                (project_root / f"{project_name}.csproj").write_text(
+                    "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
+                    "  <PropertyGroup>\n"
+                    "    <OutputType>Exe</OutputType>\n"
+                    "    <TargetFramework>net8.0</TargetFramework>\n"
+                    "  </PropertyGroup>\n"
+                    "  <ItemGroup>\n"
+                    f"{references}\n"
+                    "  </ItemGroup>\n"
+                    "</Project>\n",
+                    encoding="utf-8",
+                )
+                role_type = (
+                    "Nnrp.Client.NnrpClientOptions"
+                    if project_name == "ClientSmoke"
+                    else "Nnrp.Server.NnrpServerOptions"
+                )
+                (project_root / "Program.cs").write_text(
+                    "using System;\n"
+                    f'Console.WriteLine(typeof({role_type}).Assembly.GetName().Name);\n'
+                    "Console.WriteLine(typeof(Nnrp.Transport.Tcp.NnrpNativeTcpTransportProvider).Assembly.GetName().Name);\n"
+                    "Console.WriteLine(typeof(Nnrp.Transport.Quic.NnrpNativeQuicTransportProvider).Assembly.GetName().Name);\n"
+                    "Console.WriteLine(typeof(Nnrp.Transport.Ipc.NnrpNativeIpcTransportProvider).Assembly.GetName().Name);\n"
+                    "Console.WriteLine(typeof(Nnrp.Transport.WebSocket.NnrpNativeWebSocketTransportProvider).Assembly.GetName().Name);\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    [
+                        "dotnet",
+                        "restore",
+                        str(project_root),
+                        "--configfile",
+                        str(nuget_config),
+                        "--packages",
+                        str(root / ".nuget" / "packages"),
+                        "--no-http-cache",
+                    ],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "dotnet",
+                        "build",
+                        str(project_root),
+                        "--no-restore",
+                        "--configuration",
+                        "Release",
+                    ],
+                    check=True,
+                )
+    finally:
+        try:
+            temporary_root.rmdir()
+        except OSError:
+            pass
 
 
 def main() -> int:

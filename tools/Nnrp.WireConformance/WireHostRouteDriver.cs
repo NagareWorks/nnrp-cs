@@ -128,50 +128,20 @@ internal sealed class WireHostRouteDriver
             cancellationToken).ConfigureAwait(false);
         WriteReady(scenario, fixture, server.BoundProviderEndpoints, commandOptions.ReadyOutputPath);
         List<TransportId> accepted = [];
-        List<NnrpServerSession> sessions = [];
         for (int index = 0; index < fixture.Routes.Count; index++)
         {
-            NnrpServerSession session = await server.AcceptAsync(
+            await using NnrpServerSession session = await server.AcceptAsync(
                 new NnrpServerAcceptOptions(timeoutMilliseconds: 15_000),
                 cancellationToken).ConfigureAwait(false);
             accepted.Add(session.ActiveTransportId);
-            sessions.Add(session);
+            await WaitForPeerCloseAsync(session, cancellationToken).ConfigureAwait(false);
         }
 
-        Dictionary<Task, NnrpServerSession>? pendingCloses = null;
-        try
-        {
-            pendingCloses = sessions.ToDictionary(
-                session => WaitForPeerCloseAsync(session, cancellationToken),
-                session => session);
-            while (pendingCloses.Count != 0)
-            {
-                Task completed = await Task.WhenAny(pendingCloses.Keys).ConfigureAwait(false);
-                NnrpServerSession session = pendingCloses[completed];
-                await completed.ConfigureAwait(false);
-                await session.DisposeAsync().ConfigureAwait(false);
-                pendingCloses.Remove(completed);
-            }
-
-            return WireHostRouteCommand.Passed(
-                scenario.Id,
-                "success",
-                ServerEvidence(fixture, server.BoundProviderEndpoints, accepted, "accepted"),
-                "independent C# target executed the public multi-listener server API");
-        }
-        finally
-        {
-            foreach (NnrpServerSession session in sessions)
-            {
-                await session.DisposeAsync().ConfigureAwait(false);
-            }
-
-            if (pendingCloses is not null && pendingCloses.Count != 0)
-            {
-                await Task.WhenAll(pendingCloses.Keys)
-                    .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-            }
-        }
+        return WireHostRouteCommand.Passed(
+            scenario.Id,
+            "success",
+            ServerEvidence(fixture, server.BoundProviderEndpoints, accepted, "accepted"),
+            "independent C# target executed the public multi-listener server API");
     }
 
     private static async Task WaitForPeerCloseAsync(

@@ -3,11 +3,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -78,25 +82,69 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def download_artifact(repo: str, version: str, artifact: NativeArtifact, download_dir: Path) -> Path:
-    asset_name = artifact.asset_name(version)
-    command = [
-        "gh",
-        "release",
-        "download",
-        f"v{version}",
-        "--repo",
-        repo,
-        "--pattern",
-        asset_name,
-        "--dir",
-        str(download_dir),
-    ]
-    subprocess.run(command, check=True)
-    archive_path = download_dir / asset_name
-    if not archive_path.exists():
-        raise FileNotFoundError(f"nnrp-rs release asset was not downloaded: {asset_name}")
-    return archive_path
+def download_release_assets(
+    repo: str,
+    version: str,
+    artifacts: list[NativeArtifact],
+    download_dir: Path,
+) -> None:
+    expected_names = ["SHA256SUMS", *(artifact.asset_name(version) for artifact in artifacts)]
+    last_return_code = 0
+    for attempt in range(1, 6):
+        for name in expected_names:
+            path = download_dir / name
+            if path.exists() and path.stat().st_size == 0:
+                path.unlink()
+
+        missing_names = [name for name in expected_names if not (download_dir / name).is_file()]
+        if not missing_names:
+            return
+
+        command = [
+            "gh",
+            "release",
+            "download",
+            f"v{version}",
+            "--repo",
+            repo,
+            "--dir",
+            str(download_dir),
+        ]
+        for name in missing_names:
+            command.extend(("--pattern", name))
+        result = subprocess.run(command, check=False)
+        last_return_code = result.returncode
+        for name in expected_names:
+            path = download_dir / name
+            if path.exists() and path.stat().st_size == 0:
+                path.unlink()
+
+        checksum_path = download_dir / "SHA256SUMS"
+        if checksum_path.is_file():
+            try:
+                checksums = read_checksums(checksum_path)
+            except (OSError, UnicodeError, ValueError):
+                checksum_path.unlink()
+            else:
+                for name in expected_names[1:]:
+                    path = download_dir / name
+                    if not path.is_file():
+                        continue
+                    try:
+                        verify_checksum(path, checksums)
+                    except (OSError, ValueError):
+                        path.unlink()
+
+        if all((download_dir / name).is_file() for name in expected_names):
+            return
+        if attempt < 5:
+            time.sleep(min(2 ** (attempt - 1), 8))
+
+    missing_names = [name for name in expected_names if not (download_dir / name).is_file()]
+    raise RuntimeError(
+        "failed to download nnrp-rs release assets after 5 attempts "
+        f"(last exit code {last_return_code}): {', '.join(missing_names)}"
+    )
 
 
 def download_workflow_artifact(
@@ -175,6 +223,32 @@ def verify_checksum(path: Path, checksums: dict[str, str]) -> None:
         raise ValueError(f"checksum mismatch for {path.name}: expected {expected}, found {actual}")
 
 
+@contextmanager
+def artifact_temporary_directory(output_root: Path) -> Iterator[Path]:
+    temporary_root = output_root.parent / ".tmp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    original_temp = os.environ.get("TEMP")
+    original_tmp = os.environ.get("TMP")
+    try:
+        with tempfile.TemporaryDirectory(prefix="nnrp-rs-artifacts-", dir=temporary_root) as temp_dir:
+            os.environ["TEMP"] = temp_dir
+            os.environ["TMP"] = temp_dir
+            yield Path(temp_dir)
+    finally:
+        if original_temp is None:
+            os.environ.pop("TEMP", None)
+        else:
+            os.environ["TEMP"] = original_temp
+        if original_tmp is None:
+            os.environ.pop("TMP", None)
+        else:
+            os.environ["TMP"] = original_tmp
+        try:
+            temporary_root.rmdir()
+        except OSError:
+            pass
+
+
 def extract_library(
     archive_path: Path,
     artifact: NativeArtifact,
@@ -232,8 +306,7 @@ def main() -> int:
         shutil.rmtree(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory(prefix="nnrp-rs-artifacts-") as temp_dir:
-        download_dir = Path(temp_dir)
+    with artifact_temporary_directory(output_root) as download_dir:
         selected = [
             artifact
             for artifact in native_artifacts()
@@ -252,30 +325,12 @@ def main() -> int:
                 download_dir,
             )
         else:
-            subprocess.run(
-                [
-                    "gh",
-                    "release",
-                    "download",
-                    f"v{args.version}",
-                    "--repo",
-                    args.repo,
-                    "--pattern",
-                    "SHA256SUMS",
-                    "--dir",
-                    str(download_dir),
-                ],
-                check=True,
-            )
+            download_release_assets(args.repo, args.version, selected, download_dir)
 
         checksums = read_checksums(find_downloaded_file(download_dir, "SHA256SUMS"))
 
         for artifact in selected:
-            archive_path = (
-                find_downloaded_file(download_dir, artifact.asset_name(args.version))
-                if args.workflow_run_id
-                else download_artifact(args.repo, args.version, artifact, download_dir)
-            )
+            archive_path = find_downloaded_file(download_dir, artifact.asset_name(args.version))
             verify_checksum(archive_path, checksums)
             target_path = extract_library(
                 archive_path,

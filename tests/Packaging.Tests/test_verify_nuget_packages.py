@@ -6,6 +6,7 @@ import unittest
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -160,6 +161,28 @@ class VerifyNugetPackagesTests(unittest.TestCase):
             }
             self.assertEqual(["Nnrp.*"], source_mappings["NNRP Local"])
             self.assertEqual(["Microsoft.*"], source_mappings["NuGet.org"])
+
+    def test_smoke_install_uses_a_temporary_directory_beside_the_packages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            packages = root / "packages"
+            packages.mkdir()
+            calls = []
+            temporary_directory = self.verifier.tempfile.TemporaryDirectory
+
+            def create_temporary_directory(*args, **kwargs):
+                calls.append(kwargs)
+                return temporary_directory(*args, **kwargs)
+
+            with patch.object(
+                self.verifier.tempfile,
+                "TemporaryDirectory",
+                side_effect=create_temporary_directory,
+            ), patch.object(self.verifier.subprocess, "run"):
+                self.verifier.smoke_install(packages, self.version)
+
+            self.assertEqual(root / ".tmp", Path(calls[0]["dir"]))
+            self.assertFalse((root / ".tmp").exists())
 
 
 if __name__ == "__main__":

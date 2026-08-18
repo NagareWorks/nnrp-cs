@@ -150,6 +150,17 @@ namespace Nnrp.Server
                                     "The accepted transport does not match the listener that produced it.");
                             }
 
+                            try
+                            {
+                                ReleasePendingAccepts(listener);
+                            }
+                            catch (Exception error)
+                            {
+                                accepted.Dispose();
+                                await CloseAfterFailureAsync(error).ConfigureAwait(false);
+                                throw;
+                            }
+
                             acceptedSessions.Add(accepted);
                             nextListenerIndex = (listenerIndex + 1) % listeners.Length;
                             return accepted;

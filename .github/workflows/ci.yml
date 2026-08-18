@@ -2,9 +2,9 @@ name: CI
 
 env:
   NNRP_DOC_SOURCE_COMMIT: 3439ded0d318bd736f6485b17f2563fae77627bf
-  NNRP_CONFORMANCE_SOURCE_COMMIT: 0ae3bd5d8ecaa387822888868e8676f0a3596bcd
-  NNRP_RS_SOURCE_COMMIT: 295f5b65ac71885b5c1b54d927b2595005038481
-  NNRP_RS_CI_RUN_ID: '31666390775'
+  NNRP_CONFORMANCE_SOURCE_COMMIT: 0167a48d0af7520358575c6bcf9833c053efc403
+  NNRP_RS_SOURCE_COMMIT: 00074cf3c09002de940f011e229de729aa377e88
+  NNRP_RS_ARTIFACT_RUN_ID: '32009630987'
 
 on:
   push:
@@ -365,10 +365,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           python scripts/download_nnrp_rs_artifacts.py
-          --version 1.0.0-preview.4.22
+          --version 1.0.0-preview.4.23
           --require-abi-version 4.4.0
-          --workflow-run-id 31666415612
-          --workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481
+          --workflow-run-id 32009630987
+          --workflow-head-sha 00074cf3c09002de940f011e229de729aa377e88
           --output artifacts/native
 
       - name: Upload coordinated native artifacts
@@ -413,7 +413,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+          $run = gh run view $env:NNRP_RS_ARTIFACT_RUN_ID `
             --repo "${{ github.repository_owner }}/nnrp-rs" `
             --json headSha,status,conclusion | ConvertFrom-Json
           if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
@@ -422,14 +422,23 @@ jobs:
             throw "nnrp-rs CI run does not match the frozen successful source commit."
           }
 
+      - name: Resolve final nnrp-rs CI artifact name
+        id: nnrp-rs-artifact
+        shell: pwsh
+        run: >-
+          python scripts/resolve_nnrp_rs_ci_artifact.py
+          --runner-os "${{ runner.os }}"
+          --runner-arch "${{ runner.arch }}"
+          --github-output $env:GITHUB_OUTPUT
+
       - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          name: ${{ steps.nnrp-rs-artifact.outputs.name }}
           path: artifacts/nnrp-rs-ci
           github-token: ${{ github.token }}
           repository: ${{ github.repository_owner }}/nnrp-rs
-          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+          run-id: ${{ env.NNRP_RS_ARTIFACT_RUN_ID }}
 
       - name: Stage final native runtime artifacts
         run: >-
@@ -535,7 +544,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+          $run = gh run view $env:NNRP_RS_ARTIFACT_RUN_ID `
             --repo "${{ github.repository_owner }}/nnrp-rs" `
             --json headSha,status,conclusion | ConvertFrom-Json
           if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
@@ -544,14 +553,23 @@ jobs:
             throw "nnrp-rs CI run does not match the frozen successful source commit."
           }
 
+      - name: Resolve final nnrp-rs CI artifact name
+        id: nnrp-rs-artifact
+        shell: pwsh
+        run: >-
+          python scripts/resolve_nnrp_rs_ci_artifact.py
+          --runner-os "${{ runner.os }}"
+          --runner-arch X86
+          --github-output $env:GITHUB_OUTPUT
+
       - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: nnrp-ffi-native-Windows-X86
+          name: ${{ steps.nnrp-rs-artifact.outputs.name }}
           path: artifacts/nnrp-rs-ci
           github-token: ${{ github.token }}
           repository: ${{ github.repository_owner }}/nnrp-rs
-          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+          run-id: ${{ env.NNRP_RS_ARTIFACT_RUN_ID }}
 
       - name: Stage final native runtime artifacts
         run: >-
@@ -651,7 +669,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+          $run = gh run view $env:NNRP_RS_ARTIFACT_RUN_ID `
             --repo "${{ github.repository_owner }}/nnrp-rs" `
             --json headSha,status,conclusion | ConvertFrom-Json
           if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
@@ -660,14 +678,23 @@ jobs:
             throw "nnrp-rs CI run does not match the frozen successful source commit."
           }
 
+      - name: Resolve final nnrp-rs CI artifact name
+        id: nnrp-rs-artifact
+        shell: pwsh
+        run: >-
+          python scripts/resolve_nnrp_rs_ci_artifact.py
+          --runner-os "${{ runner.os }}"
+          --runner-arch "${{ runner.arch }}"
+          --github-output $env:GITHUB_OUTPUT
+
       - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          name: ${{ steps.nnrp-rs-artifact.outputs.name }}
           path: artifacts/nnrp-rs-ci
           github-token: ${{ github.token }}
           repository: ${{ github.repository_owner }}/nnrp-rs
-          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+          run-id: ${{ env.NNRP_RS_ARTIFACT_RUN_ID }}
 
       - name: Stage final native runtime artifacts
         run: >-
@@ -734,7 +761,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+          $run = gh run view $env:NNRP_RS_ARTIFACT_RUN_ID `
             --repo "${{ github.repository_owner }}/nnrp-rs" `
             --json headSha,status,conclusion | ConvertFrom-Json
           if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
@@ -743,14 +770,23 @@ jobs:
             throw "nnrp-rs CI run does not match the frozen successful source commit."
           }
 
+      - name: Resolve final nnrp-rs CI artifact name
+        id: nnrp-rs-artifact
+        shell: pwsh
+        run: >-
+          python scripts/resolve_nnrp_rs_ci_artifact.py
+          --runner-os "${{ runner.os }}"
+          --runner-arch "${{ runner.arch }}"
+          --github-output $env:GITHUB_OUTPUT
+
       - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          name: ${{ steps.nnrp-rs-artifact.outputs.name }}
           path: artifacts/nnrp-rs-ci
           github-token: ${{ github.token }}
           repository: ${{ github.repository_owner }}/nnrp-rs
-          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+          run-id: ${{ env.NNRP_RS_ARTIFACT_RUN_ID }}
 
       - name: Stage final native runtime artifacts
         run: >-
@@ -881,7 +917,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $run = gh run view $env:NNRP_RS_CI_RUN_ID `
+          $run = gh run view $env:NNRP_RS_ARTIFACT_RUN_ID `
             --repo "${{ github.repository_owner }}/nnrp-rs" `
             --json headSha,status,conclusion | ConvertFrom-Json
           if ($run.headSha -ne $env:NNRP_RS_SOURCE_COMMIT `
@@ -890,14 +926,23 @@ jobs:
             throw "nnrp-rs CI run does not match the frozen successful source commit."
           }
 
+      - name: Resolve final nnrp-rs CI artifact name
+        id: nnrp-rs-artifact
+        shell: pwsh
+        run: >-
+          python scripts/resolve_nnrp_rs_ci_artifact.py
+          --runner-os "${{ runner.os }}"
+          --runner-arch "${{ runner.arch }}"
+          --github-output $env:GITHUB_OUTPUT
+
       - name: Download final nnrp-rs CI artifacts
         uses: actions/download-artifact@v7
         with:
-          name: nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}
+          name: ${{ steps.nnrp-rs-artifact.outputs.name }}
           path: artifacts/nnrp-rs-ci
           github-token: ${{ github.token }}
           repository: ${{ github.repository_owner }}/nnrp-rs
-          run-id: ${{ env.NNRP_RS_CI_RUN_ID }}
+          run-id: ${{ env.NNRP_RS_ARTIFACT_RUN_ID }}
 
       - name: Stage final native runtime artifacts
         run: >-

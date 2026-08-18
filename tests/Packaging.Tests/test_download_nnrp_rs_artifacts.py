@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -99,13 +100,122 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
         ) as run:
             self.downloader.download_workflow_artifact(
                 "NagareWorks/nnrp-rs",
-                "1.0.0-preview.4.22",
+                "1.2.3",
                 "30862254352",
                 "784a4a354f4e6a73798248f93cf574bd7a5af829",
                 Path(temp_dir),
             )
 
         self.assertEqual(2, run.call_count)
+
+    def test_release_assets_are_downloaded_in_one_verified_batch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            def download(command, *, check):
+                digest = self.downloader.hashlib.sha256(b"native").hexdigest()
+                Path(temp_dir, "SHA256SUMS").write_text(
+                    f"{digest}  nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip\n",
+                    encoding="utf-8",
+                )
+                Path(
+                    temp_dir,
+                    "nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip",
+                ).write_bytes(b"native")
+                return type("Completed", (), {"returncode": 0})()
+
+            with patch.object(self.downloader.subprocess, "run", side_effect=download) as run:
+                self.downloader.download_release_assets(
+                    "NagareWorks/nnrp-rs",
+                    "1.2.3",
+                    [self.artifact],
+                    Path(temp_dir),
+                )
+
+        run.assert_called_once_with(
+            [
+                "gh",
+                "release",
+                "download",
+                "v1.2.3",
+                "--repo",
+                "NagareWorks/nnrp-rs",
+                "--dir",
+                temp_dir,
+                "--pattern",
+                "SHA256SUMS",
+                "--pattern",
+                "nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip",
+            ],
+            check=False,
+        )
+
+    def test_release_asset_retry_preserves_completed_downloads(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            calls = 0
+
+            def download(command, *, check):
+                nonlocal calls
+                calls += 1
+                digest = self.downloader.hashlib.sha256(b"native").hexdigest()
+                Path(temp_dir, "SHA256SUMS").write_text(
+                    f"{digest}  nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip\n",
+                    encoding="utf-8",
+                )
+                if calls == 2:
+                    Path(
+                        temp_dir,
+                        "nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip",
+                    ).write_bytes(b"native")
+                return type("Completed", (), {"returncode": 1 if calls == 1 else 0})()
+
+            with (
+                patch.object(self.downloader.subprocess, "run", side_effect=download) as run,
+                patch.object(self.downloader.time, "sleep"),
+            ):
+                self.downloader.download_release_assets(
+                    "NagareWorks/nnrp-rs",
+                    "1.2.3",
+                    [self.artifact],
+                    Path(temp_dir),
+                )
+
+        self.assertEqual(2, run.call_count)
+        second_command = run.call_args_list[1].args[0]
+        self.assertNotIn("SHA256SUMS", second_command)
+
+    def test_release_asset_retry_replaces_a_corrupt_download(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            calls = 0
+            asset_name = "nnrp-ffi-transport-tcp-native-windows-x86_64-1.2.3.zip"
+            expected = b"native"
+
+            def download(command, *, check):
+                nonlocal calls
+                calls += 1
+                digest = self.downloader.hashlib.sha256(expected).hexdigest()
+                Path(temp_dir, "SHA256SUMS").write_text(
+                    f"{digest}  {asset_name}\n",
+                    encoding="utf-8",
+                )
+                Path(temp_dir, asset_name).write_bytes(
+                    b"corrupt" if calls == 1 else expected
+                )
+                return type("Completed", (), {"returncode": 0})()
+
+            with (
+                patch.object(self.downloader.subprocess, "run", side_effect=download) as run,
+                patch.object(self.downloader.time, "sleep"),
+            ):
+                self.downloader.download_release_assets(
+                    "NagareWorks/nnrp-rs",
+                    "1.2.3",
+                    [self.artifact],
+                    Path(temp_dir),
+                )
+
+        self.assertEqual(2, run.call_count)
+        second_command = run.call_args_list[1].args[0]
+        self.assertNotIn("SHA256SUMS", second_command)
+        self.assertIn(asset_name, second_command)
 
     def test_checksum_evidence_is_mandatory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -119,6 +229,23 @@ class DownloadNnrpRsArtifactsTests(unittest.TestCase):
             self.downloader.verify_checksum(archive, checksums)
             with self.assertRaisesRegex(ValueError, "does not contain missing.zip"):
                 self.downloader.verify_checksum(root / "missing.zip", checksums)
+
+    def test_download_temporary_directory_stays_beside_the_output_tree(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "artifacts" / "native"
+            expected_root = output.parent / ".tmp"
+            original_temp = os.environ.get("TEMP")
+            original_tmp = os.environ.get("TMP")
+
+            with self.downloader.artifact_temporary_directory(output) as download_dir:
+                self.assertEqual(expected_root, download_dir.parent)
+                self.assertTrue(download_dir.is_dir())
+                self.assertEqual(str(download_dir), os.environ["TEMP"])
+                self.assertEqual(str(download_dir), os.environ["TMP"])
+
+            self.assertFalse(expected_root.exists())
+            self.assertEqual(original_temp, os.environ.get("TEMP"))
+            self.assertEqual(original_tmp, os.environ.get("TMP"))
 
     @staticmethod
     def write_text(path: Path, content: str) -> Path:

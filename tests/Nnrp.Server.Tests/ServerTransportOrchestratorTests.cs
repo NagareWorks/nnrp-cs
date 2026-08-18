@@ -392,7 +392,7 @@ namespace Nnrp.Server.Tests
                     timeoutMilliseconds: 100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
-            Assert.Equal(0, tcp.ReleaseCount);
+            Assert.Equal(1, tcp.ReleaseCount);
             Assert.Equal(0, websocket.ReleaseCount);
             Assert.Equal(1, tcp.AcceptCount);
             Assert.Equal(1, websocket.AcceptCount);
@@ -415,6 +415,24 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
+        public async Task SuccessfulAcceptReleaseFailureClosesTheCompleteSet()
+        {
+            var tcp = Listener(TransportId.Tcp);
+            var websocket = Listener(TransportId.WebSocket);
+            tcp.ReleaseFailure = new InvalidOperationException("release failed");
+            tcp.EnqueueWouldBlock();
+            websocket.EnqueueAccepted();
+            await using var listeners = new NnrpServerTransportListenerSet(new[] { tcp, websocket });
+
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await listeners.AcceptAsync(new NnrpServerAcceptOptions(timeoutMilliseconds: 100)));
+
+            Assert.Equal("release failed", error.Message);
+            Assert.True(listeners.IsClosed);
+            Assert.Equal(1, websocket.SessionCloseCount);
+        }
+
+        [Fact]
         public async Task RejectedPeerReleasesOnlyItsTicketAndContinues()
         {
             var tcp = Listener(TransportId.Tcp);
@@ -426,7 +444,8 @@ namespace Nnrp.Server.Tests
             using var accepted = await listeners.AcceptAsync(new NnrpServerAcceptOptions(timeoutMilliseconds: 100));
 
             Assert.Equal(TransportId.WebSocket, accepted.ActiveTransportId);
-            Assert.Equal(1, tcp.ReleaseCount);
+            Assert.Equal(2, tcp.ReleaseCount);
+            Assert.Equal(0, websocket.ReleaseCount);
         }
 
         [Fact]

@@ -21,7 +21,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('require-complete-capability-coverage: "true"', workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: 0ae3bd5d8ecaa387822888868e8676f0a3596bcd",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: 0167a48d0af7520358575c6bcf9833c053efc403",
             workflow,
         )
         self.assertIn(
@@ -44,12 +44,12 @@ class CiWorkflowTests(unittest.TestCase):
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("native-artifacts:", workflow)
-        self.assertIn("--version 1.0.0-preview.4.22", workflow)
+        self.assertIn("--version 1.0.0-preview.4.23", workflow)
         self.assertIn("--require-abi-version 4.4.0", workflow)
-        self.assertIn("--workflow-run-id 31666415612", workflow)
-        self.assertIn("--workflow-head-sha 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
-        self.assertIn("NNRP_RS_SOURCE_COMMIT: 295f5b65ac71885b5c1b54d927b2595005038481", workflow)
-        self.assertIn("NNRP_RS_CI_RUN_ID: '31666390775'", workflow)
+        self.assertIn("--workflow-run-id 32009630987", workflow)
+        self.assertIn("--workflow-head-sha 00074cf3c09002de940f011e229de729aa377e88", workflow)
+        self.assertIn("NNRP_RS_SOURCE_COMMIT: 00074cf3c09002de940f011e229de729aa377e88", workflow)
+        self.assertIn("NNRP_RS_ARTIFACT_RUN_ID: '32009630987'", workflow)
         self.assertEqual(5, workflow.count("Download final nnrp-rs CI artifacts"))
         self.assertEqual(5, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
         self.assertEqual(5, workflow.count("Verify final nnrp-rs CI source"))
@@ -63,7 +63,17 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("os: [ubuntu-latest, macos-latest, windows-latest]", workflow)
         self.assertIn("native-e2e-windows-x86:", workflow)
         self.assertIn("architecture: x86", workflow)
-        self.assertIn("name: nnrp-ffi-native-Windows-X86", workflow)
+        self.assertEqual(5, workflow.count("Resolve final nnrp-rs CI artifact name"))
+        self.assertEqual(
+            5,
+            workflow.count("name: ${{ steps.nnrp-rs-artifact.outputs.name }}"),
+        )
+        self.assertEqual(
+            5,
+            workflow.count("python scripts/resolve_nnrp_rs_ci_artifact.py"),
+        )
+        self.assertIn("--runner-arch X86", workflow)
+        self.assertNotIn("nnrp-ffi-native-${{ runner.os }}-${{ runner.arch }}", workflow)
         self.assertNotIn("--rid win-x86", workflow)
         self.assertNotIn("--transport websocket", workflow)
         self.assertIn("transport-tcp/win-x86/nnrp_ffi.dll", workflow)
