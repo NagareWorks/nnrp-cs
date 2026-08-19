@@ -12,15 +12,18 @@ namespace Nnrp.Server
     {
         private readonly NnrpNativeRuntimeOperation operation;
         private readonly NnrpNativeRuntimeServerSession session;
+        private readonly Action<ulong, uint> completeOperation;
         private int terminal;
 
         internal NnrpServerOperation(
             NnrpNativeRuntimeServerSession session,
             NnrpNativeRuntimeOperation operation,
-            NnrpRuntimeEvent submit)
+            NnrpRuntimeEvent submit,
+            Action<ulong, uint> completeOperation)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
             this.operation = operation ?? throw new ArgumentNullException(nameof(operation));
+            this.completeOperation = completeOperation ?? throw new ArgumentNullException(nameof(completeOperation));
             if (submit == null || submit.Metadata.Kind != NnrpRuntimeEventMetadataKind.FrameSubmit)
             {
                 throw new ArgumentException("Server operations require a decoded FRAME_SUBMIT event.", nameof(submit));
@@ -66,6 +69,7 @@ namespace Nnrp.Server
             try
             {
                 session.SendResult(operation, Join(encodedMetadata, body));
+                completeOperation(OperationId, FrameId);
                 return default;
             }
             catch
@@ -84,6 +88,7 @@ namespace Nnrp.Server
             try
             {
                 session.DropResult(operation, metadata, diagnostic);
+                completeOperation(OperationId, FrameId);
                 return default;
             }
             catch
@@ -158,6 +163,8 @@ namespace Nnrp.Server
 
         private readonly SemaphoreSlim consumeGate = new SemaphoreSlim(1, 1);
         private readonly Queue<NnrpNativeRuntimeEvent> deferredEvents = new Queue<NnrpNativeRuntimeEvent>();
+        private readonly object stateGate = new object();
+        private readonly Dictionary<ulong, uint> activeOperationFrames = new Dictionary<ulong, uint>();
         private readonly NnrpAcceptedServerTransportSession accepted;
         private readonly NnrpServer server;
         private readonly NnrpNativeRuntimeServerSession session;
@@ -237,8 +244,12 @@ namespace Nnrp.Server
         public ValueTask SendCreditUpdateAsync(PressureMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendCreditUpdate(metadata));
 
-        public ValueTask SendTraceContextAsync(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.SendTraceContext(metadata, body));
+        public ValueTask SendTraceContextAsync(
+            TraceContextMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            ulong? operationId = null,
+            CancellationToken cancellationToken = default) =>
+            Send(cancellationToken, () => session.SendTraceContext(ResolveTraceFrameId(operationId), metadata, body));
 
         public ValueTask SendRecoverableErrorAsync(RecoverableErrorMetadata metadata, ReadOnlyMemory<byte> diagnostic = default, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendRecoverableError(metadata, diagnostic));
@@ -256,7 +267,11 @@ namespace Nnrp.Server
             {
                 MessageType.Backpressure when metadata is PressureMetadata value => SendBackpressureAsync(value, cancellationToken),
                 MessageType.CreditUpdate when metadata is PressureMetadata value => SendCreditUpdateAsync(value, cancellationToken),
-                MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(value, tail, cancellationToken),
+                MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(
+                    value,
+                    tail,
+                    operationId: null,
+                    cancellationToken: cancellationToken),
                 MessageType.ErrorRecoverable when metadata is RecoverableErrorMetadata value => SendRecoverableErrorAsync(value, tail, cancellationToken),
                 MessageType.RetryAfter when metadata is RetryAfterMetadata value => SendRetryAfterAsync(value, tail, cancellationToken),
                 _ => throw new ArgumentException("Message type and runtime-control metadata do not select a server-sendable frame."),
@@ -296,6 +311,10 @@ namespace Nnrp.Server
 
             IsClosed = true;
             deferredEvents.Clear();
+            lock (stateGate)
+            {
+                activeOperationFrames.Clear();
+            }
             try
             {
                 if (!session.IsClosed)
@@ -380,7 +399,8 @@ namespace Nnrp.Server
                 new NnrpOperationHandle(nativeEvent.Operation),
                 metadata.OperationId,
                 submit.Header.FrameId);
-            return new NnrpServerOperation(session, operation, submit);
+            RegisterActiveOperation(metadata.OperationId, submit.Header.FrameId);
+            return new NnrpServerOperation(session, operation, submit, CompleteOperation);
         }
 
         private static bool IsSubmit(NnrpNativeRuntimeEvent @event)
@@ -404,6 +424,53 @@ namespace Nnrp.Server
             action();
             return default;
         }
+
+        private void RegisterActiveOperation(ulong operationId, uint frameId)
+        {
+            lock (stateGate)
+            {
+                if (activeOperationFrames.ContainsKey(operationId))
+                {
+                    throw InactiveOperation();
+                }
+
+                activeOperationFrames.Add(operationId, frameId);
+            }
+        }
+
+        private uint ResolveTraceFrameId(ulong? operationId)
+        {
+            if (!operationId.HasValue)
+            {
+                return 0;
+            }
+
+            lock (stateGate)
+            {
+                if (activeOperationFrames.TryGetValue(operationId.Value, out var frameId))
+                {
+                    return frameId;
+                }
+            }
+
+            throw InactiveOperation();
+        }
+
+        private void CompleteOperation(ulong operationId, uint frameId)
+        {
+            lock (stateGate)
+            {
+                if (activeOperationFrames.TryGetValue(operationId, out var activeFrameId)
+                    && activeFrameId == frameId)
+                {
+                    activeOperationFrames.Remove(operationId);
+                }
+            }
+        }
+
+        private static NnrpNativeInvalidStateException InactiveOperation() =>
+            new NnrpNativeInvalidStateException(
+                new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Operation));
 
         private static ReadOnlyMemory<byte> Join(ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second)
         {

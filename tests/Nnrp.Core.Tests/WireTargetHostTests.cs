@@ -487,10 +487,12 @@ public sealed class WireTargetHostTests
         public ValueTask SendTraceContextAsync(
             TraceContextMetadata metadata,
             ReadOnlyMemory<byte> body,
+            ulong? operationId,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal((uint)body.Length, metadata.BodyBytes);
+            Assert.Equal(operation.OperationId, operationId);
             return default;
         }
 

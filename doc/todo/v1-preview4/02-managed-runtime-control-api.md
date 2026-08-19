@@ -31,7 +31,7 @@
   - [x] `DegradeProfileAsync(CapabilityMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendRouteHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendExecutionHintAsync(RouteHintMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, ulong?, CancellationToken)`.
   - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.
 - [x] Add production result and event iteration.
   - [x] `NextResultAsync(CancellationToken)`.
@@ -48,7 +48,7 @@
   - [x] `SendBackpressureAsync(PressureMetadata, CancellationToken)`.
   - [x] `SendCreditUpdateAsync(PressureMetadata, CancellationToken)`.
   - [x] `NnrpServerOperation.SendResultDropAsync(ResultDropReasonMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
-  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
+  - [x] `SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, ulong?, CancellationToken)`.
   - [x] `SendRecoverableErrorAsync(RecoverableErrorMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendRetryAfterAsync(RetryAfterMetadata, ReadOnlyMemory<byte>, CancellationToken)`.
   - [x] `SendControlAsync(MessageType, IRuntimeControlMetadata, ReadOnlyMemory<byte>, CancellationToken)` with typed message/metadata validation.

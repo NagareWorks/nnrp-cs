@@ -101,9 +101,15 @@ namespace Nnrp.Client.Tests
             Assert.Equal(PayloadKind.TokenChunk, operation.Metadata.PayloadKindBitmap);
 
             var clientTrace = new TraceContextMetadata(701, 11, 12, 13, 0, 2);
-            await clientSession.SendTraceContextAsync(clientTrace, new byte[] { 4, 5 }, timeout.Token);
+            await clientSession.SendTraceContextAsync(
+                clientTrace,
+                new byte[] { 4, 5 },
+                operationId: 701,
+                cancellationToken: timeout.Token);
             var serverTrace = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
             Assert.Equal(MessageType.TraceContext, serverTrace.Header.MessageType);
+            Assert.Equal((uint)71, serverTrace.Header.FrameId);
+            Assert.Equal((ulong)701, serverTrace.Header.TraceId);
             Assert.Equal(clientTrace, serverTrace.Metadata.Get<TraceContextMetadata>());
             Assert.Equal(new byte[] { 4, 5 }, BodyOf(serverTrace).ToArray());
 
@@ -197,9 +203,12 @@ namespace Nnrp.Client.Tests
             await serverSession.SendTraceContextAsync(
                 serverTraceMetadata,
                 new byte[] { 29, 30 },
-                timeout.Token);
+                operationId: 701,
+                cancellationToken: timeout.Token);
             var clientTraceEvent = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
             Assert.Equal(MessageType.TraceContext, clientTraceEvent.Header.MessageType);
+            Assert.Equal((uint)71, clientTraceEvent.Header.FrameId);
+            Assert.Equal((ulong)701, clientTraceEvent.Header.TraceId);
             Assert.Equal(serverTraceMetadata, clientTraceEvent.Metadata.Get<TraceContextMetadata>());
             Assert.Equal(new byte[] { 29, 30 }, BodyOf(clientTraceEvent).ToArray());
 
@@ -315,7 +324,8 @@ namespace Nnrp.Client.Tests
             await serverSession.SendTraceContextAsync(
                 cancellationTrace,
                 new byte[] { 42 },
-                timeout.Token);
+                operationId: 702,
+                cancellationToken: timeout.Token);
             var drop = new ResultDropReasonMetadata(
                 702,
                 33,

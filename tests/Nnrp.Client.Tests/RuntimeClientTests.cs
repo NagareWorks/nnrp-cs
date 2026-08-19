@@ -560,6 +560,48 @@ namespace Nnrp.Client.Tests
         }
 
         [Fact]
+        public async Task TraceContextUsesSessionOrActiveOperationFrameAndRejectsTerminalOperations()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            await using var client = CreateClient(harness);
+            await using var session = await client.OpenSessionAsync(new NnrpClientSessionOptions(requestedSessionId: 41));
+            var metadata = new TraceContextMetadata(91, 2, 3, 4, 0, 0);
+
+            await session.SendTraceContextAsync(metadata);
+            await session.SubmitNoWaitAsync(CreateSubmit(901, 91));
+            await session.SendTraceContextAsync(metadata, operationId: 901);
+
+            Assert.Equal((uint)0, harness.RuntimeFrames[0].Request.FrameId);
+            Assert.Equal((uint)91, harness.RuntimeFrames[1].Request.FrameId);
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SendTraceContextAsync(metadata, operationId: 999));
+
+            harness.QueueClientEvent(MessageType.ResultPush, 91, 901, SuccessPayload());
+            Assert.Equal((ulong)901, (await session.NextResultAsync()).OperationId);
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SendTraceContextAsync(metadata, operationId: 901));
+
+            await session.SubmitNoWaitAsync(CreateSubmit(902, 92));
+            harness.QueueClientOperationLifecycleEvent(NnrpOperationState.Cancelled, 902);
+            Assert.Equal(NnrpClientEventKind.Lifecycle, (await session.NextEventAsync()).Kind);
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SendTraceContextAsync(metadata, operationId: 902));
+
+            await session.SubmitNoWaitAsync(CreateSubmit(903, 93));
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SubmitNoWaitAsync(CreateSubmit(903, 94)));
+
+            harness.NextSubmitStatus = new NnrpFfiStatus(
+                NnrpFfiStatusCode.InvalidState,
+                NnrpErrorFamily.Operation);
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SubmitNoWaitAsync(CreateSubmit(904, 95)));
+            await session.SubmitNoWaitAsync(CreateSubmit(904, 96));
+            await session.SendTraceContextAsync(metadata, operationId: 904);
+            Assert.Equal((uint)96, harness.RuntimeFrames[2].Request.FrameId);
+        }
+
+        [Fact]
         public async Task TypedClientMethodsUseOneNativeFrameEach()
         {
             using var harness = new RuntimeEntrypointHarness();

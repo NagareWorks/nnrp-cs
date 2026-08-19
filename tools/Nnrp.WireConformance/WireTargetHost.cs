@@ -143,6 +143,11 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         {
             IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
                 .ConfigureAwait(false);
+            await session.SendTraceContextAsync(
+                new TraceContextMetadata(0x1234, 0x5678, 0, 1, 0, (uint)TraceBody.Length),
+                TraceBody,
+                operation.OperationId,
+                cancellationToken).ConfigureAwait(false);
             WireTargetReceivedEvent cancel = await ExpectOperationRuntimeAndLifecycleAsync(
                 session,
                 MessageType.Cancel,
@@ -155,10 +160,6 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
                 throw new InvalidOperationException("Cancel targeted another operation.");
             }
 
-            await session.SendTraceContextAsync(
-                new TraceContextMetadata(0x1234, 0x5678, 0, 1, 0, (uint)TraceBody.Length),
-                TraceBody,
-                cancellationToken).ConfigureAwait(false);
             await operation.SendResultDropAsync(
                 new ResultDropReasonMetadata(
                     operation.OperationId,

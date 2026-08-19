@@ -57,7 +57,7 @@ namespace Nnrp.Client.Tests
             AssertTailMethod<CapabilityMetadata>(nameof(NnrpClientSession.DegradeProfileAsync));
             AssertTailMethod<RouteHintMetadata>(nameof(NnrpClientSession.SendRouteHintAsync));
             AssertTailMethod<RouteHintMetadata>(nameof(NnrpClientSession.SendExecutionHintAsync));
-            AssertTailMethod<TraceContextMetadata>(nameof(NnrpClientSession.SendTraceContextAsync));
+            AssertTraceContextMethod(typeof(NnrpClientSession), nameof(NnrpClientSession.SendTraceContextAsync));
             AssertMethod(
                 typeof(NnrpClientSession),
                 nameof(NnrpClientSession.SendControlAsync),
@@ -253,7 +253,7 @@ namespace Nnrp.Client.Tests
 
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendBackpressureAsync));
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendCreditUpdateAsync));
-            AssertServerTailMethod<TraceContextMetadata>(nameof(NnrpServerSession.SendTraceContextAsync));
+            AssertTraceContextMethod(typeof(NnrpServerSession), nameof(NnrpServerSession.SendTraceContextAsync));
             AssertServerTailMethod<RecoverableErrorMetadata>(nameof(NnrpServerSession.SendRecoverableErrorAsync));
             AssertServerTailMethod<RetryAfterMetadata>(nameof(NnrpServerSession.SendRetryAfterAsync));
             AssertMethod(
@@ -361,6 +361,17 @@ namespace Nnrp.Client.Tests
 
         private static void AssertTailMethod<TMetadata>(string name) where TMetadata : struct =>
             AssertMethod(typeof(NnrpClientSession), name, typeof(ValueTask), false, typeof(TMetadata), typeof(ReadOnlyMemory<byte>), typeof(CancellationToken));
+
+        private static void AssertTraceContextMethod(Type declaringType, string name) =>
+            AssertMethod(
+                declaringType,
+                name,
+                typeof(ValueTask),
+                false,
+                typeof(TraceContextMetadata),
+                typeof(ReadOnlyMemory<byte>),
+                typeof(ulong?),
+                typeof(CancellationToken));
 
         private static void AssertMetadataMethod<TMetadata>(string name) where TMetadata : struct =>
             AssertMethod(typeof(NnrpClientSession), name, typeof(ValueTask), false, typeof(TMetadata), typeof(CancellationToken));

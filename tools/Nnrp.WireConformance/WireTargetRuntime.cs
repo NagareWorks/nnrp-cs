@@ -46,6 +46,7 @@ internal interface IWireTargetServerSession : IAsyncDisposable
     ValueTask SendTraceContextAsync(
         TraceContextMetadata metadata,
         ReadOnlyMemory<byte> body,
+        ulong? operationId,
         CancellationToken cancellationToken);
 
     ValueTask ReportCacheMissAsync(
@@ -296,8 +297,9 @@ internal sealed class NnrpWireTargetServerSession(NnrpServerSession session) : I
     public ValueTask SendTraceContextAsync(
         TraceContextMetadata metadata,
         ReadOnlyMemory<byte> body,
+        ulong? operationId,
         CancellationToken cancellationToken) =>
-        session.SendTraceContextAsync(metadata, body, cancellationToken);
+        session.SendTraceContextAsync(metadata, body, operationId, cancellationToken);
 
     public ValueTask ReportCacheMissAsync(
         CacheMissMetadata metadata,

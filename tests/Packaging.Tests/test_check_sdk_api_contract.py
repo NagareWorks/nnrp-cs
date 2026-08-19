@@ -92,6 +92,9 @@ def contract() -> dict[str, object]:
         "roleSurfaces": {
             "clientSubmitWait": copy.deepcopy(FROZEN_CLIENT_SUBMIT_WAIT),
             "serverEventPump": copy.deepcopy(FROZEN_SERVER_EVENT_PUMP),
+            "traceContextCorrelation": copy.deepcopy(
+                CHECKER.EXPECTED_TRACE_CONTEXT_CORRELATION
+            ),
         },
         "types": {
             "NnrpResult": {
@@ -209,6 +212,15 @@ class CheckSdkApiContractTests(unittest.TestCase):
         client_submit_wait["timeoutRule"] = "expiry returns success"
         role_surfaces["clientSubmitWait"] = client_submit_wait
         with self.assertRaisesRegex(SystemExit, "client submit-wait semantics drifted"):
+            self.check(value)
+
+    def test_rejects_trace_context_correlation_drift(self) -> None:
+        value = contract()
+        role_surfaces = cast(dict[str, object], value["roleSurfaces"])
+        correlation = copy.deepcopy(CHECKER.EXPECTED_TRACE_CONTEXT_CORRELATION)
+        correlation["sessionFrameId"] = 1
+        role_surfaces["traceContextCorrelation"] = correlation
+        with self.assertRaisesRegex(SystemExit, "trace-context correlation semantics drifted"):
             self.check(value)
 
     def test_rejects_server_operation_invariant_drift(self) -> None:

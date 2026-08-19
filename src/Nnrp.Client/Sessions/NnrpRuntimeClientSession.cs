@@ -38,6 +38,7 @@ namespace Nnrp.Client
         private const uint NativeEventKindResultPushed = 6;
         private const uint NativeEventKindResultDropped = 7;
         private const uint NativeEventKindError = 10;
+        private const uint NativeEventKindOperationLifecycle = 14;
         private const int MaxCancelledOperationSuppressions = 4096;
 
         private readonly object stateGate = new object();
@@ -46,6 +47,7 @@ namespace Nnrp.Client
         private readonly Queue<NnrpNativeRuntimeEvent> deferredTerminalEvents = new Queue<NnrpNativeRuntimeEvent>();
         private readonly Queue<ulong> cancelledOperationOrder = new Queue<ulong>();
         private readonly HashSet<ulong> cancelledOperations = new HashSet<ulong>();
+        private readonly Dictionary<ulong, uint> activeOperationFrames = new Dictionary<ulong, uint>();
         private readonly NnrpClient client;
         private readonly NnrpNativeRuntimeSession session;
         private bool hasControlSequence;
@@ -85,6 +87,7 @@ namespace Nnrp.Client
                         }
 
                         var nativeEvent = await client.NextNativeEventAsync(session, cancellationToken).ConfigureAwait(false);
+                        ObserveTerminal(nativeEvent);
                         if (ShouldSuppress(nativeEvent))
                         {
                             continue;
@@ -125,8 +128,17 @@ namespace Nnrp.Client
                 request.Header.ViewId,
                 request.Header.RouteId,
                 request.Header.TraceId);
-            var operation = session.SubmitOperation(request.OperationId, header, request.EncodePayload());
-            return new ValueTask<ulong>(operation.OperationId);
+            RegisterActiveOperation(request.OperationId, request.FrameId);
+            try
+            {
+                var operation = session.SubmitOperation(request.OperationId, header, request.EncodePayload());
+                return new ValueTask<ulong>(operation.OperationId);
+            }
+            catch
+            {
+                CompleteOperation(request.OperationId, request.FrameId);
+                throw;
+            }
         }
 
         public async ValueTask<NnrpResult> NextResultAsync(CancellationToken cancellationToken = default)
@@ -143,6 +155,7 @@ namespace Nnrp.Client
                     }
 
                     var nativeEvent = await client.NextNativeEventAsync(session, cancellationToken).ConfigureAwait(false);
+                    ObserveTerminal(nativeEvent);
                     if (ShouldSuppress(nativeEvent))
                     {
                         continue;
@@ -173,6 +186,7 @@ namespace Nnrp.Client
                     var nativeEvent = deferredEvents.Count != 0
                         ? deferredEvents.Dequeue()
                         : await client.NextNativeEventAsync(session, cancellationToken).ConfigureAwait(false);
+                    ObserveTerminal(nativeEvent);
                     if (ShouldSuppress(nativeEvent))
                     {
                         continue;
@@ -231,8 +245,12 @@ namespace Nnrp.Client
         public ValueTask SendExecutionHintAsync(RouteHintMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendExecutionHint(metadata, body));
 
-        public ValueTask SendTraceContextAsync(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default, CancellationToken cancellationToken = default) =>
-            Send(cancellationToken, () => session.SendTraceContext(metadata, body));
+        public ValueTask SendTraceContextAsync(
+            TraceContextMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            ulong? operationId = null,
+            CancellationToken cancellationToken = default) =>
+            Send(cancellationToken, () => session.SendTraceContext(ResolveTraceFrameId(operationId), metadata, body));
 
         public ValueTask SendControlAsync(
             MessageType messageType,
@@ -253,7 +271,11 @@ namespace Nnrp.Client
                 MessageType.DegradeProfile when metadata is CapabilityMetadata value => DegradeProfileAsync(value, tail, cancellationToken),
                 MessageType.RouteHint when metadata is RouteHintMetadata value => SendRouteHintAsync(value, tail, cancellationToken),
                 MessageType.ExecutionHint when metadata is RouteHintMetadata value => SendExecutionHintAsync(value, tail, cancellationToken),
-                MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(value, tail, cancellationToken),
+                MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(
+                    value,
+                    tail,
+                    operationId: null,
+                    cancellationToken: cancellationToken),
                 _ => throw new ArgumentException("Message type and runtime-control metadata do not select a client-sendable frame."),
             };
         }
@@ -303,6 +325,7 @@ namespace Nnrp.Client
             {
                 cancelledOperations.Clear();
                 cancelledOperationOrder.Clear();
+                activeOperationFrames.Clear();
             }
             try
             {
@@ -598,6 +621,99 @@ namespace Nnrp.Client
                 }
             }
         }
+
+        private void RegisterActiveOperation(ulong operationId, uint frameId)
+        {
+            lock (stateGate)
+            {
+                if (activeOperationFrames.ContainsKey(operationId))
+                {
+                    throw InactiveOperation();
+                }
+
+                activeOperationFrames.Add(operationId, frameId);
+            }
+        }
+
+        private uint ResolveTraceFrameId(ulong? operationId)
+        {
+            if (!operationId.HasValue)
+            {
+                return 0;
+            }
+
+            lock (stateGate)
+            {
+                if (activeOperationFrames.TryGetValue(operationId.Value, out var frameId))
+                {
+                    return frameId;
+                }
+            }
+
+            throw InactiveOperation();
+        }
+
+        private void ObserveTerminal(NnrpNativeRuntimeEvent nativeEvent)
+        {
+            if (!nativeEvent.HasWireHeader && nativeEvent.Kind == NativeEventKindOperationLifecycle)
+            {
+                var lifecycle = nativeEvent.ToOperationLifecycleEvent();
+                if (NnrpOperationLifecycle.IsTerminalState(lifecycle.State))
+                {
+                    CompleteOperation(lifecycle.OperationId);
+                }
+
+                return;
+            }
+
+            if (!IsTerminalResult(nativeEvent))
+            {
+                return;
+            }
+
+            var operationId = OperationIdOf(nativeEvent);
+            if (operationId == 0)
+            {
+                return;
+            }
+
+            lock (stateGate)
+            {
+                if (!activeOperationFrames.TryGetValue(operationId, out var frameId))
+                {
+                    return;
+                }
+
+                if (!nativeEvent.HasWireHeader || nativeEvent.FrameId == frameId)
+                {
+                    activeOperationFrames.Remove(operationId);
+                }
+            }
+        }
+
+        private void CompleteOperation(ulong operationId, uint frameId)
+        {
+            lock (stateGate)
+            {
+                if (activeOperationFrames.TryGetValue(operationId, out var activeFrameId)
+                    && activeFrameId == frameId)
+                {
+                    activeOperationFrames.Remove(operationId);
+                }
+            }
+        }
+
+        private void CompleteOperation(ulong operationId)
+        {
+            lock (stateGate)
+            {
+                activeOperationFrames.Remove(operationId);
+            }
+        }
+
+        private static NnrpNativeInvalidStateException InactiveOperation() =>
+            new NnrpNativeInvalidStateException(
+                new NnrpFfiStatus(NnrpFfiStatusCode.InvalidState, NnrpErrorFamily.Operation));
 
         private static ulong OperationIdOf(NnrpNativeRuntimeEvent @event)
         {

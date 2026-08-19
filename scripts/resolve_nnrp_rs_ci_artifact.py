@@ -5,15 +5,15 @@ from pathlib import Path
 
 
 OS_NAMES = {
-    "Linux": "linux",
-    "macOS": "macos",
-    "Windows": "windows",
+    "Linux": "Linux",
+    "macOS": "macOS",
+    "Windows": "Windows",
 }
 
 ARCH_NAMES = {
-    "X64": "x86_64",
-    "X86": "x86",
-    "ARM64": "aarch64",
+    "X64": "X64",
+    "X86": "X86",
+    "ARM64": "ARM64",
 }
 
 

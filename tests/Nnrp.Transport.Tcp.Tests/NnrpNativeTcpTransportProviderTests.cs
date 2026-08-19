@@ -76,12 +76,13 @@ namespace Nnrp.Transport.Tcp.Tests
             var serverSession = await acceptTask;
 
             clientSession.SendTraceContext(
+                0,
                 new TraceContextMetadata(101, 201, 301, 1, 0, 1),
                 new byte[] { 11 });
             var runtimeEvent = Assert.Single(
                 serverSession.AwaitEvents(timeoutMilliseconds: 5_000));
             Assert.Equal((uint)MessageType.TraceContext, runtimeEvent.MessageType);
-            Assert.Equal((uint)1, runtimeEvent.FrameId);
+            Assert.Equal((uint)0, runtimeEvent.FrameId);
             var decoded = NnrpRuntimeControl.Decode(
                 MessageType.TraceContext,
                 runtimeEvent.PayloadSpan);

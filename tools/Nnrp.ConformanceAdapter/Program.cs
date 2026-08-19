@@ -1095,6 +1095,7 @@ public static class Program
         var clientSession = client.OpenSession(new NnrpNativeRuntimeSessionOptions(70, 1, 2, 0x1001, 3));
         var serverSession = await acceptTask;
         clientSession.SendTraceContext(
+            0,
             new TraceContextMetadata(101, 201, 301, 1, 0, 1),
             new byte[] { 11 });
         var events = serverSession.AwaitEvents(timeoutMilliseconds: 5_000);

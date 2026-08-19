@@ -202,6 +202,36 @@ namespace Nnrp.Server.Tests
         }
 
         [Fact]
+        public async Task TraceContextUsesSessionOrActiveOperationFrameAndCleansUpAfterTerminalSend()
+        {
+            using var harness = new RuntimeEntrypointHarness();
+            var listener = new TestListener(CreateNativeSession(harness));
+            await using var server = new NnrpServer(
+                new NnrpServerOptions(NnrpEndpoint.Parse("nnrp://localhost/runtime/default")),
+                new NnrpServerTransportListenerSet(new[] { listener }));
+            await using var session = await server.AcceptAsync();
+            var metadata = new TraceContextMetadata(44, 2, 3, 4, 0, 0);
+
+            await session.SendTraceContextAsync(metadata);
+            harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 44, 1, SubmitPayload(1)));
+            var operation = await session.ReceiveSubmitAsync();
+            await session.SendTraceContextAsync(metadata, operationId: operation.OperationId);
+
+            Assert.Equal((uint)0, harness.RuntimeFrames[0].Request.FrameId);
+            Assert.Equal((uint)44, harness.RuntimeFrames[1].Request.FrameId);
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SendTraceContextAsync(metadata, operationId: 999));
+
+            harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 45, 1, SubmitPayload(1)));
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.ReceiveSubmitAsync());
+
+            await operation.SendResultAsync(SuccessMetadata());
+            await Assert.ThrowsAsync<NnrpNativeInvalidStateException>(async () =>
+                await session.SendTraceContextAsync(metadata, operationId: operation.OperationId));
+        }
+
+        [Fact]
         public async Task TypedServerMethodsUseOneNativeFrameEach()
         {
             using var harness = new RuntimeEntrypointHarness();

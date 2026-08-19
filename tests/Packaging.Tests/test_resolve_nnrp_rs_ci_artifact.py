@@ -14,11 +14,11 @@ SPEC.loader.exec_module(MODULE)
 class ResolveNnrpRsCiArtifactTests(unittest.TestCase):
     def test_maps_github_runner_identity_to_release_artifact_identity(self) -> None:
         cases = {
-            ("Linux", "X64"): "nnrp-ffi-native-linux-x86_64",
-            ("macOS", "ARM64"): "nnrp-ffi-native-macos-aarch64",
-            ("macOS", "X64"): "nnrp-ffi-native-macos-x86_64",
-            ("Windows", "X64"): "nnrp-ffi-native-windows-x86_64",
-            ("Windows", "X86"): "nnrp-ffi-native-windows-x86",
+            ("Linux", "X64"): "nnrp-ffi-native-Linux-X64",
+            ("macOS", "ARM64"): "nnrp-ffi-native-macOS-ARM64",
+            ("macOS", "X64"): "nnrp-ffi-native-macOS-X64",
+            ("Windows", "X64"): "nnrp-ffi-native-Windows-X64",
+            ("Windows", "X86"): "nnrp-ffi-native-Windows-X86",
         }
 
         for identity, expected in cases.items():

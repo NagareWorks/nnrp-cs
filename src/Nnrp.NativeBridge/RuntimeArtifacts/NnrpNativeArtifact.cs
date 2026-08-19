@@ -4394,9 +4394,16 @@ namespace Nnrp.NativeBridge
             SendRuntimeFrame(MessageType.CreditUpdate, metadata, ReadOnlyMemory<byte>.Empty);
         }
 
-        public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
+        public void SendTraceContext(
+            uint frameId,
+            TraceContextMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
         {
-            SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+            EnsureOpen();
+            SendEncodedRuntimeFrame(
+                MessageType.TraceContext,
+                NnrpRuntimeControl.Encode(MessageType.TraceContext, metadata, body.Span),
+                frameId);
         }
 
         public void SendRuntimeObject(
@@ -4629,6 +4636,15 @@ namespace Nnrp.NativeBridge
         private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
         {
             var frameId = nextRuntimeFrameId;
+            SendEncodedRuntimeFrame(messageType, payload, frameId);
+            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+        }
+
+        private void SendEncodedRuntimeFrame(
+            MessageType messageType,
+            ReadOnlyMemory<byte> payload,
+            uint frameId)
+        {
             NnrpNativeRuntimeSession.WithBorrowedView(
                 payload,
                 payloadView =>
@@ -4641,7 +4657,6 @@ namespace Nnrp.NativeBridge
                             payloadView)).ThrowIfError();
                     return true;
                 });
-            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
         }
 
         private void EnsureOpen()
@@ -5511,9 +5526,16 @@ namespace Nnrp.NativeBridge
             SendRuntimeFrame(MessageType.ExecutionHint, metadata, body);
         }
 
-        public void SendTraceContext(TraceContextMetadata metadata, ReadOnlyMemory<byte> body = default)
+        public void SendTraceContext(
+            uint frameId,
+            TraceContextMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
         {
-            SendRuntimeFrame(MessageType.TraceContext, metadata, body);
+            EnsureOpen();
+            SendEncodedRuntimeFrame(
+                MessageType.TraceContext,
+                NnrpRuntimeControl.Encode(MessageType.TraceContext, metadata, body.Span),
+                frameId);
         }
 
         public void SendRuntimeObject(
@@ -5621,6 +5643,15 @@ namespace Nnrp.NativeBridge
         private void SendEncodedRuntimeFrame(MessageType messageType, ReadOnlyMemory<byte> payload)
         {
             var frameId = nextRuntimeFrameId;
+            SendEncodedRuntimeFrame(messageType, payload, frameId);
+            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
+        }
+
+        private void SendEncodedRuntimeFrame(
+            MessageType messageType,
+            ReadOnlyMemory<byte> payload,
+            uint frameId)
+        {
             WithBorrowedView(
                 payload,
                 payloadView =>
@@ -5633,7 +5664,6 @@ namespace Nnrp.NativeBridge
                             payloadView)).ThrowIfError();
                     return true;
                 });
-            nextRuntimeFrameId = frameId == uint.MaxValue ? 1 : frameId + 1;
         }
 
         internal static void SendControl(

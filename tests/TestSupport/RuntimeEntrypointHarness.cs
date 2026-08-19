@@ -72,6 +72,8 @@ namespace Nnrp.TestSupport
         internal List<(NnrpServerDropStaleResultRequest Request, byte[] Diagnostic)> ServerDrops { get; } =
             new List<(NnrpServerDropStaleResultRequest, byte[])>();
 
+        internal NnrpFfiStatus NextSubmitStatus { get; set; } = NnrpFfiStatus.Ok;
+
         internal NnrpFfiStatus NextServerResultStatus { get; set; } = NnrpFfiStatus.Ok;
 
         internal NnrpFfiStatus NextServerDropStatus { get; set; } = NnrpFfiStatus.Ok;
@@ -281,7 +283,9 @@ namespace Nnrp.TestSupport
         {
             SubmitRequests.Add(request);
             operation = new NnrpHandle(NnrpHandleKind.Operation, request.OperationId, 1);
-            return NnrpFfiStatus.Ok;
+            var status = NextSubmitStatus;
+            NextSubmitStatus = NnrpFfiStatus.Ok;
+            return status;
         }
 
         private static NnrpFfiStatus HandleStatus(NnrpHandle handle) =>

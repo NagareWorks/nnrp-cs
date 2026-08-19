@@ -3842,12 +3842,18 @@ namespace Nnrp.NativeBridge.Tests
             session.SendRouteHint(
                 new RouteHintMetadata(10, 4, 3, 2, 99, 1, 2),
                 new byte[] { 9 });
+            session.SendTraceContext(
+                0,
+                new TraceContextMetadata(10, 5, 0, 1, 0, 0));
+            session.UpdateBudget(new BudgetMetadata(10, 6, 1, 2, 3, 0));
 
             Assert.Collection(
                 sent,
                 item => AssertRuntimeFrame(item, MessageType.Cancel, 1, typeof(ControlRequestMetadata), new byte[] { 7, 8 }),
                 item => AssertRuntimeFrame(item, MessageType.PriorityUpdate, 2, typeof(SchedulingMetadata), Array.Empty<byte>()),
-                item => AssertRuntimeFrame(item, MessageType.RouteHint, 3, typeof(RouteHintMetadata), new byte[] { 9 }));
+                item => AssertRuntimeFrame(item, MessageType.RouteHint, 3, typeof(RouteHintMetadata), new byte[] { 9 }),
+                item => AssertRuntimeFrame(item, MessageType.TraceContext, 0, typeof(TraceContextMetadata), Array.Empty<byte>()),
+                item => AssertRuntimeFrame(item, MessageType.BudgetUpdate, 4, typeof(BudgetMetadata), Array.Empty<byte>()));
         }
 
         [Fact]
@@ -3880,6 +3886,9 @@ namespace Nnrp.NativeBridge.Tests
                 new byte[] { 4 });
             session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
             session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
+            session.SendTraceContext(
+                0,
+                new TraceContextMetadata(20, 9, 0, 1, 0, 0));
             session.SendRecoverableError(
                 new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 1, 4, 5, 6, 7, 1),
                 new byte[] { 5 });
@@ -3895,22 +3904,18 @@ namespace Nnrp.NativeBridge.Tests
                     MessageType.ResultDropReason,
                     MessageType.Backpressure,
                     MessageType.CreditUpdate,
+                    MessageType.TraceContext,
                     MessageType.ErrorRecoverable,
                     MessageType.RetryAfter,
                 },
                 sent.ConvertAll(item => (MessageType)item.Request.MessageType));
-            for (var index = 0; index < 3; index++)
+            var expectedFrameIds = new uint[] { 91, 91, 91, 1, 2, 0, 3, 4 };
+            for (var index = 0; index < sent.Count; index++)
             {
-                Assert.Equal((ulong)3, sent[index].Request.Handle.Id);
-                Assert.Equal((uint)91, sent[index].Request.FrameId);
+                Assert.Equal(expectedFrameIds[index], sent[index].Request.FrameId);
                 NnrpRuntimeControl.Decode((MessageType)sent[index].Request.MessageType, sent[index].Payload);
             }
-
-            for (var index = 3; index < sent.Count; index++)
-            {
-                Assert.Equal((uint)(index - 2), sent[index].Request.FrameId);
-                NnrpRuntimeControl.Decode((MessageType)sent[index].Request.MessageType, sent[index].Payload);
-            }
+            Assert.All(sent.GetRange(0, 3), item => Assert.Equal((ulong)3, item.Request.Handle.Id));
 
             Assert.Throws<ArgumentNullException>(() =>
                 session.SendProgress(null!, new ProgressMetadata(20, 1, 5, 2500, 0, 1)));

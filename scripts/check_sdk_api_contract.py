@@ -62,6 +62,26 @@ EXPECTED_SERVER_EVENT_PUMP = {
         "serialized and never race the native event queue"
     ),
 }
+EXPECTED_TRACE_CONTEXT_CORRELATION = {
+    "sessionFrameId": 0,
+    "operationFrameRule": (
+        "A non-zero TRACE_CONTEXT frame_id is the FRAME_SUBMIT frame_id of an active operation "
+        "and must be rejected when unknown or mismatched."
+    ),
+    "metadataOperationId": "forbidden",
+    "headerTraceIdRule": (
+        "A non-zero common-header trace_id equals TraceContextMetadata.trace_id."
+    ),
+    "sendMethodShapes": {
+        "rust": "send_trace_context(frame_id, metadata, body)",
+        "python": 'send_trace_context(metadata, body=b"", *, operation_id=None)',
+        "javascript": "sendTraceContext(metadata, body?, operationId?)",
+        "csharp": (
+            "SendTraceContextAsync(TraceContextMetadata, ReadOnlyMemory<byte>, ulong?, "
+            "CancellationToken)"
+        ),
+    },
+}
 EXPECTED_SERVER_OPERATION_INVARIANTS = [
     "submit.header.message_type is frame_submit",
     "submit.metadata is the frame_submit metadata variant",
@@ -332,6 +352,10 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
         role_surfaces.get("serverEventPump") == EXPECTED_SERVER_EVENT_PUMP,
         "server event-pump semantics drifted",
     )
+    require(
+        role_surfaces.get("traceContextCorrelation") == EXPECTED_TRACE_CONTEXT_CORRELATION,
+        "trace-context correlation semantics drifted",
+    )
     types = require_mapping(contract.get("types"), "types")
     result = require_mapping(types.get("NnrpResult"), "NnrpResult")
     require(
@@ -543,6 +567,11 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
             "ValueTask<NnrpClientEvent> NextEventAsync",
             "NnrpClientEvent.FromRuntime",
             "NnrpClientEvent.FromLifecycle",
+            "public ValueTask SendTraceContextAsync(\n            TraceContextMetadata metadata,",
+            "ulong? operationId = null,",
+            "session.SendTraceContext(ResolveTraceFrameId(operationId), metadata, body)",
+            "activeOperationFrames",
+            "ObserveTerminal(nativeEvent)",
         ],
         "NnrpClientSession",
     )
@@ -575,6 +604,11 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
             "public ValueTask SendResultDropAsync",
             "public ValueTask SendProgressAsync",
             "public ValueTask SendPartialResultAsync",
+            "public ValueTask SendTraceContextAsync(\n            TraceContextMetadata metadata,",
+            "ulong? operationId = null,",
+            "session.SendTraceContext(ResolveTraceFrameId(operationId), metadata, body)",
+            "RegisterActiveOperation(metadata.OperationId, submit.Header.FrameId)",
+            "completeOperation(OperationId, FrameId)",
         ],
         "C# server role surface",
     )
@@ -599,6 +633,8 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
             "public void SendProgress(\n            NnrpNativeRuntimeOperation operation",
             "public void SendPartialResult(\n            NnrpNativeRuntimeOperation operation",
             "public void DropResult(\n            NnrpNativeRuntimeOperation operation",
+            "public void SendTraceContext(\n            uint frameId,",
+            "NnrpRuntimeControl.Encode(MessageType.TraceContext, metadata, body.Span)",
         ],
         "C# native server operation surface",
     )
