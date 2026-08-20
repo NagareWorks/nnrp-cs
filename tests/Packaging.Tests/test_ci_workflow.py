@@ -21,7 +21,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('require-complete-capability-coverage: "true"', workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: 4f1632d9deb924ce8d90d4f7212dc2310d936320",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: d1c2bc6aee489e271a75567c45f56bd966fb90cb",
             workflow,
         )
         self.assertIn(
@@ -44,12 +44,12 @@ class CiWorkflowTests(unittest.TestCase):
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("native-artifacts:", workflow)
-        self.assertIn("--version 1.0.0-preview.4.23", workflow)
+        self.assertIn("--version 1.0.0-preview.4.25", workflow)
         self.assertIn("--require-abi-version 4.4.0", workflow)
-        self.assertIn("--workflow-run-id 32009630987", workflow)
-        self.assertIn("--workflow-head-sha 00074cf3c09002de940f011e229de729aa377e88", workflow)
-        self.assertIn("NNRP_RS_SOURCE_COMMIT: dc24aec6667ed23886cae8bd62fda5221a7e3747", workflow)
-        self.assertIn("NNRP_RS_ARTIFACT_RUN_ID: '32231275807'", workflow)
+        self.assertIn("--workflow-run-id 32365855992", workflow)
+        self.assertIn("--workflow-head-sha 35b4ed1e0764623d278035ca1449daeab4192c5c", workflow)
+        self.assertIn("NNRP_RS_SOURCE_COMMIT: 35b4ed1e0764623d278035ca1449daeab4192c5c", workflow)
+        self.assertIn("NNRP_RS_ARTIFACT_RUN_ID: '32365688997'", workflow)
         self.assertEqual(5, workflow.count("Download final nnrp-rs CI artifacts"))
         self.assertEqual(5, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
         self.assertEqual(5, workflow.count("Verify final nnrp-rs CI source"))

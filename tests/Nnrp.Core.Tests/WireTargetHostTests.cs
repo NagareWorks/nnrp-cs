@@ -145,6 +145,30 @@ public sealed class WireTargetHostTests
     }
 
     [Fact]
+    public async Task CancelHandlerUsesSessionScopedTraceBeforeTypedDrop()
+    {
+        FakeOperation operation = new(41, 4);
+        FakeServerSession session = new(
+            operation,
+            [new WireTargetReceivedEvent(MessageType.SessionClose)],
+            operationEvents:
+            [
+                WireTargetOperationEvent.FromRuntime(
+                    new WireTargetReceivedEvent(
+                        MessageType.Cancel,
+                        new ControlRequestMetadata(41, 1, 1, RuntimeRole.Client, 0, 0))),
+                WireTargetOperationEvent.FromLifecycle(
+                    new WireTargetLifecycleEvent(41, NnrpOperationState.Cancelled)),
+            ]);
+
+        await WireTargetHost.HandleCancelAsync(session, CancellationToken.None);
+
+        Assert.Null(session.TraceOperationId);
+        Assert.Equal(NnrpResultDropReasonCode.PeerCancelled, operation.DropReasonCode);
+        Assert.True(session.Disposed);
+    }
+
+    [Fact]
     public async Task CancelHandlerRejectsAnotherOperationIdentity()
     {
         FakeOperation operation = new(41, 4);
@@ -453,6 +477,8 @@ public sealed class WireTargetHostTests
 
         internal bool Disposed { get; private set; }
 
+        internal ulong? TraceOperationId { get; private set; }
+
         public ValueTask<IWireTargetOperation> ReceiveSubmitAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -492,7 +518,7 @@ public sealed class WireTargetHostTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal((uint)body.Length, metadata.BodyBytes);
-            Assert.Equal(operation.OperationId, operationId);
+            TraceOperationId = operationId;
             return default;
         }
 

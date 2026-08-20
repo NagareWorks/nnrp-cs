@@ -2,9 +2,9 @@ name: CI
 
 env:
   NNRP_DOC_SOURCE_COMMIT: 4319692b4c0a697fe5d360e55bafa2b83f5bbb3d
-  NNRP_CONFORMANCE_SOURCE_COMMIT: 4f1632d9deb924ce8d90d4f7212dc2310d936320
-  NNRP_RS_SOURCE_COMMIT: dc24aec6667ed23886cae8bd62fda5221a7e3747
-  NNRP_RS_ARTIFACT_RUN_ID: '32231275807'
+  NNRP_CONFORMANCE_SOURCE_COMMIT: d1c2bc6aee489e271a75567c45f56bd966fb90cb
+  NNRP_RS_SOURCE_COMMIT: 35b4ed1e0764623d278035ca1449daeab4192c5c
+  NNRP_RS_ARTIFACT_RUN_ID: '32365688997'
 
 on:
   push:
@@ -365,10 +365,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           python scripts/download_nnrp_rs_artifacts.py
-          --version 1.0.0-preview.4.23
+          --version 1.0.0-preview.4.25
           --require-abi-version 4.4.0
-          --workflow-run-id 32009630987
-          --workflow-head-sha 00074cf3c09002de940f011e229de729aa377e88
+          --workflow-run-id 32365855992
+          --workflow-head-sha 35b4ed1e0764623d278035ca1449daeab4192c5c
           --output artifacts/native
 
       - name: Upload coordinated native artifacts

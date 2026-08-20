@@ -24,8 +24,8 @@
 
 ## Rust Artifact Baseline
 
-- [x] Pin the coordinated Rust artifact `1.0.0-preview.4.23` and exact FFI ABI `4.4.0` in build and release metadata.
-- [x] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.23`.
+- [x] Pin the coordinated Rust artifact `1.0.0-preview.4.25` and exact FFI ABI `4.4.0` in build and release metadata.
+- [x] Validate the TCP, QUIC, IPC, and WebSocket artifact manifests from `1.0.0-preview.4.25`.
 - [x] Probe protocol version.
 - [x] Probe ABI version.
   - [x] Require ABI `4.4.0` and bind the persistent server accept ticket, session recovery, asynchronous server policy, and runtime shutdown entrypoints.

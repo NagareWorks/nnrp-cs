@@ -14,12 +14,12 @@ class ReleaseWorkflowTests(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_defaults_to_current_rust_artifact_release(self):
-        self.assertEqual(self.workflow.count("1.0.0-preview.4.23"), 2)
+        self.assertEqual(self.workflow.count("1.0.0-preview.4.25"), 2)
         self.assertNotIn("1.0.0-preview.4.15", self.workflow)
         self.assertIn("--require-abi-version 4.4.0", self.workflow)
-        self.assertIn("--workflow-run-id 32009630987", self.workflow)
+        self.assertIn("--workflow-run-id 32365855992", self.workflow)
         self.assertIn(
-            "--workflow-head-sha 00074cf3c09002de940f011e229de729aa377e88",
+            "--workflow-head-sha 35b4ed1e0764623d278035ca1449daeab4192c5c",
             self.workflow,
         )
 

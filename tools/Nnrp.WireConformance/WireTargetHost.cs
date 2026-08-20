@@ -146,7 +146,7 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
             await session.SendTraceContextAsync(
                 new TraceContextMetadata(0x1234, 0x5678, 0, 1, 0, (uint)TraceBody.Length),
                 TraceBody,
-                operation.OperationId,
+                operationId: null,
                 cancellationToken).ConfigureAwait(false);
             WireTargetReceivedEvent cancel = await ExpectOperationRuntimeAndLifecycleAsync(
                 session,

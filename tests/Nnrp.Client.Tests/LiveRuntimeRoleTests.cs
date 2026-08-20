@@ -306,6 +306,30 @@ namespace Nnrp.Client.Tests
                 (ulong)702,
                 await clientSession.SubmitNoWaitAsync(cancelledRequest, timeout.Token));
             var cancelledOperation = await receiveCancelledTask;
+
+            var cancellationPartial = new PartialResultMetadata(702, 1, 2, 3, 2, 0);
+            await cancelledOperation.SendPartialResultAsync(
+                cancellationPartial,
+                new byte[] { 40, 41 },
+                timeout.Token);
+            var cancellationTrace = new TraceContextMetadata(702, 32, 33, 34, 0, 1);
+            await serverSession.SendTraceContextAsync(
+                cancellationTrace,
+                new byte[] { 42 },
+                operationId: 702,
+                cancellationToken: timeout.Token);
+            var preCancellationPartial = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            var preCancellationTrace = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
+            Assert.Equal(MessageType.PartialResult, preCancellationPartial.Header.MessageType);
+            Assert.Equal(
+                cancellationPartial,
+                preCancellationPartial.Metadata.Get<PartialResultMetadata>());
+            Assert.Equal(new byte[] { 40, 41 }, BodyOf(preCancellationPartial).ToArray());
+            Assert.Equal(MessageType.TraceContext, preCancellationTrace.Header.MessageType);
+            Assert.Equal(
+                cancellationTrace,
+                preCancellationTrace.Metadata.Get<TraceContextMetadata>());
+
             var cancel = new ControlRequestMetadata(702, 31, 9, RuntimeRole.Client, 0, 2);
             await clientSession.CancelAsync(cancel, new byte[] { 38, 39 }, timeout.Token);
             var serverCancel = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
@@ -316,16 +340,6 @@ namespace Nnrp.Client.Tests
             Assert.Equal((ulong)702, cancelledLifecycle.OperationId);
             Assert.Equal(NnrpOperationState.Cancelled, cancelledLifecycle.State);
 
-            await cancelledOperation.SendPartialResultAsync(
-                new PartialResultMetadata(702, 1, 2, 3, 2, 0),
-                new byte[] { 40, 41 },
-                timeout.Token);
-            var cancellationTrace = new TraceContextMetadata(702, 32, 33, 34, 0, 1);
-            await serverSession.SendTraceContextAsync(
-                cancellationTrace,
-                new byte[] { 42 },
-                operationId: 702,
-                cancellationToken: timeout.Token);
             var drop = new ResultDropReasonMetadata(
                 702,
                 33,
@@ -336,7 +350,6 @@ namespace Nnrp.Client.Tests
             await cancelledOperation.SendResultDropAsync(drop, new byte[] { 43, 44 }, timeout.Token);
             var cancelledResult = await clientSession.NextResultAsync(timeout.Token);
             var clientCancelledLifecycle = LifecycleEventOf(await clientSession.NextEventAsync(timeout.Token));
-            var postCancellationTrace = RuntimeEventOf(await clientSession.NextEventAsync(timeout.Token));
             Assert.Equal((ulong)702, cancelledResult.OperationId);
             Assert.Equal(NnrpResultTerminalState.Dropped, cancelledResult.TerminalState);
             var cancelledEvent = RuntimeEventOf(cancelledResult);
@@ -344,10 +357,6 @@ namespace Nnrp.Client.Tests
             Assert.Equal(new byte[] { 43, 44 }, DiagnosticOf(cancelledEvent).ToArray());
             Assert.Equal((ulong)702, clientCancelledLifecycle.OperationId);
             Assert.Equal(NnrpOperationState.Cancelled, clientCancelledLifecycle.State);
-            Assert.Equal(MessageType.TraceContext, postCancellationTrace.Header.MessageType);
-            Assert.Equal(
-                cancellationTrace,
-                postCancellationTrace.Metadata.Get<TraceContextMetadata>());
 
             await CloseRolesAsync();
         }
