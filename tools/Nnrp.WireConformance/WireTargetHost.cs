@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -24,6 +25,8 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
     private static readonly byte[] RequestBody = Encoding.UTF8.GetBytes("wire-external-request");
     private static readonly byte[] ResponseBody = Encoding.UTF8.GetBytes("wire-external-result");
     private static readonly byte[] TraceBody = Encoding.UTF8.GetBytes("trace");
+    private static readonly byte[] CapabilityCostsBody = EncodeCapabilityToken(
+        NnrpPreview4CapabilityTokens.ControlCapabilityCosts);
 
     internal async Task RunAsync(
         WireTargetHostOptions options,
@@ -264,9 +267,17 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
     {
         IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
             .ConfigureAwait(false);
-        _ = Expect(
+        CapabilityMetadata capability = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
             MessageType.CapabilityNegotiation).GetMetadata<CapabilityMetadata>();
+        await session.NegotiateCapabilitiesAsync(
+            capability with
+            {
+                CapabilityCount = 1,
+                BodyBytes = (uint)CapabilityCostsBody.Length,
+            },
+            CapabilityCostsBody,
+            cancellationToken).ConfigureAwait(false);
         _ = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
             MessageType.RouteHint).GetMetadata<RouteHintMetadata>();
@@ -300,6 +311,20 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         _ = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
             MessageType.SessionClose);
+    }
+
+    private static byte[] EncodeCapabilityToken(string token)
+    {
+        byte[] tokenBytes = Encoding.UTF8.GetBytes(token);
+        if (tokenBytes.Length > ushort.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(token));
+        }
+
+        byte[] body = new byte[sizeof(ushort) + tokenBytes.Length];
+        BinaryPrimitives.WriteUInt16LittleEndian(body, (ushort)tokenBytes.Length);
+        tokenBytes.CopyTo(body.AsSpan(sizeof(ushort)));
+        return body;
     }
 
     private static async ValueTask ExpectLifecycleAsync(

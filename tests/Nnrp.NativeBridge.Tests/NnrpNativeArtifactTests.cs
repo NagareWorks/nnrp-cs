@@ -3886,6 +3886,12 @@ namespace Nnrp.NativeBridge.Tests
                 new byte[] { 4 });
             session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
             session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
+            session.NegotiateCapabilities(
+                new CapabilityMetadata(2, 1, 3, 4, 5, 6, 1, 0),
+                new byte[] { 7 });
+            session.DegradeProfile(
+                new CapabilityMetadata(2, 1, 3, 4, 5, 6, 1, 0),
+                new byte[] { 8 });
             session.SendTraceContext(
                 0,
                 new TraceContextMetadata(20, 9, 0, 1, 0, 0));
@@ -3904,12 +3910,14 @@ namespace Nnrp.NativeBridge.Tests
                     MessageType.ResultDropReason,
                     MessageType.Backpressure,
                     MessageType.CreditUpdate,
+                    MessageType.CapabilityNegotiation,
+                    MessageType.DegradeProfile,
                     MessageType.TraceContext,
                     MessageType.ErrorRecoverable,
                     MessageType.RetryAfter,
                 },
                 sent.ConvertAll(item => (MessageType)item.Request.MessageType));
-            var expectedFrameIds = new uint[] { 91, 91, 91, 1, 2, 0, 3, 4 };
+            var expectedFrameIds = new uint[] { 91, 91, 91, 1, 2, 3, 4, 0, 5, 6 };
             for (var index = 0; index < sent.Count; index++)
             {
                 Assert.Equal(expectedFrameIds[index], sent[index].Request.FrameId);

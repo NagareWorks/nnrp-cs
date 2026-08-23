@@ -21,11 +21,11 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('require-complete-capability-coverage: "true"', workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: d1c2bc6aee489e271a75567c45f56bd966fb90cb",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: 054bcbe6e58c42aec896a9618777a37727023797",
             workflow,
         )
         self.assertIn(
-            "NNRP_DOC_SOURCE_COMMIT: 4319692b4c0a697fe5d360e55bafa2b83f5bbb3d",
+            "NNRP_DOC_SOURCE_COMMIT: e568de05f0db1bfc914685dc5024722dc0f6f837",
             workflow,
         )
         self.assertEqual(1, workflow.count("ref: ${{ env.NNRP_DOC_SOURCE_COMMIT }}"))

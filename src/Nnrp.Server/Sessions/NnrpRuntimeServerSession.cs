@@ -244,6 +244,18 @@ namespace Nnrp.Server
         public ValueTask SendCreditUpdateAsync(PressureMetadata metadata, CancellationToken cancellationToken = default) =>
             Send(cancellationToken, () => session.SendCreditUpdate(metadata));
 
+        public ValueTask NegotiateCapabilitiesAsync(
+            CapabilityMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            CancellationToken cancellationToken = default) =>
+            Send(cancellationToken, () => session.NegotiateCapabilities(metadata, body));
+
+        public ValueTask DegradeProfileAsync(
+            CapabilityMetadata metadata,
+            ReadOnlyMemory<byte> body = default,
+            CancellationToken cancellationToken = default) =>
+            Send(cancellationToken, () => session.DegradeProfile(metadata, body));
+
         public ValueTask SendTraceContextAsync(
             TraceContextMetadata metadata,
             ReadOnlyMemory<byte> body = default,
@@ -267,6 +279,8 @@ namespace Nnrp.Server
             {
                 MessageType.Backpressure when metadata is PressureMetadata value => SendBackpressureAsync(value, cancellationToken),
                 MessageType.CreditUpdate when metadata is PressureMetadata value => SendCreditUpdateAsync(value, cancellationToken),
+                MessageType.CapabilityNegotiation when metadata is CapabilityMetadata value => NegotiateCapabilitiesAsync(value, tail, cancellationToken),
+                MessageType.DegradeProfile when metadata is CapabilityMetadata value => DegradeProfileAsync(value, tail, cancellationToken),
                 MessageType.TraceContext when metadata is TraceContextMetadata value => SendTraceContextAsync(
                     value,
                     tail,

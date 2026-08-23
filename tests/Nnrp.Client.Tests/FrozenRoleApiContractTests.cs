@@ -253,6 +253,8 @@ namespace Nnrp.Client.Tests
 
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendBackpressureAsync));
             AssertServerMetadataMethod<PressureMetadata>(nameof(NnrpServerSession.SendCreditUpdateAsync));
+            AssertServerTailMethod<CapabilityMetadata>(nameof(NnrpServerSession.NegotiateCapabilitiesAsync));
+            AssertServerTailMethod<CapabilityMetadata>(nameof(NnrpServerSession.DegradeProfileAsync));
             AssertTraceContextMethod(typeof(NnrpServerSession), nameof(NnrpServerSession.SendTraceContextAsync));
             AssertServerTailMethod<RecoverableErrorMetadata>(nameof(NnrpServerSession.SendRecoverableErrorAsync));
             AssertServerTailMethod<RetryAfterMetadata>(nameof(NnrpServerSession.SendRetryAfterAsync));

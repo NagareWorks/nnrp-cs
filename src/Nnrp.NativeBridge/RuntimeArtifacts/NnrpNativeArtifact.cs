@@ -4394,6 +4394,20 @@ namespace Nnrp.NativeBridge
             SendRuntimeFrame(MessageType.CreditUpdate, metadata, ReadOnlyMemory<byte>.Empty);
         }
 
+        public void NegotiateCapabilities(
+            CapabilityMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.CapabilityNegotiation, metadata, body);
+        }
+
+        public void DegradeProfile(
+            CapabilityMetadata metadata,
+            ReadOnlyMemory<byte> body = default)
+        {
+            SendRuntimeFrame(MessageType.DegradeProfile, metadata, body);
+        }
+
         public void SendTraceContext(
             uint frameId,
             TraceContextMetadata metadata,

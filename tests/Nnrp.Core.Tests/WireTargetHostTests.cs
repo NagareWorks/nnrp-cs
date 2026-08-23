@@ -77,6 +77,13 @@ public sealed class WireTargetHostTests
                 .Where(operation => operation.DropReasonCode.HasValue)
                 .Select(operation => operation.DropReasonCode!.Value));
         Assert.All(sdk.ServerSessions, session => Assert.True(session.Disposed));
+        FakeServerSession capabilitySession = Assert.Single(
+            sdk.ServerSessions,
+            session => session.CapabilityResponseMetadata.HasValue);
+        Assert.Equal((ushort)1, capabilitySession.CapabilityResponseMetadata!.Value.CapabilityCount);
+        Assert.Equal(
+            new byte[] { 24, 0 }.Concat(Encoding.UTF8.GetBytes("control.capability_costs")),
+            capabilitySession.CapabilityResponseBody);
         Assert.All(sdk.ClientSessions, session => Assert.True(session.Disposed));
         Assert.False(File.Exists($"{manifestPath}.tmp"));
         Assert.True(File.Exists(Path.Combine(temporary.Path, "certs", "server.der")));
@@ -479,6 +486,10 @@ public sealed class WireTargetHostTests
 
         internal ulong? TraceOperationId { get; private set; }
 
+        internal CapabilityMetadata? CapabilityResponseMetadata { get; private set; }
+
+        internal byte[] CapabilityResponseBody { get; private set; } = [];
+
         public ValueTask<IWireTargetOperation> ReceiveSubmitAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -519,6 +530,18 @@ public sealed class WireTargetHostTests
             cancellationToken.ThrowIfCancellationRequested();
             Assert.Equal((uint)body.Length, metadata.BodyBytes);
             TraceOperationId = operationId;
+            return default;
+        }
+
+        public ValueTask NegotiateCapabilitiesAsync(
+            CapabilityMetadata metadata,
+            ReadOnlyMemory<byte> body,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal((uint)body.Length, metadata.BodyBytes);
+            CapabilityResponseMetadata = metadata;
+            CapabilityResponseBody = body.ToArray();
             return default;
         }
 

@@ -49,6 +49,11 @@ internal interface IWireTargetServerSession : IAsyncDisposable
         ulong? operationId,
         CancellationToken cancellationToken);
 
+    ValueTask NegotiateCapabilitiesAsync(
+        CapabilityMetadata metadata,
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken);
+
     ValueTask ReportCacheMissAsync(
         CacheMissMetadata metadata,
         ReadOnlyMemory<byte> diagnostic,
@@ -300,6 +305,12 @@ internal sealed class NnrpWireTargetServerSession(NnrpServerSession session) : I
         ulong? operationId,
         CancellationToken cancellationToken) =>
         session.SendTraceContextAsync(metadata, body, operationId, cancellationToken);
+
+    public ValueTask NegotiateCapabilitiesAsync(
+        CapabilityMetadata metadata,
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken) =>
+        session.NegotiateCapabilitiesAsync(metadata, body, cancellationToken);
 
     public ValueTask ReportCacheMissAsync(
         CacheMissMetadata metadata,

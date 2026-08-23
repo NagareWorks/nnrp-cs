@@ -111,6 +111,10 @@ EXPECTED_CSHARP_PROJECTIONS = {
     "serverEvent": "Nnrp.Server.NnrpServerEvent",
     "serverOperation": "Nnrp.Server.NnrpServerOperation",
     "roleMethods": EXPECTED_ROLE_METHODS,
+    "serverCapabilityMethods": {
+        "negotiate_capabilities": "NegotiateCapabilitiesAsync",
+        "degrade_profile": "DegradeProfileAsync",
+    },
     "operationLifecycleEvent": "Nnrp.Runtime.NnrpOperationLifecycleEvent",
     "terminalEvent": "Nnrp.Runtime.NnrpTerminalEvent",
     "result": "Nnrp.Client.NnrpResult",
@@ -604,6 +608,8 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
             "public ValueTask SendResultDropAsync",
             "public ValueTask SendProgressAsync",
             "public ValueTask SendPartialResultAsync",
+            "public ValueTask NegotiateCapabilitiesAsync(",
+            "public ValueTask DegradeProfileAsync(",
             "public ValueTask SendTraceContextAsync(\n            TraceContextMetadata metadata,",
             "ulong? operationId = null,",
             "session.SendTraceContext(ResolveTraceFrameId(operationId), metadata, body)",
@@ -630,6 +636,8 @@ def check_contract(contract_path: Path, source_root: Path) -> None:
     require_tokens(
         native_bridge,
         [
+            "public void NegotiateCapabilities(\n            CapabilityMetadata metadata,",
+            "public void DegradeProfile(\n            CapabilityMetadata metadata,",
             "public void SendProgress(\n            NnrpNativeRuntimeOperation operation",
             "public void SendPartialResult(\n            NnrpNativeRuntimeOperation operation",
             "public void DropResult(\n            NnrpNativeRuntimeOperation operation",

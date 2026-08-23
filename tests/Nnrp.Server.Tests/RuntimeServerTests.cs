@@ -253,6 +253,8 @@ namespace Nnrp.Server.Tests
             Assert.Equal("metadata", mismatch.ParamName);
             await session.SendBackpressureAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendCreditUpdateAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
+            await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, 3, 0), body);
+            await session.DegradeProfileAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, 3, 0), body);
             await session.SendTraceContextAsync(new TraceContextMetadata(1, 2, 3, 4, 0, 3), body);
             await session.SendRecoverableErrorAsync(
                 new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2),
@@ -279,6 +281,8 @@ namespace Nnrp.Server.Tests
                     MessageType.PartialResult,
                     MessageType.Backpressure,
                     MessageType.CreditUpdate,
+                    MessageType.CapabilityNegotiation,
+                    MessageType.DegradeProfile,
                     MessageType.TraceContext,
                     MessageType.ErrorRecoverable,
                     MessageType.RetryAfter,
@@ -328,11 +332,13 @@ namespace Nnrp.Server.Tests
 
             await session.SendControlAsync(MessageType.Backpressure, new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendControlAsync(MessageType.CreditUpdate, new PressureMetadata(1, 2, 3, 4, 5, 0));
+            await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(2, 1, 3, 4, 5, 6, 2, 0), tail);
+            await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(2, 1, 3, 4, 5, 6, 2, 0), tail);
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);
             await session.SendControlAsync(MessageType.ErrorRecoverable, new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2), tail);
             await session.SendControlAsync(MessageType.RetryAfter, new RetryAfterMetadata(1, 2, 3, 4, 5, RuntimeRole.Server, 0, 2), tail);
 
-            Assert.Equal(5, harness.RuntimeFrames.Count);
+            Assert.Equal(7, harness.RuntimeFrames.Count);
             Assert.Throws<ArgumentException>(() =>
                 session.SendControlAsync(MessageType.Progress, new ProgressMetadata(1, 2, 3, 4, 0, 2), tail));
         }
