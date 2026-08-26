@@ -1,5 +1,7 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nnrp.Core;
 using Nnrp.Runtime;
 using Xunit;
@@ -51,14 +53,17 @@ namespace Nnrp.Core.Tests
             yield return Case(
                 MessageType.CreditUpdate,
                 new PressureMetadata(111, 112, 1, 4, 114, 2));
-            yield return Case(
+            yield return Capability(
                 MessageType.CapabilityNegotiation,
-                new CapabilityMetadata(1, 2, 3, 4, 121, 122, 3, 1),
-                body);
-            yield return Case(
+                1,
+                NnrpPreview4CapabilityTokens.ControlCapabilityCosts,
+                NnrpPreview4CapabilityTokens.ControlRouteExecutionHint);
+            yield return Capability(
                 MessageType.DegradeProfile,
-                new CapabilityMetadata(2, 3, 4, 5, 131, 132, 3, 2),
-                body);
+                2,
+                NnrpPreview4CapabilityTokens.ControlCapabilityCosts,
+                NnrpPreview4CapabilityTokens.ControlDegradeProfile,
+                NnrpPreview4CapabilityTokens.ControlRouteExecutionHint);
             yield return Case(
                 MessageType.RouteHint,
                 new RouteHintMetadata(141, 142, 3, 4, 143, 3, 1),
@@ -165,6 +170,70 @@ namespace Nnrp.Core.Tests
         }
 
         [Fact]
+        public void CapabilityBodyRejectsMalformedCountAndTokens()
+        {
+            AssertCapabilityBodyError(Array.Empty<byte>(), 1, "non-zero capability count");
+            AssertCapabilityBodyError(new byte[] { 1, 0, (byte)'a' }, 0, "zero capability count");
+            AssertCapabilityBodyError(new byte[] { 0, 0 }, 1, "length must be non-zero");
+            AssertCapabilityBodyError(new byte[] { 4, 0, (byte)'a' }, 1, "exceeds the declared body");
+            AssertCapabilityBodyError(new byte[] { 1, 0, (byte)'A' }, 1, "lowercase ASCII");
+        }
+
+        [Fact]
+        public void CapabilityBodyRejectsDuplicatesNonCanonicalOrderAndCountMismatch()
+        {
+            byte[] first = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCancelAbort });
+            byte[] second = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.CacheReference });
+            byte[] duplicate = first.Concat(first).ToArray();
+            byte[] reversed = first.Concat(second).ToArray();
+
+            AssertCapabilityBodyError(duplicate, 2, "unique");
+            AssertCapabilityBodyError(reversed, 2, "canonical byte order");
+            AssertCapabilityBodyError(first, 2, "declares 2 entries but received 1");
+        }
+
+        [Fact]
+        public void CapabilityCodecRejectsInvalidEncodeInputsAndAcceptsEmptySet()
+        {
+            Assert.Throws<ArgumentNullException>(
+                () => NnrpCapabilityTokenBodyCodec.Encode(null!));
+            Assert.Contains(
+                "must not be null",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Encode(new string[] { null! })).Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "length must be non-zero",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Encode(new[] { string.Empty })).Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "lowercase ASCII",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Encode(new[] { "Control.Cost" })).Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "must be unique",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Encode(new[] { "control.cost", "control.cost" })).Message,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "u16 length range",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Encode(new[] { new string('a', ushort.MaxValue + 1) })).Message,
+                StringComparison.Ordinal);
+
+            Assert.Empty(NnrpCapabilityTokenBodyCodec.Decode(ReadOnlySpan<byte>.Empty, 0));
+            Assert.Contains(
+                "missing its token length",
+                Assert.Throws<ArgumentException>(
+                    () => NnrpCapabilityTokenBodyCodec.Decode(new byte[] { 1 }, 1)).Message,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DropReasonRejectsReservedRangeAndPreservesPrivateRange()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => NnrpRuntimeControl.Encode(
@@ -202,6 +271,57 @@ namespace Nnrp.Core.Tests
             byte[]? tail = null)
         {
             return new object[] { messageType, metadata, tail ?? Array.Empty<byte>() };
+        }
+
+        private static object[] Capability(
+            MessageType messageType,
+            ushort profileId,
+            params string[] tokens)
+        {
+            byte[] body = NnrpCapabilityTokenBodyCodec.Encode(tokens);
+            return Case(
+                messageType,
+                new CapabilityMetadata(
+                    profileId,
+                    checked((ushort)tokens.Length),
+                    3,
+                    4,
+                    121,
+                    122,
+                    checked((uint)body.Length),
+                    1),
+                body);
+        }
+
+        private static void AssertCapabilityBodyError(
+            byte[] body,
+            ushort capabilityCount,
+            string expectedMessage)
+        {
+            var metadata = new CapabilityMetadata(
+                1,
+                capabilityCount,
+                0,
+                0,
+                0,
+                0,
+                checked((uint)body.Length),
+                0);
+
+            ArgumentException encodeError = Assert.Throws<ArgumentException>(
+                () => NnrpRuntimeControl.Encode(MessageType.CapabilityNegotiation, metadata, body));
+            Assert.Contains(NnrpCapabilityTokenBodyCodec.ErrorCode, encodeError.Message, StringComparison.Ordinal);
+            Assert.Contains(expectedMessage, encodeError.Message, StringComparison.Ordinal);
+
+            var encoded = new byte[CapabilityMetadata.EncodedLength + body.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(encoded.AsSpan(0, 2), metadata.ProfileId);
+            BinaryPrimitives.WriteUInt16LittleEndian(encoded.AsSpan(2, 2), metadata.CapabilityCount);
+            BinaryPrimitives.WriteUInt32LittleEndian(encoded.AsSpan(24, 4), metadata.BodyBytes);
+            body.CopyTo(encoded.AsSpan(CapabilityMetadata.EncodedLength));
+            ArgumentException decodeError = Assert.Throws<ArgumentException>(
+                () => NnrpRuntimeControl.Decode(MessageType.CapabilityNegotiation, encoded));
+            Assert.Contains(NnrpCapabilityTokenBodyCodec.ErrorCode, decodeError.Message, StringComparison.Ordinal);
+            Assert.Contains(expectedMessage, decodeError.Message, StringComparison.Ordinal);
         }
     }
 }

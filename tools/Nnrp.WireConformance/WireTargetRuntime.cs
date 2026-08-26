@@ -91,6 +91,11 @@ internal interface IWireTargetOperation
 
     uint FrameId { get; }
 
+    ValueTask SendPartialResultAsync(
+        PartialResultMetadata metadata,
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken);
+
     ValueTask SendResultAsync(
         ResultPushMetadata metadata,
         ReadOnlyMemory<byte> body,
@@ -326,6 +331,12 @@ internal sealed class NnrpWireTargetOperation(NnrpServerOperation operation) : I
     public ulong OperationId => operation.OperationId;
 
     public uint FrameId => operation.FrameId;
+
+    public ValueTask SendPartialResultAsync(
+        PartialResultMetadata metadata,
+        ReadOnlyMemory<byte> body,
+        CancellationToken cancellationToken) =>
+        operation.SendPartialResultAsync(metadata, body, cancellationToken);
 
     public ValueTask SendResultAsync(
         ResultPushMetadata metadata,

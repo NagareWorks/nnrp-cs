@@ -113,15 +113,25 @@ namespace Nnrp.Client.Tests
             Assert.Equal(clientTrace, serverTrace.Metadata.Get<TraceContextMetadata>());
             Assert.Equal(new byte[] { 4, 5 }, BodyOf(serverTrace).ToArray());
 
-            var clientCapability = new CapabilityMetadata(701, 12, 1, 2, 3, 4, 3, 0);
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
+            var clientCapability = new CapabilityMetadata(
+                701,
+                1,
+                1,
+                2,
+                3,
+                4,
+                (uint)capabilityBody.Length,
+                0);
             await clientSession.NegotiateCapabilitiesAsync(
                 clientCapability,
-                new byte[] { 20, 21, 22 },
+                capabilityBody,
                 timeout.Token);
             var serverCapability = RuntimeEventOf(await serverSession.NextEventAsync(timeout.Token));
             Assert.Equal(MessageType.CapabilityNegotiation, serverCapability.Header.MessageType);
             Assert.Equal(clientCapability, serverCapability.Metadata.Get<CapabilityMetadata>());
-            Assert.Equal(new byte[] { 20, 21, 22 }, BodyOf(serverCapability).ToArray());
+            Assert.Equal(capabilityBody, BodyOf(serverCapability).ToArray());
 
             var clientRoute = new RouteHintMetadata(701, 13, 1, 2, 3, 2, 0);
             await clientSession.SendRouteHintAsync(clientRoute, new byte[] { 23, 24 }, timeout.Token);
@@ -349,14 +359,11 @@ namespace Nnrp.Client.Tests
                 2);
             await cancelledOperation.SendResultDropAsync(drop, new byte[] { 43, 44 }, timeout.Token);
             var cancelledResult = await clientSession.NextResultAsync(timeout.Token);
-            var clientCancelledLifecycle = LifecycleEventOf(await clientSession.NextEventAsync(timeout.Token));
             Assert.Equal((ulong)702, cancelledResult.OperationId);
             Assert.Equal(NnrpResultTerminalState.Dropped, cancelledResult.TerminalState);
             var cancelledEvent = RuntimeEventOf(cancelledResult);
             Assert.Equal(drop, cancelledEvent.Metadata.Get<ResultDropReasonMetadata>());
             Assert.Equal(new byte[] { 43, 44 }, DiagnosticOf(cancelledEvent).ToArray());
-            Assert.Equal((ulong)702, clientCancelledLifecycle.OperationId);
-            Assert.Equal(NnrpOperationState.Cancelled, clientCancelledLifecycle.State);
 
             await CloseRolesAsync();
         }

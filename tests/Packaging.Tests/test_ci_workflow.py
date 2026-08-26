@@ -21,7 +21,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('require-complete-capability-coverage: "true"', workflow)
         self.assertIn("- conformance", workflow)
         self.assertIn(
-            "NNRP_CONFORMANCE_SOURCE_COMMIT: 054bcbe6e58c42aec896a9618777a37727023797",
+            "NNRP_CONFORMANCE_SOURCE_COMMIT: 7ea6e30ab61a76efc9ce9cf2fe6aa93312edda81",
             workflow,
         )
         self.assertIn(
@@ -44,12 +44,12 @@ class CiWorkflowTests(unittest.TestCase):
         workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("native-artifacts:", workflow)
-        self.assertIn("--version 1.0.0-preview.4.25", workflow)
+        self.assertIn("--version 1.0.0-preview.4.26", workflow)
         self.assertIn("--require-abi-version 4.4.0", workflow)
-        self.assertIn("--workflow-run-id 32365855992", workflow)
-        self.assertIn("--workflow-head-sha 35b4ed1e0764623d278035ca1449daeab4192c5c", workflow)
-        self.assertIn("NNRP_RS_SOURCE_COMMIT: 35b4ed1e0764623d278035ca1449daeab4192c5c", workflow)
-        self.assertIn("NNRP_RS_ARTIFACT_RUN_ID: '32365688997'", workflow)
+        self.assertIn("--workflow-run-id 32896006962", workflow)
+        self.assertIn("--workflow-head-sha d45a17238ea9f8dba1bfdd8439416bb97c53180e", workflow)
+        self.assertIn("NNRP_RS_SOURCE_COMMIT: d45a17238ea9f8dba1bfdd8439416bb97c53180e", workflow)
+        self.assertIn("NNRP_RS_ARTIFACT_RUN_ID: '32895526503'", workflow)
         self.assertEqual(5, workflow.count("Download final nnrp-rs CI artifacts"))
         self.assertEqual(5, workflow.count("scripts/stage_nnrp_rs_ci_artifacts.py"))
         self.assertEqual(5, workflow.count("Verify final nnrp-rs CI source"))
@@ -146,7 +146,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn('"missing-evidence.json"', harness)
         self.assertIn('"missing-timing.json"', harness)
         self.assertIn(
-            'ExpectedText "missing or reordered expected frame TRACE_CONTEXT"', harness
+            'ExpectedText "missing or reordered expected frame PARTIAL_RESULT"', harness
         )
         self.assertIn('ExpectedText "unexpected frame UNDECLARED_FRAME"', harness)
         self.assertIn(

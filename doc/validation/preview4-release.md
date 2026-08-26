@@ -1,10 +1,10 @@
 # Preview4 Release Validation
 
 This page records the reproducible release gates for `1.0.0-preview.4`. The release consumes
-`nnrp-rs 1.0.0-preview.4.25` with FFI ABI `4.4.0` from Rust commit
-`35b4ed1e0764623d278035ca1449daeab4192c5c` and release run `32365855992`. It builds every package
+`nnrp-rs 1.0.0-preview.4.26` with FFI ABI `4.4.0` from Rust commit
+`d45a17238ea9f8dba1bfdd8439416bb97c53180e` and release run `32896006962`. It builds every package
 from one validated C# commit and checks conformance against
-`nnrp-conformance@d1c2bc6aee489e271a75567c45f56bd966fb90cb`.
+`nnrp-conformance@7ea6e30ab61a76efc9ce9cf2fe6aa93312edda81`.
 
 ## Automated Gates
 

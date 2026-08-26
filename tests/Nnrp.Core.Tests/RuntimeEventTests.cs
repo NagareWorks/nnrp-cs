@@ -80,10 +80,11 @@ namespace Nnrp.Core.Tests
         [InlineData(MessageType.DegradeProfile)]
         public void DecodePreservesCapabilityBodyTail(MessageType messageType)
         {
-            var entries = new byte[] { 1, 2, 3 };
+            byte[] entries = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
             var payload = NnrpRuntimeControl.Encode(
                 messageType,
-                new CapabilityMetadata(1, 1, 2, 3, 4, 5, 3, 0),
+                new CapabilityMetadata(1, 1, 2, 3, 4, 5, (uint)entries.Length, 0),
                 entries);
 
             var @event = NnrpRuntimeEvent.Decode(new RuntimeFrameHeader(messageType), payload);
@@ -196,6 +197,12 @@ namespace Nnrp.Core.Tests
         {
             var body = new byte[] { 1, 2 };
             var diagnostic = new byte[] { 3, 4 };
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[]
+                {
+                    NnrpPreview4CapabilityTokens.ControlCapabilityCosts,
+                    NnrpPreview4CapabilityTokens.ControlRouteExecutionHint,
+                });
 
             AssertEvent(
                 MessageType.FrameSubmit,
@@ -259,8 +266,8 @@ namespace Nnrp.Core.Tests
             AssertControl(MessageType.PartialResult, new PartialResultMetadata(1, 2, 3, 4, 2, 0), body, NnrpRuntimeEventMetadataKind.PartialResult, NnrpRuntimeEventTailKind.Body);
             AssertControl(MessageType.Backpressure, new PressureMetadata(1, 2, 3, 4, 5, 0), Array.Empty<byte>(), NnrpRuntimeEventMetadataKind.Pressure, NnrpRuntimeEventTailKind.None);
             AssertControl(MessageType.CreditUpdate, new PressureMetadata(1, 2, 3, 4, 5, 0), Array.Empty<byte>(), NnrpRuntimeEventMetadataKind.Pressure, NnrpRuntimeEventTailKind.None);
-            AssertControl(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), body, NnrpRuntimeEventMetadataKind.Capability, NnrpRuntimeEventTailKind.Body);
-            AssertControl(MessageType.DegradeProfile, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), body, NnrpRuntimeEventMetadataKind.Capability, NnrpRuntimeEventTailKind.Body);
+            AssertControl(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 2, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody, NnrpRuntimeEventMetadataKind.Capability, NnrpRuntimeEventTailKind.Body);
+            AssertControl(MessageType.DegradeProfile, new CapabilityMetadata(1, 2, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody, NnrpRuntimeEventMetadataKind.Capability, NnrpRuntimeEventTailKind.Body);
             AssertControl(MessageType.RouteHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), body, NnrpRuntimeEventMetadataKind.RouteHint, NnrpRuntimeEventTailKind.Body);
             AssertControl(MessageType.ExecutionHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), body, NnrpRuntimeEventMetadataKind.RouteHint, NnrpRuntimeEventTailKind.Body);
             AssertControl(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), body, NnrpRuntimeEventMetadataKind.TraceContext, NnrpRuntimeEventTailKind.Body);

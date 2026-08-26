@@ -17,6 +17,13 @@ namespace Nnrp.Core.Tests;
 
 public sealed class WireTargetHostTests
 {
+    private static readonly byte[] CapabilityOfferBody = NnrpCapabilityTokenBodyCodec.Encode(
+        new[]
+        {
+            NnrpPreview4CapabilityTokens.ControlCapabilityCosts,
+            NnrpPreview4CapabilityTokens.ControlRouteExecutionHint,
+        });
+
     [Fact]
     public async Task HostRejectsRootedScenarioManifestPaths()
     {
@@ -171,6 +178,7 @@ public sealed class WireTargetHostTests
         await WireTargetHost.HandleCancelAsync(session, CancellationToken.None);
 
         Assert.Null(session.TraceOperationId);
+        Assert.Equal("partial", Encoding.UTF8.GetString(Assert.Single(operation.PartialBodies)));
         Assert.Equal(NnrpResultDropReasonCode.PeerCancelled, operation.DropReasonCode);
         Assert.True(session.Disposed);
     }
@@ -401,7 +409,16 @@ public sealed class WireTargetHostTests
                 [
                     new WireTargetReceivedEvent(
                         MessageType.CapabilityNegotiation,
-                        new CapabilityMetadata(2, 1, 1, 1, 1, 1, 0, 0)),
+                        new CapabilityMetadata(
+                            2,
+                            2,
+                            1,
+                            1,
+                            1,
+                            1,
+                            (uint)CapabilityOfferBody.Length,
+                            0),
+                        CapabilityOfferBody),
                     new WireTargetReceivedEvent(
                         MessageType.RouteHint,
                         new RouteHintMetadata(operationId, 1, 1, 1, 0, 0, 0)),
@@ -571,6 +588,20 @@ public sealed class WireTargetHostTests
         internal bool TerminalSent { get; private set; }
 
         internal NnrpResultDropReasonCode? DropReasonCode { get; private set; }
+
+        internal List<byte[]> PartialBodies { get; } = [];
+
+        public ValueTask SendPartialResultAsync(
+            PartialResultMetadata metadata,
+            ReadOnlyMemory<byte> body,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal(OperationId, metadata.OperationId);
+            Assert.Equal((uint)body.Length, metadata.BodyBytes);
+            PartialBodies.Add(body.ToArray());
+            return default;
+        }
 
         public ValueTask SendResultAsync(
             ResultPushMetadata metadata,

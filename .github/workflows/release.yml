@@ -33,7 +33,7 @@ on:
       nnrp_rs_version:
         description: nnrp-rs native artifact version to package
         required: true
-        default: 1.0.0-preview.4.25
+        default: 1.0.0-preview.4.26
 
 permissions:
   contents: write
@@ -96,7 +96,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ github.event_name == 'workflow_dispatch' && inputs.nnrp_rs_version || '1.0.0-preview.4.25' }}"
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.nnrp_rs_version || '1.0.0-preview.4.26' }}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Download nnrp-rs FFI artifacts
@@ -105,8 +105,8 @@ jobs:
         run: >-
           python scripts/download_nnrp_rs_artifacts.py
           --version ${{ steps.nnrp-rs.outputs.version }}
-          --workflow-run-id 32365855992
-          --workflow-head-sha 35b4ed1e0764623d278035ca1449daeab4192c5c
+          --workflow-run-id 32896006962
+          --workflow-head-sha d45a17238ea9f8dba1bfdd8439416bb97c53180e
           --require-abi-version 4.4.0
           --output artifacts/native
 

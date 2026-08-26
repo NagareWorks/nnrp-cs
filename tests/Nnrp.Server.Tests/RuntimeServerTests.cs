@@ -243,6 +243,8 @@ namespace Nnrp.Server.Tests
             await using var session = await server.AcceptAsync();
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
 
             harness.QueueServerBatch(harness.CreateEvent(MessageType.FrameSubmit, 44, 1, SubmitPayload(1)));
             var operation = await session.ReceiveSubmitAsync();
@@ -253,8 +255,8 @@ namespace Nnrp.Server.Tests
             Assert.Equal("metadata", mismatch.ParamName);
             await session.SendBackpressureAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendCreditUpdateAsync(new PressureMetadata(1, 2, 3, 4, 5, 0));
-            await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, 3, 0), body);
-            await session.DegradeProfileAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, 3, 0), body);
+            await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
+            await session.DegradeProfileAsync(new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
             await session.SendTraceContextAsync(new TraceContextMetadata(1, 2, 3, 4, 0, 3), body);
             await session.SendRecoverableErrorAsync(
                 new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2),
@@ -329,11 +331,13 @@ namespace Nnrp.Server.Tests
                 new NnrpServerTransportListenerSet(new[] { listener }));
             await using var session = await server.AcceptAsync();
             var tail = new byte[] { 1, 2 };
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
 
             await session.SendControlAsync(MessageType.Backpressure, new PressureMetadata(1, 2, 3, 4, 5, 0));
             await session.SendControlAsync(MessageType.CreditUpdate, new PressureMetadata(1, 2, 3, 4, 5, 0));
-            await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(2, 1, 3, 4, 5, 6, 2, 0), tail);
-            await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(2, 1, 3, 4, 5, 6, 2, 0), tail);
+            await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
+            await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);
             await session.SendControlAsync(MessageType.ErrorRecoverable, new RecoverableErrorMetadata(1, 2, 3, RuntimeRole.Server, 0, 4, 5, 6, 7, 2), tail);
             await session.SendControlAsync(MessageType.RetryAfter, new RetryAfterMetadata(1, 2, 3, 4, 5, RuntimeRole.Server, 0, 2), tail);

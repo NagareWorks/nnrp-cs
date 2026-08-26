@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -24,9 +23,10 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
     private static readonly TimeSpan ConnectRetryDelay = TimeSpan.FromMilliseconds(50);
     private static readonly byte[] RequestBody = Encoding.UTF8.GetBytes("wire-external-request");
     private static readonly byte[] ResponseBody = Encoding.UTF8.GetBytes("wire-external-result");
+    private static readonly byte[] PartialBody = Encoding.UTF8.GetBytes("partial");
     private static readonly byte[] TraceBody = Encoding.UTF8.GetBytes("trace");
-    private static readonly byte[] CapabilityCostsBody = EncodeCapabilityToken(
-        NnrpPreview4CapabilityTokens.ControlCapabilityCosts);
+    private static readonly byte[] CapabilityCostsBody = NnrpCapabilityTokenBodyCodec.Encode(
+        [NnrpPreview4CapabilityTokens.ControlCapabilityCosts]);
 
     internal async Task RunAsync(
         WireTargetHostOptions options,
@@ -146,6 +146,16 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         {
             IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
                 .ConfigureAwait(false);
+            await operation.SendPartialResultAsync(
+                new PartialResultMetadata(
+                    operation.OperationId,
+                    1,
+                    0,
+                    0,
+                    (uint)PartialBody.Length,
+                    0),
+                PartialBody,
+                cancellationToken).ConfigureAwait(false);
             await session.SendTraceContextAsync(
                 new TraceContextMetadata(0x1234, 0x5678, 0, 1, 0, (uint)TraceBody.Length),
                 TraceBody,
@@ -267,9 +277,19 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
     {
         IWireTargetOperation operation = await session.ReceiveSubmitAsync(cancellationToken)
             .ConfigureAwait(false);
-        CapabilityMetadata capability = Expect(
+        WireTargetReceivedEvent capabilityEvent = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
-            MessageType.CapabilityNegotiation).GetMetadata<CapabilityMetadata>();
+            MessageType.CapabilityNegotiation);
+        CapabilityMetadata capability = capabilityEvent.GetMetadata<CapabilityMetadata>();
+        IReadOnlyList<string> offeredCapabilities = NnrpCapabilityTokenBodyCodec.Decode(
+            capabilityEvent.Body.Span,
+            capability.CapabilityCount);
+        if (offeredCapabilities.Count != 2
+            || offeredCapabilities[0] != NnrpPreview4CapabilityTokens.ControlCapabilityCosts
+            || offeredCapabilities[1] != NnrpPreview4CapabilityTokens.ControlRouteExecutionHint)
+        {
+            throw new InvalidOperationException("Capability offer used an unexpected token set.");
+        }
         await session.NegotiateCapabilitiesAsync(
             capability with
             {
@@ -311,20 +331,6 @@ internal sealed class WireTargetHost(IWireTargetSdk sdk)
         _ = Expect(
             await session.NextEventAsync(cancellationToken).ConfigureAwait(false),
             MessageType.SessionClose);
-    }
-
-    private static byte[] EncodeCapabilityToken(string token)
-    {
-        byte[] tokenBytes = Encoding.UTF8.GetBytes(token);
-        if (tokenBytes.Length > ushort.MaxValue)
-        {
-            throw new ArgumentOutOfRangeException(nameof(token));
-        }
-
-        byte[] body = new byte[sizeof(ushort) + tokenBytes.Length];
-        BinaryPrimitives.WriteUInt16LittleEndian(body, (ushort)tokenBytes.Length);
-        tokenBytes.CopyTo(body.AsSpan(sizeof(ushort)));
-        return body;
     }
 
     private static async ValueTask ExpectLifecycleAsync(

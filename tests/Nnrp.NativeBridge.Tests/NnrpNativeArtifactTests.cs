@@ -3877,6 +3877,8 @@ namespace Nnrp.NativeBridge.Tests
                 new NnrpOperationHandle(new NnrpHandle(NnrpHandleKind.Operation, 3, 1)),
                 operationId: 20,
                 frameId: 91);
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
 
             session.SendProgress(operation, new ProgressMetadata(20, 1, 5, 2500, 0, 1), new byte[] { 1 });
             session.SendPartialResult(operation, new PartialResultMetadata(20, 2, 0, 0, 2, 1), new byte[] { 2, 3 });
@@ -3887,11 +3889,11 @@ namespace Nnrp.NativeBridge.Tests
             session.SendBackpressure(new PressureMetadata(20, 4, 2, 3, 5, 2));
             session.SendCreditUpdate(new PressureMetadata(20, 8, 1, 0, 0, 1));
             session.NegotiateCapabilities(
-                new CapabilityMetadata(2, 1, 3, 4, 5, 6, 1, 0),
-                new byte[] { 7 });
+                new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0),
+                capabilityBody);
             session.DegradeProfile(
-                new CapabilityMetadata(2, 1, 3, 4, 5, 6, 1, 0),
-                new byte[] { 8 });
+                new CapabilityMetadata(2, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0),
+                capabilityBody);
             session.SendTraceContext(
                 0,
                 new TraceContextMetadata(20, 9, 0, 1, 0, 0));

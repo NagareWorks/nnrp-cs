@@ -623,10 +623,12 @@ public static class Program
 
     private static void RunPreview4CapabilityCosts()
     {
+        byte[] body = NnrpCapabilityTokenBodyCodec.Encode(
+            new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
         AssertControlRoundTrip(
             MessageType.CapabilityNegotiation,
-            new CapabilityMetadata(3, 4, 2, 1, 64 * 1024, 128, 4, 0),
-            new byte[] { 0x43, 0x4F, 0x53, 0x54 });
+            new CapabilityMetadata(3, 1, 2, 1, 64 * 1024, 128, (uint)body.Length, 0),
+            body);
     }
 
     private static void RunPreview4RouteExecutionHint()
@@ -651,10 +653,12 @@ public static class Program
 
     private static void RunPreview4DegradeBudget()
     {
+        byte[] body = NnrpCapabilityTokenBodyCodec.Encode(
+            new[] { NnrpPreview4CapabilityTokens.ControlDegradeProfile });
         AssertControlRoundTrip(
             MessageType.DegradeProfile,
-            new CapabilityMetadata(2, 1, 2, 4, 16 * 1024, 32, 3, 0),
-            new byte[] { 0x4C, 0x4F, 0x57 });
+            new CapabilityMetadata(2, 1, 2, 4, 16 * 1024, 32, (uint)body.Length, 0),
+            body);
         AssertControlRoundTrip(
             MessageType.BudgetUpdate,
             new BudgetMetadata(42, 100, 8 * 1024 * 1024, 2 * 1024 * 1024, 512, 0));

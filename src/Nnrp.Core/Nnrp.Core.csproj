@@ -11,7 +11,13 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="Nnrp.Client" />
+    <InternalsVisibleTo Include="Nnrp.Client.Tests" />
+    <InternalsVisibleTo Include="Nnrp.ConformanceAdapter" />
+    <InternalsVisibleTo Include="Nnrp.Core.Tests" />
+    <InternalsVisibleTo Include="Nnrp.NativeBridge.Tests" />
+    <InternalsVisibleTo Include="Nnrp.Server.Tests" />
     <InternalsVisibleTo Include="Nnrp.Transport.WebSocket" />
+    <InternalsVisibleTo Include="Nnrp.WireConformance" />
   </ItemGroup>
 
 </Project>

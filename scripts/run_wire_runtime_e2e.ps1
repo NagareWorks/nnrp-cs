@@ -458,7 +458,7 @@ try {
     Invoke-ExpectedCommandFailure `
         -Command $runner `
         -Arguments @("validate-wire-results", "--plan", $executionPlan, "--results", $missingFramesPath) `
-        -ExpectedText "missing or reordered expected frame TRACE_CONTEXT"
+        -ExpectedText "missing or reordered expected frame PARTIAL_RESULT"
 
     $unexpectedFrame = Copy-JsonDocument $baselineReport
     $unexpectedFrame.results[0].observed_frames[0].frame = "UNDECLARED_FRAME"

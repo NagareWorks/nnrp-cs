@@ -609,6 +609,8 @@ namespace Nnrp.Client.Tests
             await using var session = await client.OpenSessionAsync(new NnrpClientSessionOptions(requestedSessionId: 41));
             var diagnostic = new byte[] { 1, 2 };
             var body = new byte[] { 3, 4, 5 };
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
 
             await session.AbortAsync(new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), diagnostic);
             await session.UpdatePriorityAsync(new SchedulingMetadata(1, 2, 3, -1, 4, 0));
@@ -616,8 +618,8 @@ namespace Nnrp.Client.Tests
             await session.ExpireAtAsync(new SchedulingMetadata(1, 4, 3, 1, 4, 0));
             await session.SupersedeAsync(new SupersedeMetadata(1, 5, 5, NnrpResultDropReasonCode.Superseded, 0, 2), diagnostic);
             await session.UpdateBudgetAsync(new BudgetMetadata(1, 6, 7, 8, 9, 0));
-            await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
-            await session.DegradeProfileAsync(new CapabilityMetadata(1, 2, 3, 4, 5, 6, 3, 0), body);
+            await session.NegotiateCapabilitiesAsync(new CapabilityMetadata(1, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
+            await session.DegradeProfileAsync(new CapabilityMetadata(1, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
             await session.SendRouteHintAsync(new RouteHintMetadata(1, 2, 3, 4, 5, 3, 0), body);
             await session.SendExecutionHintAsync(new RouteHintMetadata(1, 2, 3, 4, 5, 3, 0), body);
             await session.SendTraceContextAsync(new TraceContextMetadata(1, 2, 3, 4, 0, 3), body);
@@ -683,6 +685,8 @@ namespace Nnrp.Client.Tests
             await using var client = CreateClient(harness);
             await using var session = await client.OpenSessionAsync(new NnrpClientSessionOptions(requestedSessionId: 41));
             var tail = new byte[] { 1, 2 };
+            byte[] capabilityBody = NnrpCapabilityTokenBodyCodec.Encode(
+                new[] { NnrpPreview4CapabilityTokens.ControlCapabilityCosts });
 
             await session.SendControlAsync(MessageType.Cancel, new ControlRequestMetadata(1, 1, 1, RuntimeRole.Client, 0, 2), tail);
             await session.SendControlAsync(MessageType.Abort, new ControlRequestMetadata(1, 2, 1, RuntimeRole.Client, 0, 2), tail);
@@ -691,8 +695,8 @@ namespace Nnrp.Client.Tests
             await session.SendControlAsync(MessageType.ExpireAt, new SchedulingMetadata(1, 5, 1, 1, 2, 0));
             await session.SendControlAsync(MessageType.Supersede, new SupersedeMetadata(1, 6, 6, NnrpResultDropReasonCode.Superseded, 0, 2), tail);
             await session.SendControlAsync(MessageType.BudgetUpdate, new BudgetMetadata(1, 7, 1, 2, 3, 0));
-            await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
-            await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(1, 2, 3, 4, 5, 6, 2, 0), tail);
+            await session.SendControlAsync(MessageType.CapabilityNegotiation, new CapabilityMetadata(1, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
+            await session.SendControlAsync(MessageType.DegradeProfile, new CapabilityMetadata(1, 1, 3, 4, 5, 6, (uint)capabilityBody.Length, 0), capabilityBody);
             await session.SendControlAsync(MessageType.RouteHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), tail);
             await session.SendControlAsync(MessageType.ExecutionHint, new RouteHintMetadata(1, 2, 3, 4, 5, 2, 0), tail);
             await session.SendControlAsync(MessageType.TraceContext, new TraceContextMetadata(1, 2, 3, 4, 0, 2), tail);

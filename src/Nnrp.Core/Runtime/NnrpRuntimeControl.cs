@@ -20,6 +20,7 @@ namespace Nnrp.Runtime
             var fixedLength = GetFixedLength(messageType);
             var declaredTailLength = GetDeclaredTailLength(messageType, metadata);
             ValidateTailLength(declaredTailLength, tail.Length);
+            ValidateTail(messageType, metadata, tail);
 
             var encoded = new byte[checked(fixedLength + tail.Length)];
             WriteMetadata(messageType, metadata, encoded.AsSpan(0, fixedLength));
@@ -40,6 +41,7 @@ namespace Nnrp.Runtime
             var metadata = ReadMetadata(messageType, payload.Slice(0, fixedLength));
             var tail = payload.Slice(fixedLength).ToArray();
             ValidateTailLength(GetDeclaredTailLength(messageType, metadata), tail.Length);
+            ValidateTail(messageType, metadata, tail);
             return new DecodedRuntimeControlMetadata(metadata, tail);
         }
 
@@ -129,6 +131,19 @@ namespace Nnrp.Runtime
                 default:
                     GetFixedLength(messageType);
                     return 0;
+            }
+        }
+
+        private static void ValidateTail(
+            MessageType messageType,
+            IRuntimeControlMetadata metadata,
+            ReadOnlySpan<byte> tail)
+        {
+            if (messageType == MessageType.CapabilityNegotiation
+                || messageType == MessageType.DegradeProfile)
+            {
+                var capability = RequireType<CapabilityMetadata>(metadata, messageType);
+                _ = NnrpCapabilityTokenBodyCodec.Decode(tail, capability.CapabilityCount);
             }
         }
 
